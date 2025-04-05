@@ -16,8 +16,8 @@ class WeatherApi():
                     "type": "string",
                     "description": "The location for which to get the weather information",
                 },
-                "required": ["location"],
             },
+            "required": ["location"],
         }
     }
 

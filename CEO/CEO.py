@@ -138,7 +138,7 @@ if __name__ == "__main__":
     tools.extend(tool_loader.getTools())
     
     # Create the Ollama model manager and ensure the model is set up.
-    model_manager = OllamaModelManager()
+    model_manager = OllamaModelManager(tools=tools)
     model_manager.create_model("mistral")
     
     # Example prompt instructing the CEO model to create a strategy for Ashton Hall.

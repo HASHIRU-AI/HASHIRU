@@ -20,8 +20,8 @@ class ToolCreator():
                     "type": "string",
                     "description": "The content of the tool to create",
                 },
-                "required": ["name", "content"],
             },
+            "required": ["name", "content"],
         }
     }
 
