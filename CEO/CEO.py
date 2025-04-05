@@ -74,9 +74,9 @@ class OllamaModelManager:
         return model in loaded_models or f'{model}:latest' in loaded_models
 
     def create_model(self, base_model):
-        with open(self.system_prompt_file, 'r') as f:
+        with open(self.system_prompt_file, 'r', encoding="utf8") as f:
             system = f.read()
-        
+
         if not self.is_model_loaded(self.model_name):
             print(f"Creating model {self.model_name}")
             ollama.create(
