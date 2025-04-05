@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from pathlib import Path
 import ollama
 from googlesearch import search
+from toolLoader import ToolLoader
 
 # Enum for Model Types
 class ModelType(Enum):
@@ -130,6 +131,11 @@ if __name__ == "__main__":
             },
         }
     ]
+
+    # Load the tools using the ToolLoader class.
+    tool_loader = ToolLoader()
+    tool_loader.load_tools()
+    tools.extend(tool_loader.getTools())
     
     # Create the Ollama model manager and ensure the model is set up.
     model_manager = OllamaModelManager()
