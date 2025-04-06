@@ -29,7 +29,8 @@ class AgentCreator():
                     "type": "string",
                     "description": "Description of the agent. This is a string that describes the agent and its capabilities. It should be a single line description.",
                 },
-            }
+            },
+            "required": ["agent_name", "base_model", "system_prompt", "description"],
         }
     }
 

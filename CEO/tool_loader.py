@@ -1,7 +1,9 @@
 import importlib
 import importlib.util
 import os
+import types
 import pip
+from google.genai import types
 
 toolsImported = []
 
@@ -57,10 +59,27 @@ class ToolLoader:
     def getTools(self):
         toolsList = []
         for tool in self.toolsImported:
-            toolsList.append({
-                "type": "function",
-                "function": tool.inputSchema
-            })
+            parameters = types.Schema()
+            parameters.type = tool.inputSchema["parameters"]["type"]
+            properties = {}
+            for prop, value in tool.inputSchema["parameters"]["properties"].items():
+                properties[prop] = types.Schema(
+                    type=value["type"],
+                    description=value["description"]
+                )
+            parameters.properties = properties
+            parameters.required = tool.inputSchema["parameters"].get("required", [])
+            function = types.FunctionDeclaration(
+                name=tool.inputSchema["name"],
+                description=tool.inputSchema["description"],
+                parameters=parameters,
+            )
+            toolType = types.Tool(function_declarations=[function])
+            toolsList.append(toolType)
+            # toolsList.append({
+            #     "type": "function",
+            #     "function": tool.inputSchema
+            # })
         return toolsList
 
 toolLoader = ToolLoader()

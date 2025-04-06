@@ -9,7 +9,7 @@ class AskAgent():
                     "pydantic_core==2.33.0"]
 
     inputSchema = {
-        "name": "AgentCreator",
+        "name": "AskAgent",
         "description": "Asks an AI agent a question and gets a response. The agent must be created using the AgentCreator tool before using this tool.",
         "parameters": {
             "type": "object",
@@ -22,7 +22,8 @@ class AskAgent():
                     "type": "string",
                     "description": "This is the prompt that will be used to ask the agent a question. It should be a string that describes the question to be asked.",
                 }
-            }
+            },
+            "required": ["agent_name", "prompt"],
         }
     }
 

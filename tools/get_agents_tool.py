@@ -11,8 +11,9 @@ class GetAgents():
         "description": "Retrieves a list of available AI agents. This tool is used to get the list of available models that can be invoked using the AskAgent tool.",
         "parameters": {
             "type": "object",
-            "properties": {}
-        }
+            "properties": {},
+            "required": [],
+        },
     }
 
     def __init__(self):

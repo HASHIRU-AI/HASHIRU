@@ -21,7 +21,7 @@ class ToolCreator():
                     "description": "The code of the tool to create",
                 },
             },
-            "required": ["name", "content"],
+            "required": ["name", "tool_code"],
         }
     }
 

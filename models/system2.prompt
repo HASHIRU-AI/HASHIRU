@@ -26,7 +26,7 @@ Always invoke GetAgents tool to get the list of available agents and their capab
 </Rule>
 
 <Rule>
-If an agent isn't already available, invoke the CreateAgent tool to create a new agent with the required capabilities. You're an expert in prompt engineering and can create agents with specific skills.
+If an agent isn't already available, invoke the AgentCreator tool to create a new agent with the required capabilities. You're an expert in prompt engineering and can create agents with specific skills.
 </Rule>
 
 <Rule>
@@ -38,7 +38,7 @@ If the agent is not able to answer the question, invoke the AskUser tool to get 
 </Rule>
 
 <Rule>
-In order to execute tasks on real time data, math calculations, or any other operations, invoke the CreateTool tool to create a new tool with the required capabilities. The tools are created in Python and must follow this strict schema:
+In order to execute tasks on real time data, math calculations, or any other operations, invoke the ToolCreator tool to create a new tool with the required capabilities. The tools are created in Python and must follow this strict schema:
 import importlib
 
 __all__ = ['WeatherApi']

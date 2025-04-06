@@ -1,6 +1,7 @@
+from google.genai import types
 from typing import List
 from googlesearch import search
-from CEO.CEO import OllamaModelManager
+from CEO.CEO import GeminiManager
 from CEO.tool_loader import ToolLoader
 
 # Define the web search tool function.
@@ -40,18 +41,20 @@ if __name__ == "__main__":
 
     # Load the tools using the ToolLoader class.
     tool_loader = ToolLoader()
-    # tools.extend(tool_loader.getTools())
 
-    # Create the Ollama model manager and ensure the model is set up.
-    model_manager = OllamaModelManager(toolsLoader=tool_loader)
+    model_manager = GeminiManager(toolsLoader=tool_loader)
     
     # Example prompt instructing the CEO model to create a strategy for Ashton Hall.
     # The prompt explicitly mentions that it can use the web_search tool if needed,
     # and that it is allowed to choose the website for the search.
     task_prompt = (
-        "Create a tool to get the current system time and invoke it to get the current time."
+        "Get me the current time here"
     )
     
     # Request a CEO response with the prompt.
-    response = model_manager.request([{"role": "user", "content": task_prompt}])
+    user_prompt_content = types.Content(
+        role='user',
+        parts=[types.Part.from_text(text=task_prompt)],
+    )
+    response = model_manager.request([user_prompt_content])
     print("\nCEO Response:", response)
