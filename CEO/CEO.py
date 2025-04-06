@@ -4,7 +4,6 @@ from typing import List, Dict, Optional
 from pathlib import Path
 import ollama
 
-from CEO.ask_user import AskUser
 from CEO.tool_loader import ToolLoader
 
 # Enum for Model Types
@@ -85,7 +84,7 @@ class OllamaModelManager:
             print(f"Creating model {self.model_name}")
             ollama.create(
                 model=self.model_name,
-                from_='mistral',
+                from_='llama3.1',
                 system=system,
                 parameters={"num_ctx": ModelParameters.NUM_CTX.value, "temperature": ModelParameters.TEMPERATURE.value}
             )
@@ -115,8 +114,8 @@ class OllamaModelManager:
             print("No tool calls found in the response.")
             messages.append({"role": "assistant", "content": response.message.content})
             print(f"Messages: {messages}")
-            ask_user_tool = AskUser()
-            ask_user_response = ask_user_tool.run(prompt=response.message.content)
-            messages.append({"role": "user", "content": ask_user_response})
-            self.request(messages)
-            # return messages
+            # ask_user_tool = AskUser()
+            # ask_user_response = ask_user_tool.run(prompt=response.message.content)
+            # messages.append({"role": "user", "content": ask_user_response})
+            # self.request(messages)
+            return messages
