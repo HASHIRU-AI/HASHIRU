@@ -62,5 +62,5 @@ class ToolLoader:
 toolLoader = ToolLoader()
 
 # Example usage
-print(toolLoader.getTools())
-print(toolLoader.runTool("AgentCreator", {"agent_name": "Kunla","base_model":"llama3.2","system_prompt": "You love making the indian dish called Kulcha. You declare that in every conversation you have in a witty way." }))
+# print(toolLoader.getTools())
+# print(toolLoader.runTool("AgentCreator", {"agent_name": "Kunla","base_model":"llama3.2","system_prompt": "You love making the indian dish called Kulcha. You declare that in every conversation you have in a witty way." }))
