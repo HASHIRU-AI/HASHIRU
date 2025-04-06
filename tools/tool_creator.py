@@ -42,7 +42,6 @@ class ToolCreator():
         return {
             "status": "success",
             "message": "Tool created successfully",
-            "error": None,
             "output": {
                 "tool_file_path": tool_file_path,
                 "tool_name": name,

@@ -3,8 +3,9 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 from pathlib import Path
 import ollama
-from googlesearch import search
-from toolLoader import ToolLoader
+
+from CEO.ask_user import AskUser
+from CEO.tool_loader import ToolLoader
 
 # Enum for Model Types
 class ModelType(Enum):
@@ -63,18 +64,20 @@ class CEOResponse(BaseModel):
     api_utilization: Optional[List[APIUtilization]] = Field(default=None, description="List of utilized APIs, if any")
 
 class OllamaModelManager:
-    def __init__(self, model_name="HASHIRU-CEO", system_prompt_file="system.prompt", tools=[]):
+    def __init__(self, toolsLoader: ToolLoader, model_name="HASHIRU-CEO", system_prompt_file="./models/system.prompt"):
         self.model_name = model_name
         # Get the directory of the current script and construct the path to system.prompt
         script_dir = Path(__file__).parent
-        self.system_prompt_file = script_dir / system_prompt_file
-        self.tools = tools
+        self.system_prompt_file = system_prompt_file
+        self.toolsLoader = toolsLoader
+        self.toolsLoader.load_tools()
+        self.create_model(model_name)
 
     def is_model_loaded(self, model):
         loaded_models = [m.model for m in ollama.list().models]
         return model in loaded_models or f'{model}:latest' in loaded_models
 
-    def create_model(self, base_model):
+    def create_model(self, base_model='llama3.2'):
         with open(self.system_prompt_file, 'r', encoding="utf8") as f:
             system = f.read()
 
@@ -82,73 +85,38 @@ class OllamaModelManager:
             print(f"Creating model {self.model_name}")
             ollama.create(
                 model=self.model_name,
-                from_=base_model,
+                from_='mistral',
                 system=system,
                 parameters={"num_ctx": ModelParameters.NUM_CTX.value, "temperature": ModelParameters.TEMPERATURE.value}
             )
 
-    def request(self, prompt):
+    def request(self, messages):
+        print(f"messages: {messages}")
         response = ollama.chat(
-            model=self.model_name, 
-            messages=[{"role": "user", "content": prompt}],
-            format=CEOResponse.model_json_schema(),
-            tools=self.tools
+            model=self.model_name,
+            messages=messages,
+            # format=CEOResponse.model_json_schema(),
+            tools=self.toolsLoader.getTools(),
         )
-        response = CEOResponse.model_validate_json(response['message']['content'])
-        return response
-
-# Define the web search tool function.
-def web_search(website: str, query: str) -> List[str]:
-    """
-    Searches the specified website for the given query.
-    The search query is formed by combining the website domain and the query string.
-    """
-    search_query = f"site:{website} {query}"
-    results = []
-    for result in search(search_query, num_results=10):
-        # Filter out irrelevant search pages
-        if "/search?num=" not in result:
-            results.append(result)
-    return results
-
-if __name__ == "__main__":
-    # Define the tool metadata for orchestration.
-    tools = [
-        {
-            'type': 'function',
-            'function': {
-                'name': 'web_search',
-                'description': 'Search for results on a specified website using a query string. '
-                               'The CEO model should define which website to search from and the query to use.',
-                'parameters': {
-                    'type': 'object',
-                    'required': ['website', 'query'],
-                    'properties': {
-                        'website': {'type': 'string', 'description': 'The website domain to search from (e.g., huggingface.co)'},
-                        'query': {'type': 'string', 'description': 'The search query to use on the specified website'},
-                    },
-                },
-            },
-        }
-    ]
-
-    # Load the tools using the ToolLoader class.
-    tool_loader = ToolLoader()
-    tool_loader.load_tools()
-    tools.extend(tool_loader.getTools())
-    
-    # Create the Ollama model manager and ensure the model is set up.
-    model_manager = OllamaModelManager(tools=tools)
-    model_manager.create_model("mistral")
-    
-    # Example prompt instructing the CEO model to create a strategy for Ashton Hall.
-    # The prompt explicitly mentions that it can use the web_search tool if needed,
-    # and that it is allowed to choose the website for the search.
-    task_prompt = (
-        "Your task is to create a marketing strategy for Ashton Hall, a morning routine creator with 10M followers. "
-    )
-    
-    # Request a CEO response with the prompt.
-    response = model_manager.request(task_prompt)
-    print("\nCEO Response:")
-    print(response)
+        # response = CEOResponse.model_validate_json(response['message']['content'])
+        if "EOF" in response.message.content:
+            return messages
+        if response.message.tool_calls:
+            for tool_call in response.message.tool_calls:
+                print(f"Tool Name: {tool_call.function.name}, Arguments: {tool_call.function.arguments}")
+                toolResponse = self.toolsLoader.runTool(tool_call.function.name, tool_call.function.arguments)
+                print(f"Tool Response: {toolResponse}")
+                role = "tool"
+                if "role" in toolResponse:
+                    role = toolResponse["role"]
+                messages.append({"role": role, "content": str(toolResponse)})
+            self.request(messages)
+        else:
+            print("No tool calls found in the response.")
+            messages.append({"role": "assistant", "content": response.message.content})
+            print(f"Messages: {messages}")
+            ask_user_tool = AskUser()
+            ask_user_response = ask_user_tool.run(prompt=response.message.content)
+            messages.append({"role": "user", "content": ask_user_response})
+            self.request(messages)
+            # return messages

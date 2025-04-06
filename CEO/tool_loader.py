@@ -5,7 +5,7 @@ import pip
 
 toolsImported = []
 
-TOOLS_DIRECTORY = os.path.abspath("../tools")
+TOOLS_DIRECTORY = os.path.abspath("./tools")
 
 class Tool:
     def __init__(self, toolClass):
