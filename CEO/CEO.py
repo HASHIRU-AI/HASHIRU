@@ -69,7 +69,7 @@ class CEOResponse(BaseModel):
     message: str = Field(default=None, description="Message content from the model")
 
 class OllamaModelManager:
-    def __init__(self, toolsLoader: ToolLoader, model_name="HASHIRU-CEO", system_prompt_file="./models/system.prompt"):
+    def __init__(self, toolsLoader: ToolLoader, model_name="HASHIRU-CEO", system_prompt_file="./models/system2.prompt"):
         self.model_name = model_name
         # Get the directory of the current script and construct the path to system.prompt
         script_dir = Path(__file__).parent
@@ -93,7 +93,7 @@ class OllamaModelManager:
                 model=self.model_name,
                 from_='mistral-nemo',
                 system=system,
-                parameters={"temperature": ModelParameters.TEMPERATURE.value}
+                # parameters={"temperature": ModelParameters.TEMPERATURE.value}
             )
 
     def request(self, messages):
@@ -117,7 +117,11 @@ class OllamaModelManager:
                 if "role" in toolResponse:
                     role = toolResponse["role"]
                 messages.append({"role": role, "content": str(toolResponse)})
-                self.toolsLoader.load_tools()
+                try:
+                    self.toolsLoader.load_tools()
+                except Exception as e:
+                    print(f"Error loading tools: {e}")
+                    messages.append({"role": "assistant", "content": "Error loading new tools."})
             self.request(messages)
         # if response.tools:
         #     for tool_call in response.tools:
