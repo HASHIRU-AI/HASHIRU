@@ -9,7 +9,7 @@ class AgentCreator():
 
     inputSchema = {
         "name": "AgentCreator",
-        "description": "Creates an AI agent using the ollama library. Before creating an Agent, please get the list of available models using the GetAgents tool. Once the model is created, you can use the AskAgent tool to ask the agent a question.",
+        "description": "Creates an AI agent for you. Please make sure to invoke the created agent using the AskAgent tool.",
         "parameters": {
             "type": "object",
             "properties":{
@@ -79,11 +79,9 @@ class AgentCreator():
             return {
                 "status": "success",
                 "message": "Agent successfully created",
-                "output": models
             }
         else:
             return {
                 "status": "error",
                 "message": "Agent creation failed",
-                "output": models
             }

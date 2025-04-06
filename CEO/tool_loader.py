@@ -48,7 +48,11 @@ class ToolLoader:
         for tool in self.toolsImported:
             if tool.name == toolName:
                 return tool.run(query)
-        return None
+        return {
+            "status": "error",
+            "message": f"Tool {toolName} not found",
+            "output": None
+        }
 
     def getTools(self):
         toolsList = []

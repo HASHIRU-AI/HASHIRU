@@ -49,7 +49,7 @@ if __name__ == "__main__":
     # The prompt explicitly mentions that it can use the web_search tool if needed,
     # and that it is allowed to choose the website for the search.
     task_prompt = (
-        "Your task is to create a marketing strategy for Ashton Hall, a morning routine creator with 10M followers."
+        "Create a tool to get the current system time and invoke it to get the current time."
     )
     
     # Request a CEO response with the prompt.

@@ -32,7 +32,7 @@ class Specialization(Enum):
 # Enum for Model Parameters (Temperature, num_ctx, etc.)
 class ModelParameters(Enum):
     NUM_CTX = 4096
-    TEMPERATURE = 0.7  # A typical temperature value for model responses
+    TEMPERATURE = 0.2  # A typical temperature value for model responses
     TOP_K = 50         # Number of top tokens to consider during generation
 
 class Subtask(BaseModel):
@@ -56,11 +56,17 @@ class APIUtilization(BaseModel):
 class AgentManagement(BaseModel):
     hired: List[Agent] = Field(default=[], description="List of hired agents")
 
+class ToolCall(BaseModel):
+    function: str = Field(..., description="Name of the function to be called")
+    arguments: Dict[str, str] = Field(..., description="Arguments for the function call")
+
 class CEOResponse(BaseModel):
-    decision: str = Field(..., description="Decision made by the CEO: Hire or Assign_API")
-    task_breakdown: List[Subtask] = Field(..., description="List of decomposed subtasks")
-    agent_management: AgentManagement = Field(..., description="Details of agent hiring")
-    api_utilization: Optional[List[APIUtilization]] = Field(default=None, description="List of utilized APIs, if any")
+    # decision: str = Field(..., description="Decision made by the CEO: Hire or Assign_API")
+    # task_breakdown: List[Subtask] = Field(..., description="List of decomposed subtasks")
+    # agent_management: AgentManagement = Field(..., description="Details of agent hiring")
+    # api_utilization: Optional[List[APIUtilization]] = Field(default=None, description="List of utilized APIs, if any")
+    tools: List[ToolCall] = Field(default=None, description="List of tool or agent calls made by the model")
+    message: str = Field(default=None, description="Message content from the model")
 
 class OllamaModelManager:
     def __init__(self, toolsLoader: ToolLoader, model_name="HASHIRU-CEO", system_prompt_file="./models/system.prompt"):
@@ -70,23 +76,24 @@ class OllamaModelManager:
         self.system_prompt_file = system_prompt_file
         self.toolsLoader = toolsLoader
         self.toolsLoader.load_tools()
-        self.create_model(model_name)
+        self.create_model()
 
     def is_model_loaded(self, model):
         loaded_models = [m.model for m in ollama.list().models]
         return model in loaded_models or f'{model}:latest' in loaded_models
 
-    def create_model(self, base_model='llama3.2'):
+    def create_model(self):
         with open(self.system_prompt_file, 'r', encoding="utf8") as f:
             system = f.read()
+            # system += "Tools\n"+str(self.toolsLoader.getTools())
 
         if not self.is_model_loaded(self.model_name):
             print(f"Creating model {self.model_name}")
             ollama.create(
                 model=self.model_name,
-                from_='llama3.1',
+                from_='mistral-nemo',
                 system=system,
-                parameters={"num_ctx": ModelParameters.NUM_CTX.value, "temperature": ModelParameters.TEMPERATURE.value}
+                parameters={"temperature": ModelParameters.TEMPERATURE.value}
             )
 
     def request(self, messages):
@@ -97,6 +104,7 @@ class OllamaModelManager:
             # format=CEOResponse.model_json_schema(),
             tools=self.toolsLoader.getTools(),
         )
+        print(f"Response: {response}")
         # response = CEOResponse.model_validate_json(response['message']['content'])
         if "EOF" in response.message.content:
             return messages
@@ -109,10 +117,21 @@ class OllamaModelManager:
                 if "role" in toolResponse:
                     role = toolResponse["role"]
                 messages.append({"role": role, "content": str(toolResponse)})
+                self.toolsLoader.load_tools()
             self.request(messages)
+        # if response.tools:
+        #     for tool_call in response.tools:
+        #         print(f"Tool Name: {tool_call.function}, Arguments: {tool_call.arguments}")
+        #         toolResponse = self.toolsLoader.runTool(tool_call.function, tool_call.arguments)
+        #         print(f"Tool Response: {toolResponse}")
+        #         role = "tool"
+        #         if "role" in toolResponse:
+        #             role = toolResponse["role"]
+        #         messages.append({"role": role, "content": str(toolResponse)})
+        #     self.request(messages)
         else:
             print("No tool calls found in the response.")
-            messages.append({"role": "assistant", "content": response.message.content})
+            messages.append({"role": "assistant", "content": response.message})
             print(f"Messages: {messages}")
             # ask_user_tool = AskUser()
             # ask_user_response = ask_user_tool.run(prompt=response.message.content)

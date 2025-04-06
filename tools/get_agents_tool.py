@@ -25,5 +25,5 @@ class GetAgents():
         return {
             "status": "success",
             "message": "Agents list retrieved successfully",
-            "output": models,
+            "agents": models,
         }
