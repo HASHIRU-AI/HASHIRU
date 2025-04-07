@@ -44,7 +44,7 @@ if __name__ == "__main__":
     # Load the tools using the ToolLoader class.
     tool_loader = ToolLoader()
 
-    model_manager = GeminiManager(toolsLoader=tool_loader)
+    model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.5-pro-exp-03-25")
     
     # Example prompt instructing the CEO model to create a strategy for Ashton Hall.
     # The prompt explicitly mentions that it can use the web_search tool if needed,

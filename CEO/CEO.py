@@ -6,18 +6,22 @@ from dotenv import load_dotenv
 from CEO.tool_loader import ToolLoader
 
 class GeminiManager:
-    def __init__(self, toolsLoader: ToolLoader, system_prompt_file="./models/system2.prompt"):
+    def __init__(self, toolsLoader: ToolLoader, system_prompt_file="./models/system2.prompt", gemini_model="gemini-2.5-pro-exp-03-25"):
         load_dotenv()
         self.API_KEY = os.getenv("GEMINI_KEY")
         self.client = genai.Client(api_key=self.API_KEY)
         self.toolsLoader = toolsLoader
         self.toolsLoader.load_tools()
+        self.model_name = gemini_model
         with open(system_prompt_file, 'r', encoding="utf8") as f:
             self.system_prompt = f.read()
 
     def request(self, messages):
         response = self.client.models.generate_content(
-            model='gemini-2.5-pro-preview-03-25',
+            #model='gemini-2.5-pro-preview-03-25',
+            model=self.model_name,
+            #model='gemini-2.5-pro-exp-03-25',
+            #model='gemini-2.0-flash',
             contents=messages,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
@@ -30,7 +34,7 @@ class GeminiManager:
         
         if response.text is not None:
             assistant_content = types.Content(
-                role='assistant',
+                role='model' if self.model_name == "gemini-2.5-pro-exp-03-25" else 'assistant',
                 parts=[types.Part.from_text(text=response.text)],
             )
             messages.append(assistant_content)
@@ -57,7 +61,8 @@ class GeminiManager:
                             response={"result":"New tool doesn't follow the required format, please read the other tool implementations for reference." + str(e)})
                 parts.append(tool_content)
             function_response_content = types.Content(
-                role='tool', parts=parts
+                role='model' if self.model_name == "gemini-2.5-pro-exp-03-25" else 'tool',
+                parts=parts
             )
             messages.append(function_response_content)
             self.request(messages)
