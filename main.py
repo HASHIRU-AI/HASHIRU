@@ -3,6 +3,7 @@ from typing import List
 from googlesearch import search
 from CEO.CEO import GeminiManager
 from CEO.tool_loader import ToolLoader
+import warnings
 
 # Define the web search tool function.
 def web_search(website: str, query: str) -> List[str]:
@@ -19,6 +20,7 @@ def web_search(website: str, query: str) -> List[str]:
     return results
 
 if __name__ == "__main__":
+    warnings.filterwarnings("ignore")
     # Define the tool metadata for orchestration.
     tools = [
         {
@@ -48,7 +50,7 @@ if __name__ == "__main__":
     # The prompt explicitly mentions that it can use the web_search tool if needed,
     # and that it is allowed to choose the website for the search.
     task_prompt = (
-        "Get me the current time here"
+        "Create a strategy for Ashton Hall to improve its online presence."
     )
     
     # Request a CEO response with the prompt.

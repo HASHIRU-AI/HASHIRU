@@ -21,13 +21,14 @@ class GeminiManager:
             contents=messages,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
-                temperature=0.0,
+                temperature=0.2,
                 tools=self.toolsLoader.getTools(),
             ),
         )
 
+        print(f"Response: {response}")
+        
         if response.text is not None:
-            print(f"Response: {response.text}")
             assistant_content = types.Content(
                 role='assistant',
                 parts=[types.Part.from_text(text=response.text)],
@@ -53,7 +54,7 @@ class GeminiManager:
                     print(f"Error loading tools: {e}")
                     tool_content = types.Part.from_function_response(
                             name=function_call.name,
-                            response={"result":"Error loading new tools."+str(e)})
+                            response={"result":"New tool doesn't follow the required format, please read the other tool implementations for reference." + str(e)})
                 parts.append(tool_content)
             function_response_content = types.Content(
                 role='tool', parts=parts
