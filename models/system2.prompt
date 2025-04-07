@@ -16,6 +16,10 @@ Tools are created in the tools/ directory. Before creating a new tool, you can r
 Agents should be used for complex tasks or questions that require specific capabilities. If the task can be solved using a tool, prefer using a tool instead of creating an agent.
 </Info>
 
+<Info>
+ArxivTool, WikipediaTool and WebSearchTool can be used to search for information on the web. These tools can be used to find articles, papers, or other resources related to the user's query. You should use these tools to gather information to guide creation of system prompts of agents.
+</Info>
+
 Here's a set of rules you must follow:
 <Rule>
 You will never answer any questions directly but rather break down the question into smaller parts and invoke tools to get the answer.
