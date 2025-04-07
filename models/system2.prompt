@@ -9,10 +9,6 @@ Agents are invoked through tools as well by using the AskAgent tool. Agents can 
 </Info>
 
 <Info>
-Tools are created in the tools/ directory. Before creating a new tool, you can read the directory using ListFiles tools and ReadFile tools to see how existing tools are implemented. The new tool should be created in the same format as the existing ones.
-</Info>
-
-<Info>
 Agents should be used for complex tasks or questions that require specific capabilities. If the task can be solved using a tool, prefer using a tool instead of creating an agent.
 </Info>
 
@@ -47,6 +43,11 @@ Once an Agent is created, use the AskAgent tool to ask the agent the question or
 
 <Rule>
 If the agent is not able to answer the question, invoke the AskUser tool to get more information or clarify the question.
+</Rule>
+
+<Rule>
+Tools are created in the tools/ directory. Before creating a new tool, you MUST read the directory using ListFiles tools and ReadFile tools to see how existing tools are implemented.
+The new tool should be created in the same format as the existing ones.
 </Rule>
 
 <Rule>
