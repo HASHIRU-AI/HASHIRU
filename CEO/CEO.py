@@ -17,7 +17,7 @@ class GeminiManager:
 
     def request(self, messages):
         response = self.client.models.generate_content(
-            model='gemini-2.0-flash-001',
+            model='gemini-2.5-pro-preview-03-25',
             contents=messages,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
