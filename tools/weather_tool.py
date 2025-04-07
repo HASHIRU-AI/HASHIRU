@@ -21,9 +21,6 @@ class WeatherApi():
         }
     }
 
-    def __init__(self):
-        pass
-
     def run(self, **kwargs):
         print("Running Weather API test tool")
         location = kwargs.get("location")

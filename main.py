@@ -20,7 +20,6 @@ def web_search(website: str, query: str) -> List[str]:
     return results
 
 if __name__ == "__main__":
-    warnings.filterwarnings("ignore")
     # Define the tool metadata for orchestration.
     tools = [
         {
@@ -50,7 +49,7 @@ if __name__ == "__main__":
     # The prompt explicitly mentions that it can use the web_search tool if needed,
     # and that it is allowed to choose the website for the search.
     task_prompt = (
-        "Create a strategy for Ashton Hall to improve its online presence."
+        "Get me the current AAPL stock price and the latest news about it. "
     )
     
     # Request a CEO response with the prompt.

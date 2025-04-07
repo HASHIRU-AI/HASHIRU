@@ -20,9 +20,6 @@ class ListFiles():
         }
     }
 
-    def __init__(self):
-        pass
-
     def run(self, **kwargs):
         print("Running List Files tool")
         directory = kwargs.get("directory")

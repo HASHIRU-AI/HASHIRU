@@ -27,9 +27,6 @@ class AskAgent():
         }
     }
 
-    def __init__(self):
-        pass
-
     def does_agent_exist(self, ollama, agent_name):
         all_agents = [a.model for a in ollama.list().models]
         if agent_name in all_agents or f'{agent_name}:latest' in all_agents:

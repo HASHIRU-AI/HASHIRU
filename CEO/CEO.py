@@ -17,18 +17,27 @@ class GeminiManager:
             self.system_prompt = f.read()
 
     def request(self, messages):
-        response = self.client.models.generate_content(
-            #model='gemini-2.5-pro-preview-03-25',
-            model=self.model_name,
-            #model='gemini-2.5-pro-exp-03-25',
-            #model='gemini-2.0-flash',
-            contents=messages,
-            config=types.GenerateContentConfig(
-                system_instruction=self.system_prompt,
-                temperature=0.2,
-                tools=self.toolsLoader.getTools(),
-            ),
-        )
+        try:
+            response = self.client.models.generate_content(
+                #model='gemini-2.5-pro-preview-03-25',
+                model=self.model_name,
+                #model='gemini-2.5-pro-exp-03-25',
+                #model='gemini-2.0-flash',
+                contents=messages,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_prompt,
+                    temperature=0.2,
+                    tools=self.toolsLoader.getTools(),
+                ),
+            )
+        except Exception as e:
+            print(f"Error: {e}")
+            shouldRetry = input("An error occurred. Do you want to retry? (y/n): ")
+            if shouldRetry.lower() == "y":
+                return self.request(messages)
+            else:
+                print("Ending the conversation.")
+                return messages
 
         print(f"Response: {response}")
         
@@ -65,7 +74,12 @@ class GeminiManager:
                 parts=parts
             )
             messages.append(function_response_content)
-            self.request(messages)
+            shouldContinue = input("Should I continue? (y/n): ")
+            if shouldContinue.lower() == "y":
+                return self.request(messages)
+            else:
+                print("Ending the conversation.")
+                return messages
         else:
             print("No tool calls found in the response.")
             return messages

@@ -1,14 +1,14 @@
 import importlib
 
-__all__ = ['WebSearchTool']
+__all__ = ['GoogleSearchTool']
 
 
-class WebSearchTool():
+class GoogleSearchTool():
     dependencies = ["googlesearch-python==1.3.0"]
 
     inputSchema = {
-        "name": "WebSearchTool",
-        "description": "Searches a specific website for a given query using Google search.",
+        "name": "GoogleSearchTool",
+        "description": "Provides a list of URLs from google search results based on a query string.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -21,12 +21,9 @@ class WebSearchTool():
                     "description": "The query string to search for on the website.",
                 }
             },
-            "required": ["website", "query"],
+            "required": ["query"],
         }
     }
-
-    def __init__(self):
-        pass
 
     def run(self, **kwargs):
         print("Running web search")
@@ -34,14 +31,16 @@ class WebSearchTool():
         website = kwargs.get("website")
         query = kwargs.get("query")
 
-        if not website or not query:
+        if not query:
             return {
                 "status": "error",
-                "message": "Missing required parameters: 'website' and 'query'",
+                "message": "Missing required parameters: 'query'",
                 "output": None
             }
-
-        search_query = f"site:{website} {query}"
+        search_query = query
+        if website:
+            search_query = f"site:{website} {query}"
+        
         results = []
 
         googlesearch = importlib.import_module("googlesearch")

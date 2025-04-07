@@ -25,9 +25,6 @@ class ToolCreator():
         }
     }
 
-    def __init__(self):
-        pass
-
     def run(self, **kwargs):
         print("Running Tool Creator")
         name = kwargs.get("name")

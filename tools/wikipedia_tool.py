@@ -21,9 +21,6 @@ class WikipediaTool():
         }
     }
 
-    def __init__(self):
-        pass
-
     def run(self, **kwargs):
         question = kwargs.get("question")
         if not question:

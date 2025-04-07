@@ -33,9 +33,6 @@ class AgentCreator():
             "required": ["agent_name", "base_model", "system_prompt", "description"],
         }
     }
-
-    def __init__(self):
-        pass
     
     def does_agent_exist(self, agent_name):
         ollama = importlib.import_module("ollama")

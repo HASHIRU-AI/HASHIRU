@@ -21,9 +21,6 @@ class ReadFile():
         }
     }
 
-    def __init__(self):
-        pass
-
     def run(self, **kwargs):
         print("Running Read File tool")
         file_path = kwargs.get("file_path")

@@ -14,7 +14,12 @@ class ArxivTool():
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query for papers (e.g., 'superconductors gem5').",
+                    "description": "Search query for papers on arXiv.",
+                    "examples":[
+                        "superconductors gem5",
+                        "machine learning in healthcare",
+                        "quantum computing algorithms"
+                    ]
                 },
                 "max_results": {
                     "type": "integer",
@@ -25,9 +30,6 @@ class ArxivTool():
             "required": ["query"],
         }
     }
-
-    def __init__(self):
-        pass
 
     def run(self, **kwargs):
         query = kwargs.get("query")

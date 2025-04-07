@@ -21,9 +21,6 @@ class AskUser():
         }
     }
 
-    def __init__(self):
-        pass
-
     def run(self, **kwargs):
         print("Running Ask User tool")
         question = kwargs.get("question")

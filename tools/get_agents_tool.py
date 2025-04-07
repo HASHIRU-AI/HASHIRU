@@ -16,9 +16,6 @@ class GetAgents():
         },
     }
 
-    def __init__(self):
-        pass
-
     def run(self, **kwargs):
         with open("./models/models.json", "r", encoding="utf8") as f:
             models = f.read()

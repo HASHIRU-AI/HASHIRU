@@ -4,6 +4,7 @@ import os
 import types
 import pip
 from google.genai import types
+import sys
 
 toolsImported = []
 
@@ -11,6 +12,8 @@ TOOLS_DIRECTORY = os.path.abspath("./tools")
 
 class Tool:
     def __init__(self, toolClass):
+        save_stdout = sys.stdout
+        sys.stdout = open('trash', 'w')
         self.tool = toolClass()
         self.inputSchema = self.tool.inputSchema
         self.name = self.inputSchema["name"]
@@ -24,6 +27,7 @@ class Tool:
                 if '==' in package:
                     package = package.split('==')[0]
                 pip.main(['install', package])
+        sys.stdout = save_stdout
 
     def run(self, query):
         return self.tool.run(**query)
@@ -35,6 +39,7 @@ class ToolLoader:
         pass
 
     def load_tools(self):
+        self.toolsImported = []
         for filename in os.listdir(TOOLS_DIRECTORY):
             if filename.endswith(".py") and filename != "__init__.py":
                 module_name = filename[:-3]
