@@ -4,7 +4,7 @@ __all__ = ['GetWebsiteTool']
 
 
 class GetWebsiteTool():
-    dependencies = ["requests"]
+    dependencies = ["requests", "beautifulsoup4==4.13.3"]
 
     inputSchema = {
         "name": "GetWebsiteTool",
@@ -35,10 +35,15 @@ class GetWebsiteTool():
         
         output = None
         requests = importlib.import_module("requests")
+        bs4 = importlib.import_module("bs4")
+        BeautifulSoup = bs4.BeautifulSoup
         try:
             response = requests.get(url)
             if response.status_code == 200:
-                output = response.text
+                # Parse the content using BeautifulSoup
+                soup = BeautifulSoup(response.content, 'html.parser')
+                # Extract text from the parsed HTML
+                output = soup.get_text()
             else:
                 return {
                     "status": "error",

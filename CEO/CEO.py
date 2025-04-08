@@ -47,8 +47,6 @@ class GeminiManager:
                 parts=[types.Part.from_text(text=response.text)],
             )
             messages.append(assistant_content)
-            if "EOF" in response.text:
-                return messages
         if response.candidates[0].content:
             messages.append(response.candidates[0].content)
         if response.function_calls:
@@ -56,7 +54,15 @@ class GeminiManager:
             for function_call in response.function_calls:
                 toolResponse = None
                 print(f"Function Name: {function_call.name}, Arguments: {function_call.args}")
-                toolResponse = self.toolsLoader.runTool(function_call.name, function_call.args)
+                try:
+                    toolResponse = self.toolsLoader.runTool(function_call.name, function_call.args)
+                except Exception as e:
+                    print(f"Error running tool: {e}")
+                    toolResponse = {
+                        "status": "error",
+                        "message": f"Tool {function_call.name} failed to run.",
+                        "output": str(e),
+                    }
                 print(f"Tool Response: {toolResponse}")
                 tool_content = types.Part.from_function_response(
                         name=function_call.name,
@@ -82,4 +88,13 @@ class GeminiManager:
                 return messages
         else:
             print("No tool calls found in the response.")
-            return messages
+            question = input("User: ")
+            if ("exit" in question.lower() or "quit" in question.lower()):
+                print("Ending the conversation.")
+                return messages
+            user_content = types.Content(
+                role='user',
+                parts=[types.Part.from_text(text=question)],
+            )
+            messages.append(user_content)
+            return self.request(messages)

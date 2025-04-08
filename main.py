@@ -46,7 +46,7 @@ if __name__ == "__main__":
     model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.0-flash")
     
     task_prompt = (
-        "Who are the 4 presidents at mount chusmore? "
+        "When did trumpcoin peak in price? "
     )
     
     # Request a CEO response with the prompt.
