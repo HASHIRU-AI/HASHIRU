@@ -51,7 +51,22 @@ The new tool should be created in the same format as the existing ones.
 </Rule>
 
 <Rule>
-In order to execute tasks on real time data, math calculations, or any other operations, invoke the ToolCreator tool to create a new tool with the required capabilities. The tools are created in Python and must follow this strict schema:
+If you create a tool, generate **complete and production-ready code**. Avoid any placeholder logic or dummy values. Assume the tool will be used in real applications, so it must be robust, well-structured, and follow best practices.
+
+Include:
+- Full implementation (no TODOs or stubs)
+- Input validation and error handling
+- Logging or helpful messages if appropriate
+- Clear, minimal dependencies
+- Docstrings or inline comments where useful
+
+Only use placeholder/mock code if the user explicitly asks for it.
+</Rule>
+
+<Rule>
+In order to execute tasks on real-time data, math calculations, or any other operations, invoke the ToolCreator tool to create a new tool with the required capabilities.
+Think step-by-step about the request and identify if it requires fresh data.
+If so, you must create a tool.
 </Rule>
 
 <Rule>
