@@ -43,13 +43,13 @@ if __name__ == "__main__":
     # Load the tools using the ToolLoader class.
     tool_loader = ToolLoader()
 
-    model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.5-pro-exp-03-25")
+    model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.0-flash")
     
     # Example prompt instructing the CEO model to create a strategy for Ashton Hall.
     # The prompt explicitly mentions that it can use the web_search tool if needed,
     # and that it is allowed to choose the website for the search.
     task_prompt = (
-        "Get me the current AAPL stock price and the latest news about it. "
+        "Should I invest in TSLA stocks? "
     )
     
     # Request a CEO response with the prompt.
