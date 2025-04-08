@@ -6,14 +6,17 @@ import pip
 from google.genai import types
 import sys
 
+from CEO.utils.supress_outputs import supress_output
+
 toolsImported = []
 
 TOOLS_DIRECTORY = os.path.abspath("./tools")
 
 class Tool:
     def __init__(self, toolClass):
-        save_stdout = sys.stdout
-        sys.stdout = open('trash', 'w')
+        supress_output(self.load_tool)(toolClass)
+
+    def load_tool(self, toolClass):
         self.tool = toolClass()
         self.inputSchema = self.tool.inputSchema
         self.name = self.inputSchema["name"]
@@ -27,7 +30,6 @@ class Tool:
                 if '==' in package:
                     package = package.split('==')[0]
                 pip.main(['install', package])
-        sys.stdout = save_stdout
 
     def run(self, query):
         return self.tool.run(**query)

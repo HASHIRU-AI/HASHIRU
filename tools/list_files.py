@@ -1,7 +1,6 @@
 
 __all__ = ['ListFiles']
 
-
 class ListFiles():
     dependencies = []
 

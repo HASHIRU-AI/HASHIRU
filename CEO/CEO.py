@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 
 from CEO.tool_loader import ToolLoader
+from CEO.utils.supress_outputs import supress_output
 
 class GeminiManager:
     def __init__(self, toolsLoader: ToolLoader, system_prompt_file="./models/system2.prompt", gemini_model="gemini-2.5-pro-exp-03-25"):
@@ -18,7 +19,7 @@ class GeminiManager:
 
     def request(self, messages):
         try:
-            response = self.client.models.generate_content(
+            response = supress_output(self.client.models.generate_content)(
                 #model='gemini-2.5-pro-preview-03-25',
                 model=self.model_name,
                 #model='gemini-2.5-pro-exp-03-25',

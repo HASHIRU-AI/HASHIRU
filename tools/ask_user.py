@@ -1,4 +1,3 @@
-import importlib
 
 __all__ = ['AskUser']
 
@@ -24,8 +23,7 @@ class AskUser():
     def run(self, **kwargs):
         print("Running Ask User tool")
         question = kwargs.get("question")
-        print(f"Question: {question}")
-        output = input(question)
+        output = input(f"{question}: ")
         return {
             "status": "success",
             "message": "Ask User tool executed successfully",
