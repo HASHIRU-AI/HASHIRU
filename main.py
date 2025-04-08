@@ -45,11 +45,8 @@ if __name__ == "__main__":
 
     model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.0-flash")
     
-    # Example prompt instructing the CEO model to create a strategy for Ashton Hall.
-    # The prompt explicitly mentions that it can use the web_search tool if needed,
-    # and that it is allowed to choose the website for the search.
     task_prompt = (
-        "Should I invest in TSLA stocks? "
+        "Who are the 4 presidents at mount chusmore? "
     )
     
     # Request a CEO response with the prompt.
