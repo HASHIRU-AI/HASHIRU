@@ -6,8 +6,11 @@ import pip
 from google.genai import types
 import sys
 
+from src.budget_manager import BudgetManager
 from src.singleton import singleton
 from src.utils.suppress_outputs import suppress_output
+from tools.get_agents_tool import GetAgents
+from tools.tool_deletor import ToolDeletor
 
 toolsImported = []
 
@@ -38,9 +41,25 @@ class Tool:
 @singleton
 class ToolLoader:
     toolsImported = []
+    budget_manager = BudgetManager()
 
     def __init__(self):
         self.load_tools()
+        self.load_costs()
+    
+    def load_costs(self):
+        get_agents = GetAgents()
+        agents = get_agents.run()["agents"]
+        for agent in agents:
+            agentConfig = agents[agent]
+            if agentConfig["create_cost"] is not None:
+                self.budget_manager.add_to_expense(agentConfig["create_cost"])
+        for tool in self.toolsImported:
+            if "create_cost" in tool.inputSchema:
+                if tool.inputSchema["create_cost"] is not None:
+                    self.budget_manager.add_to_expense(tool.inputSchema["create_cost"])
+
+        print(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
 
     def load_tools(self):
         newToolsImported = []
@@ -57,14 +76,40 @@ class ToolLoader:
         self.toolsImported = newToolsImported
 
     def runTool(self, toolName, query):
+        print(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
         for tool in self.toolsImported:
             if tool.name == toolName:
+                self.update_budget(query, tool.inputSchema)
                 return tool.run(query)
+        print(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
         return {
             "status": "error",
             "message": f"Tool {toolName} not found",
             "output": None
         }
+    
+    def update_budget(self, query, inputSchema):
+        if "creates" in inputSchema:
+            selector = inputSchema["creates"]["selector"]
+            if selector in query:
+                create_cost = inputSchema["creates"]["types"][query[selector]]["create_cost"]
+                if not self.budget_manager.can_spend(create_cost):
+                    return {
+                        "status": "error",
+                        "message": f"Do not have enough budget to create the tool. "
+                        +f"Creating the tool costs {create_cost} but only {self.budget_manager.get_current_remaining_budget()} is remaining",
+                        "output": None
+                    }
+                self.budget_manager.add_to_expense(create_cost)
+        if "invoke_cost" in inputSchema:
+            invoke_cost = inputSchema["invoke_cost"]
+            if not self.budget_manager.can_spend(invoke_cost):
+                return {
+                    "status": "error",
+                    "message": f"Do not have enough budget to invoke the tool. "
+                    +f"Invoking the tool costs {invoke_cost} but only {self.budget_manager.get_current_remaining_budget()} is remaining",
+                    "output": None
+                }
 
     def getTools(self):
         toolsList = []
@@ -90,7 +135,8 @@ class ToolLoader:
     
     def delete_tool(self, toolName, toolFile):
         try:
-            os.remove(toolFile)
+            tool_deletor = ToolDeletor()
+            tool_deletor.run(name=toolName, file_path=toolFile)
             for tool in self.toolsImported:
                 if tool.name == toolName:
                     self.toolsImported.remove(tool)

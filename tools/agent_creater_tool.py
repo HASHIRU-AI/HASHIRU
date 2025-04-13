@@ -1,5 +1,5 @@
 import importlib
-from src.budget_manager import BudgetManager  
+
 __all__ = ['AgentCreator']
 
 class AgentCreator():
@@ -19,7 +19,7 @@ class AgentCreator():
                 },
                 "base_model": {
                     "type": "string",
-                    "description": "A base model from which the new agent mode is to be created. Available models are: llama3.2"
+                    "description": "A base model from which the new agent mode is to be created. Available models are: llama3.2, mistral"
                 },
                 "system_prompt": {
                     "type": "string",
@@ -31,6 +31,21 @@ class AgentCreator():
                 },
             },
             "required": ["agent_name", "base_model", "system_prompt", "description"],
+        },
+        "creates": {
+            "selector": "base_model",
+            "types": {
+                "llama3.2":{
+                    "description": "3 Billion parameter model",
+                    "create_cost": 10,
+                    "invoke_cost": 20,
+                },
+                "mistral":{
+                    "description": "7 Billion parameter model",
+                    "create_cost": 20,
+                    "invoke_cost": 50,
+                }
+            }
         }
     }
     
@@ -50,14 +65,6 @@ class AgentCreator():
         ollama = importlib.import_module("ollama")
         json = importlib.import_module("json")
 
-        agent_creation_cost = 60
-        budget_manager = BudgetManager()
-        if not budget_manager.can_spend(agent_creation_cost):
-            return {
-                "status": "error",
-                "message": f"Could not create {agent_name}. Creating the agent costs {agent_creation_cost} but only {budget_manager.get_current_remaining_budget()} is remaining",
-                "output": None
-            }
         if self.does_agent_exist(agent_name):
             return {
                 "status": "error",
@@ -65,31 +72,38 @@ class AgentCreator():
                 "output": None
             }
         
-        budget_manager.add_to_expense(agent_creation_cost)
         ollama_response = ollama.create(
             model = agent_name,
             from_ = base_model,
             system = system_prompt,
             stream = False
         )
-        
-        with open("./models/models.json", "r", encoding="utf8") as f:
-            models = f.read()
-        models = json.loads(models)
-        models[agent_name] = {
-            "base_model": base_model,
-            "description": kwargs.get("description"),
-            "creation_cost": agent_creation_cost
-        }
-        with open("./models/models.json", "w", encoding="utf8") as f:
-            f.write(json.dumps(models, indent=4))
 
         if "success" in ollama_response["status"]:
-            return {
-                "status": "success",
-                "message": "Agent successfully created",
-                "current_expense": budget_manager.get_current_expense()
-            }
+            try:
+                with open("./models/models.json", "r", encoding="utf8") as f:
+                    models = f.read()
+                models = json.loads(models)
+                models[agent_name] = {
+                    "base_model": base_model,
+                    "description": kwargs.get("description"),
+                    "create_cost": self.inputSchema["creates"]["types"][base_model]["create_cost"],
+                    "invoke_cost": self.inputSchema["creates"]["types"][base_model]["invoke_cost"],
+                }
+                with open("./models/models.json", "w", encoding="utf8") as f:
+                    f.write(json.dumps(models, indent=4))
+
+                return {
+                    "status": "success",
+                    "message": "Agent successfully created",
+                    "cost": self.inputSchema["creates"]["types"][base_model]["create_cost"],
+                }
+            except Exception as e:
+                print("Error while writing to models.json", e)
+                return {
+                    "status": "error",
+                    "message": f"Agent creation failed: {e}",
+                }
         else:
             return {
                 "status": "error",

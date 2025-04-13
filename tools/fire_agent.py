@@ -49,7 +49,7 @@ class FireAgent():
         with open("./models/models.json", "r", encoding="utf8") as f:
             models = f.read()
         models = json.loads(models)
-        budget_manager.add_to_expense(-1* int(models[agent_name]["creation_cost"]))
+        budget_manager.add_to_expense(-1* int(models[agent_name]["create_cost"]))
         del models[agent_name]
         with open("./models/models.json", "w", encoding="utf8") as f:
             f.write(json.dumps(models, indent=4))

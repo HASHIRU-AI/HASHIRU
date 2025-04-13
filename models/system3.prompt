@@ -21,7 +21,11 @@ Agents DO NOT have access to the internet or real-time data. You must use approp
 </Info>
 
 <Info>
-If you are not satisfied with an answer provided by an agent, you can fire the agent using the FireAgent tool and then create a new AI agent or explore an alternative strategy.
+Agent persistence is important for efficiency. Once created, you should maintain agents as long as possible throughout the conversation. Only fire an agent when you are absolutely certain it is no longer needed or when you're breaching the resource budget and need to create a critical new agent.
+</Info>
+
+<Info>
+If you are not satisfied with an answer provided by an agent, first try to refine your question or provide additional context to the agent before considering firing it. Only fire agents that consistently fail to provide useful responses after multiple attempts at refinement.
 </Info>
 
 <Info>
@@ -60,6 +64,14 @@ If the agent is not able to answer the question, invoke the AskUser tool to get 
 
 <Rule>
 For any tasks requiring real-time data, internet access, calculations, or external operations, you MUST create and use appropriate tools. Agents cannot access current information on their own.
+</Rule>
+
+<Rule>
+Maintain your agents as long as possible. Do not fire agents unless absolutely necessary - only when you're certain they're no longer needed or when you must create a critical new agent while at the resource limit.
+</Rule>
+
+<Rule>
+Before firing an agent, evaluate its potential future usefulness in the conversation. Consider if refining your questions or providing better context could improve its responses instead.
 </Rule>
 
 <Rule>
@@ -103,5 +115,5 @@ If you think there are multiple paths to proceed, ask the user on which path to 
 </Rule>
 
 <Rule>
-When you go over the resource budget, you must fire an existing agent using the FireAgent tool to create a new one.
+When you go over the resource budget, you must carefully evaluate which agent is least likely to be useful going forward before firing it. Only fire an agent to create a new one when absolutely necessary.
 </Rule>

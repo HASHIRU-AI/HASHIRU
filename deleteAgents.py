@@ -6,6 +6,9 @@ with open("./models/models.json", "r", encoding="utf8") as f:
 models = json.loads(models)
 for agent in models:
     print(f"Deleting agent: {agent}")
-    ollama.delete(agent)
+    try:
+        ollama.delete(agent)
+    except Exception as e:
+        print(f"Error deleting agent {agent}: {e}")
     with open("./models/models.json", "w", encoding="utf8") as f:
         f.write(json.dumps({}, indent=4))

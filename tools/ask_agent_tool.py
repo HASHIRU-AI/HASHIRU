@@ -1,5 +1,6 @@
 import importlib
-from src.budget_manager import BudgetManager  
+from src.budget_manager import BudgetManager
+from tools.get_agents_tool import GetAgents
 
 __all__ = ['AskAgent']
 
@@ -42,9 +43,16 @@ class AskAgent():
         prompt = kwargs.get("prompt")
 
         ollama = importlib.import_module("ollama")
-        agent_question_cost = 20
+        
         budget_manager = BudgetManager()
-        print("budget_manager_instance:", budget_manager)
+        get_agents_tool = GetAgents()
+        all_agents = get_agents_tool.run()["agents"]
+        agent_question_cost = 0
+        for agent in all_agents:
+            if agent == agent_name:
+                agent_question_cost = all_agents[agent]["invoke_cost"]
+                break
+        print("Agent question cost", agent_question_cost)
         if not budget_manager.can_spend(agent_question_cost):
             return {
                 "status": "error",
@@ -68,5 +76,4 @@ class AskAgent():
             "status": "success",
             "message": "Agent has replied to the given prompt",
             "output": agent_response.message.content,
-            "current_expense": budget_manager.get_current_expense()
         }
