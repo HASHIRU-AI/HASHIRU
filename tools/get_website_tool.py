@@ -22,6 +22,20 @@ class GetWebsiteTool():
     }
 
     def run(self, **kwargs):
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:137.0) Gecko/20100101 Firefox/137.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'DNT': '1',
+            'Sec-GPC': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Priority': 'u=0, i',
+        }
         print("Running web search")
 
         url = kwargs.get("url")
@@ -38,7 +52,7 @@ class GetWebsiteTool():
         bs4 = importlib.import_module("bs4")
         BeautifulSoup = bs4.BeautifulSoup
         try:
-            response = requests.get(url)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 # Parse the content using BeautifulSoup
                 soup = BeautifulSoup(response.content, 'html.parser')

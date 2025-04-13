@@ -1,5 +1,5 @@
 import importlib
-from CEO.budget_manager import BudgetManager  
+from src.budget_manager import BudgetManager  
 __all__ = ['AgentCreator']
 
 class AgentCreator():
@@ -52,7 +52,6 @@ class AgentCreator():
 
         agent_creation_cost = 60
         budget_manager = BudgetManager()
-        print("budget_manager_instance:", budget_manager)
         if not budget_manager.can_spend(agent_creation_cost):
             return {
                 "status": "error",

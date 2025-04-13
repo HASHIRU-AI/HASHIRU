@@ -1,4 +1,4 @@
-from CEO.singleton import singleton
+from src.singleton import singleton
 
 @singleton
 class BudgetManager():

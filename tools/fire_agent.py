@@ -1,5 +1,5 @@
 import importlib
-from CEO.budget_manager import BudgetManager  
+from src.budget_manager import BudgetManager  
 
 __all__ = ['FireAgent']
 
