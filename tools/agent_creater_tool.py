@@ -87,6 +87,7 @@ class AgentCreator():
                 models[agent_name] = {
                     "base_model": base_model,
                     "description": kwargs.get("description"),
+                    "system_prompt": system_prompt,
                     "create_cost": self.inputSchema["creates"]["types"][base_model]["create_cost"],
                     "invoke_cost": self.inputSchema["creates"]["types"][base_model]["invoke_cost"],
                 }
