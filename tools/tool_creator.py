@@ -3,7 +3,7 @@ __all__ = ['ToolCreator']
 
 
 class ToolCreator():
-    dependencies = ["os"]
+    dependencies = []
 
     inputSchema = {
         "name": "ToolCreator",

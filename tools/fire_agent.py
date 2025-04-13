@@ -1,4 +1,5 @@
 import importlib
+from CEO.budget_manager import BudgetManager  
 
 __all__ = ['FireAgent']
 
@@ -43,10 +44,12 @@ class FireAgent():
                 "output": None
             }
         ollama_response = ollama.delete(agent_name)
-
+        budget_manager = BudgetManager()
+        
         with open("./models/models.json", "r", encoding="utf8") as f:
             models = f.read()
         models = json.loads(models)
+        budget_manager.add_to_expense(-1* int(models[agent_name]["creation_cost"]))
         del models[agent_name]
         with open("./models/models.json", "w", encoding="utf8") as f:
             f.write(json.dumps(models, indent=4))
@@ -54,7 +57,8 @@ class FireAgent():
         if "success" in ollama_response["status"]:
             return {
                 "status": "success",
-                "message": "Agent successfully fired",
+                "message": "Agent successfully fired.",
+                "current_expense": budget_manager.get_current_expense()
             }
         else:
             return {

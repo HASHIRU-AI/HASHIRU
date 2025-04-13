@@ -1,7 +1,4 @@
-from contextlib import redirect_stderr, redirect_stdout
-
-
-def supress_output(func):
+def suppress_output(func):
     """
     Decorator to suppress output of a function.
     """

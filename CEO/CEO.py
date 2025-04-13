@@ -4,14 +4,14 @@ import os
 from dotenv import load_dotenv
 
 from CEO.tool_loader import ToolLoader
-from CEO.utils.supress_outputs import supress_output
+from CEO.utils.suppress_outputs import suppress_output
 
 class GeminiManager:
-    def __init__(self, toolsLoader: ToolLoader, system_prompt_file="./models/system2.prompt", gemini_model="gemini-2.5-pro-exp-03-25"):
+    def __init__(self, toolsLoader: ToolLoader, system_prompt_file="./models/system3.prompt", gemini_model="gemini-2.5-pro-exp-03-25"):
         load_dotenv()
         self.API_KEY = os.getenv("GEMINI_KEY")
         self.client = genai.Client(api_key=self.API_KEY)
-        self.toolsLoader = toolsLoader
+        self.toolsLoader: ToolLoader = toolsLoader
         self.toolsLoader.load_tools()
         self.model_name = gemini_model
         with open(system_prompt_file, 'r', encoding="utf8") as f:
@@ -19,7 +19,7 @@ class GeminiManager:
 
     def request(self, messages):
         try:
-            response = supress_output(self.client.models.generate_content)(
+            response = suppress_output(self.client.models.generate_content)(
                 #model='gemini-2.5-pro-preview-03-25',
                 model=self.model_name,
                 #model='gemini-2.5-pro-exp-03-25',
@@ -72,9 +72,11 @@ class GeminiManager:
                     self.toolsLoader.load_tools()
                 except Exception as e:
                     print(f"Error loading tools: {e}")
+                    # delete the created tool
+                    self.toolsLoader.delete_tool(function_call.name, toolResponse.tool_file_path)
                     tool_content = types.Part.from_function_response(
                             name=function_call.name,
-                            response={"result":"New tool doesn't follow the required format, please read the other tool implementations for reference." + str(e)})
+                            response={"result":f"{function_call.name} with {function_call.args} doesn't follow the required format, please read the other tool implementations for reference." + str(e)})
                 parts.append(tool_content)
             function_response_content = types.Content(
                 role='model' if self.model_name == "gemini-2.5-pro-exp-03-25" else 'tool',

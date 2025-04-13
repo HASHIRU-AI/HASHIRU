@@ -10,7 +10,7 @@ if __name__ == "__main__":
     model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.0-flash")
     
     task_prompt = (
-        "When did trumpcoin peak in price? "
+        "Give me a 3 stanza 4 line poem about drake vs kendrick lamar in old english style. Also, can you create a short story with the moral slow and steady wins the race?"
     )
     
     # Request a CEO response with the prompt.

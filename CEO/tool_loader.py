@@ -6,7 +6,7 @@ import pip
 from google.genai import types
 import sys
 
-from CEO.utils.supress_outputs import supress_output
+from CEO.utils.suppress_outputs import suppress_output
 
 toolsImported = []
 
@@ -14,7 +14,7 @@ TOOLS_DIRECTORY = os.path.abspath("./tools")
 
 class Tool:
     def __init__(self, toolClass):
-        supress_output(self.load_tool)(toolClass)
+        suppress_output(self.load_tool)(toolClass)
 
     def load_tool(self, toolClass):
         self.tool = toolClass()
@@ -88,6 +88,24 @@ class ToolLoader:
             #     "function": tool.inputSchema
             # })
         return toolsList
+    
+    def delete_tool(self, toolName, toolFile):
+        try:
+            os.remove(toolFile)
+            for tool in self.toolsImported:
+                if tool.name == toolName:
+                    self.toolsImported.remove(tool)
+                    return {
+                        "status": "success",
+                        "message": f"Tool {toolName} deleted",
+                        "output": None
+                    }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Tool {toolName} not found",
+                "output": None
+            }
 
 toolLoader = ToolLoader()
 

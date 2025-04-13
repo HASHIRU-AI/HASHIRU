@@ -1,4 +1,5 @@
 import importlib
+from CEO.budget_manager import BudgetManager  
 
 __all__ = ['AskAgent']
 
@@ -41,6 +42,15 @@ class AskAgent():
         prompt = kwargs.get("prompt")
 
         ollama = importlib.import_module("ollama")
+        agent_question_cost = 20
+        budget_manager = BudgetManager()
+        print("budget_manager_instance:", budget_manager)
+        if not budget_manager.can_spend(agent_question_cost):
+            return {
+                "status": "error",
+                "message": f"Do not have enough budget to ask the agent a question. Asking the agent costs {agent_question_cost} but only {budget_manager.get_current_remaining_budget()} is remaining",
+                "output": None
+            }
         if not self.does_agent_exist(ollama, agent_name):
             print("Agent does not exist")
             return {
@@ -58,4 +68,5 @@ class AskAgent():
             "status": "success",
             "message": "Agent has replied to the given prompt",
             "output": agent_response.message.content,
+            "current_expense": budget_manager.get_current_expense()
         }
