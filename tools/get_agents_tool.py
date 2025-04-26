@@ -1,4 +1,4 @@
-import json
+from src.agent_manager import AgentManager
 
 __all__ = ['GetAgents']
 
@@ -16,11 +16,12 @@ class GetAgents():
     }
 
     def run(self, **kwargs):
-        with open("./models/models.json", "r", encoding="utf8") as f:
-            models = f.read()
-        models = json.loads(models)
+        
+        agent_manger = AgentManager()
+        agents = agent_manger.list_agents()
+
         return {
             "status": "success",
             "message": "Agents list retrieved successfully",
-            "agents": models,
+            "agents": agents,
         }

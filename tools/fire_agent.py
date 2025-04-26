@@ -1,5 +1,5 @@
-import importlib
 from src.budget_manager import BudgetManager  
+from src.agent_manager import AgentManager
 
 __all__ = ['FireAgent']
 
@@ -22,46 +22,32 @@ class FireAgent():
             "required": ["agent_name"],
         }
     }
-    
-    def does_agent_exist(self, agent_name):
-        ollama = importlib.import_module("ollama")
-        all_agents = [a.model for a in ollama.list().models]
-        if agent_name in all_agents or f'{agent_name}:latest' in all_agents:
-            return True 
-        
-        return False
 
     def run(self, **kwargs):
-        print("Running Agent Creator")
+        print("Running Fire Agent")
         agent_name= kwargs.get("agent_name")
-        ollama = importlib.import_module("ollama")
-        json = importlib.import_module("json")
 
-        if not self.does_agent_exist(agent_name):
+        agent_manager = AgentManager()
+        
+        agent = agent_manager.get_agent(agent_name=agent_name)
+        
+        agent_costs = agent.get_costs()
+        
+        try:
+            agent_manager.delete_agent(agent_name=agent_name)
+        except ValueError as e:
             return {
                 "status": "error",
-                "message": "Agent does not exists",
+                "message": f"Error occurred: {str(e)}",
                 "output": None
             }
-        ollama_response = ollama.delete(agent_name)
+            
         budget_manager = BudgetManager()
         
-        with open("./models/models.json", "r", encoding="utf8") as f:
-            models = f.read()
-        models = json.loads(models)
-        budget_manager.add_to_expense(-1* int(models[agent_name]["create_cost"]))
-        del models[agent_name]
-        with open("./models/models.json", "w", encoding="utf8") as f:
-            f.write(json.dumps(models, indent=4))
+        budget_manager.add_to_expense(-1* int(agent_costs["create_cost"]))
 
-        if "success" in ollama_response["status"]:
-            return {
-                "status": "success",
-                "message": "Agent successfully fired.",
-                "current_expense": budget_manager.get_current_expense()
-            }
-        else:
-            return {
-                "status": "error",
-                "message": "Agent firing failed",
-            }
+        return {
+            "status": "success",
+            "message": "Agent successfully fired.",
+            "current_expense": budget_manager.get_current_expense()
+        }

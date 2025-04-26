@@ -7,10 +7,12 @@ from src.singleton import singleton
 
 class Agent(ABC):
     
-    def __init__(self, agent_name: str, base_model: str, system_prompt: str):
+    def __init__(self, agent_name: str, base_model: str, system_prompt: str, creation_cost: str, invoke_cost: str):
         self.agent_name = agent_name
         self.base_model = base_model
         self.system_prompt = system_prompt
+        self.creation_cost = creation_cost
+        self.invoke_cost = invoke_cost
         self.create_model()
         
     @abstractmethod
@@ -27,6 +29,12 @@ class Agent(ABC):
     def delete_agent(self) ->None:
         """delete agent"""
         pass
+    
+    def get_costs(self):
+        return {
+            "create_cost": self.creation_cost,
+            "invoke_cost": self.invoke_cost
+        }
     
 class OllamaAgent(Agent):
     
@@ -56,7 +64,7 @@ class AgentManager():
     def __init__(self):
         self._agents = {}
         self._agent_types ={
-            ollama: OllamaAgent
+            "ollama": OllamaAgent
         }
         
         self._load_agents()
@@ -74,7 +82,7 @@ class AgentManager():
             raise ValueError(f"Unsupported base model {base_model}")
         
         # create agent
-        self._agents[agent_name] = agent_class(agent_name, base_model, system_prompt)
+        self._agents[agent_name] = agent_class(agent_name, base_model, system_prompt, create_cost,invoke_cost )
         
         #save agent to file
         self._save_agent(
@@ -91,8 +99,8 @@ class AgentManager():
     
     def get_agent(self, agent_name: str) -> Agent:
         """Get existing agent by name"""
-        if agent_name in self._agents:
-            raise ValueError(f"Agent {agent_name} already exists")
+        if agent_name not in self._agents:
+            raise ValueError(f"Agent {agent_name} does not exists")
         return self._agents[agent_name]
         
     def list_agents(self) -> dict:
@@ -171,7 +179,10 @@ class AgentManager():
             print(f"Error saving agent {agent_name}: {e}")
 
     def _get_agent_type(self, base_model)->str:
-        if base_model.startswith("ollama"):
+
+        if base_model == "llama3.2":
+            return "ollama"
+        elif base_model == "mistral":
             return "ollama"
         else:
             return "unknown"
@@ -186,18 +197,23 @@ class AgentManager():
                 models = json.loads(f.read())
             
             for name, data in models.items():
+                if name in self._agents:
+                    continue
                 base_model = data["base_model"]
                 system_prompt = data["system_prompt"]
-                
-                model_type = self._get_model_type(base_model)
-                manager_class = self._model_types.get(model_type)
+                creation_cost = data["create_cost"]
+                invoke_cost = data["invoke_cost"]
+                model_type = self._get_agent_type(base_model)
+                manager_class = self._agent_types.get(model_type)
                 
                 if manager_class:
                     # Create the agent with the appropriate manager class
                     self._agents[name] = manager_class(
                         name, 
                         base_model,
-                        system_prompt
+                        system_prompt,
+                        creation_cost,
+                        invoke_cost
                     )
         except Exception as e:
             print(f"Error loading agents: {e}")
