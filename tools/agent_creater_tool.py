@@ -18,7 +18,7 @@ class AgentCreator():
                 },
                 "base_model": {
                     "type": "string",
-                    "description": "A base model from which the new agent mode is to be created. Available models are: llama3.2, mistral"
+                    "description": "A base model from which the new agent mode is to be created. Available models are: llama3.2, mistral, gemini-2.0-flash"
                 },
                 "system_prompt": {
                     "type": "string",
@@ -43,6 +43,11 @@ class AgentCreator():
                     "description": "7 Billion parameter model",
                     "create_cost": 20,
                     "invoke_cost": 50,
+                },
+                "gemini-2.0-flash": {
+                    "description": "40 Billion parameter model",
+                    "create_cost": 30,
+                    "invoke_cost": 60,
                 }
             }
         }

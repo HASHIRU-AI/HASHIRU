@@ -5,7 +5,11 @@ import json
 import ollama
 from src.utils.singleton import singleton
 from src.utils.streamlit_interface import output_assistant_response
-
+from google import genai
+from google.genai import types
+from google.genai.types import *
+import os
+from dotenv import load_dotenv
 class Agent(ABC):
     
     def __init__(self, agent_name: str, base_model: str, system_prompt: str, creation_cost: str, invoke_cost: str):
@@ -59,13 +63,42 @@ class OllamaAgent(Agent):
     def delete_agent(self):
         ollama.delete(self.agent_name)
     
+class GeminiAgent(Agent):
+    def __init__(self, agent_name: str, base_model: str, system_prompt: str, creation_cost: str, invoke_cost: str):
+        load_dotenv()
+        self.api_key = os.getenv("GEMINI_KEY")
+        if not self.api_key:
+            raise ValueError("Google API key is required for Gemini models. Set GOOGLE_API_KEY environment variable or pass api_key parameter.")
+        
+        # Initialize the Gemini API
+        self.client = genai.Client(api_key=self.api_key)
+        
+        # Call parent constructor after API setup
+        super().__init__(agent_name, base_model, system_prompt, creation_cost, invoke_cost)
+
+    def create_model(self):
+        self.messages = []
+    
+    def ask_agent(self, prompt):
+        response = self.client.models.generate_content(
+            model=self.base_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=self.system_prompt,
+            )
+        )
+        return response.text
+    
+    def delete_agent(self):
+        self.messages = []
 @singleton
 class AgentManager():
     
     def __init__(self):
         self._agents = {}
         self._agent_types ={
-            "ollama": OllamaAgent
+            "ollama": OllamaAgent,
+            "gemini": GeminiAgent
         }
         
         self._load_agents()
@@ -185,6 +218,8 @@ class AgentManager():
             return "ollama"
         elif base_model == "mistral":
             return "ollama"
+        elif "gemini" in base_model:
+            return "gemini"
         else:
             return "unknown"
     
