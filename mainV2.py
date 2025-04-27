@@ -55,4 +55,4 @@ if __name__ == "__main__":
             outputs=chatbot
         )
 
-    demo.launch()
+    demo.launch(share=True)

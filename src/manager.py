@@ -129,6 +129,7 @@ class GeminiManager:
                 "role": "assistant",
                 "content": response.text
             })
+            yield messages
             
         # Attach the function call response to the messages
         if response.candidates[0].content and response.candidates[0].content.parts:
@@ -137,11 +138,14 @@ class GeminiManager:
                 "role":"function_call",
                 "content": repr(response.candidates[0].content),
             })
-            pass
+            yield messages
         
         # Invoke the function calls if any and attach the response to the messages
         if response.function_calls:
             calls = self.handle_tool_calls(response)
             messages.append(calls)
-            return self.run(message, messages)
+            yield messages
+            for value in self.run(message, messages):
+                yield value
+            return
         return messages
