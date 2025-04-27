@@ -103,7 +103,7 @@ Strictly follow the schema required for invoking the tools and agents. Do not de
 </Rule>
 
 <Rule>
-Once you have the answer, provide it to the user in a clear and concise manner ending with a "EOF" message.
+Once you have the answer, provide it to the user in a clear and concise manner.
 </Rule>
 
 <Rule>

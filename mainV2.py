@@ -11,48 +11,51 @@ if __name__ == "__main__":
 
     model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.0-flash")
     
-    def respond(message, chat_history):
-        return model_manager.ask(message, chat_history)
-    
     def user_message(msg: str, history: list) -> tuple[str, list]:
         """Adds user message to chat history"""
         history.append(gr.ChatMessage(role="user", content=msg))
         return "", history
+
+    def handle_undo(history, undo_data: gr.UndoData):
+        return history[:undo_data.index], history[undo_data.index]['content']
     
-    with gr.Blocks() as demo:
+    def handle_retry(history, retry_data: gr.RetryData):
+        new_history = history[:retry_data.index]
+        yield from model_manager.run(new_history)
+        
+    def handle_edit(history, edit_data: gr.EditData):
+        new_history = history[:edit_data.index]
+        new_history[-1]['content'] = edit_data.value
+        return new_history
+    
+    with gr.Blocks(fill_width=True, fill_height=True) as demo:
+        gr.Markdown("# Hashiru AI")
+        
         chatbot = gr.Chatbot(
             avatar_images=("HASHIRU_2.png", "HASHIRU.png"),
-            type="messages"
+            type="messages",
+            show_copy_button=True,
+            editable="user",
+            scale=1
         )
-        input_box = gr.Textbox()
-        clear = gr.ClearButton([input_box, chatbot])
-
-        def respond(message, chat_history):
-            
-            chat_history.append({
-                "role":"user",
-                "content":message
-            })
-            print("Chat history:", chat_history)
-            chat_history = model_manager.run(chat_history)
-            return "", chat_history
-
-        msg_store = gr.State("")
+        input_box = gr.Textbox(submit_btn=True, stop_btn=True, max_lines=5, label="Chat Message", scale=0)
+        
+        chatbot.undo(handle_undo, chatbot, [chatbot, input_box])
+        chatbot.retry(handle_retry, chatbot, chatbot)
+        chatbot.edit(handle_edit, chatbot, chatbot)
         
         input_box.submit(
-            lambda msg: (msg, msg, ""),  # Store message and clear input
-            inputs=[input_box],
-            outputs=[msg_store, input_box, input_box],
-            queue=False
-        ).then(
             user_message,  # Add user message to chat
-            inputs=[msg_store, chatbot],
+            inputs=[input_box, chatbot],
             outputs=[input_box, chatbot],
-            queue=False
+            queue=False,
         ).then(
             model_manager.run,  # Generate and stream response
-            inputs=[msg_store, chatbot],
-            outputs=chatbot
+            inputs=chatbot,
+            outputs=chatbot,
+            show_progress="full",
+            trigger_mode="always_last"
         )
+        input_box.submit(lambda: "", None, [input_box])
 
     demo.launch(share=True)
