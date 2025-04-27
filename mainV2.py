@@ -38,7 +38,7 @@ if __name__ == "__main__":
             editable="user",
             scale=1
         )
-        input_box = gr.Textbox(submit_btn=True, stop_btn=True, max_lines=5, label="Chat Message", scale=0)
+        input_box = gr.Textbox(max_lines=5, label="Chat Message", scale=0)
         
         chatbot.undo(handle_undo, chatbot, [chatbot, input_box])
         chatbot.retry(handle_retry, chatbot, chatbot)
@@ -52,10 +52,10 @@ if __name__ == "__main__":
         ).then(
             model_manager.run,  # Generate and stream response
             inputs=chatbot,
-            outputs=chatbot,
+            outputs=[chatbot, input_box],
+            queue=True,
             show_progress="full",
             trigger_mode="always_last"
         )
-        input_box.submit(lambda: "", None, [input_box])
 
     demo.launch(share=True)

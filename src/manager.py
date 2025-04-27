@@ -7,9 +7,7 @@ import sys
 from src.tool_loader import ToolLoader
 from src.utils.suppress_outputs import suppress_output
 import logging
-from gradio import ChatMessage
-
-from src.utils.streamlit_interface import get_user_message, output_assistant_response
+import gradio as gr
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -120,7 +118,8 @@ class GeminiManager:
                 "content": f"Error generating response: {e}"
             })
             logger.error(f"Error generating response: {e}")
-            return messages
+            yield messages, gr.update(interactive=True)
+            return
         logger.debug(f"Response: {response}")
         print("Response: ", response)
 
@@ -137,7 +136,7 @@ class GeminiManager:
                 "role": "assistant",
                 "content": response.text
             })
-            yield messages
+            yield messages, gr.update(interactive=False,)
 
         # Attach the function call response to the messages
         if response.candidates[0].content and response.candidates[0].content.parts:
@@ -152,5 +151,6 @@ class GeminiManager:
             calls = self.handle_tool_calls(response)
             messages.append(calls)
             yield from self.run(messages)
+            return
         print("Final messages: ", messages)
-        return messages
+        yield messages, gr.update(interactive=True)
