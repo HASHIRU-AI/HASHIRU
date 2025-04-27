@@ -1,17 +1,19 @@
 from google import genai
 from google.genai import types
+from google.genai.types import *
 import os
 from dotenv import load_dotenv
 import sys
 from src.tool_loader import ToolLoader
 from src.utils.suppress_outputs import suppress_output
 import logging
+from gradio import ChatMessage
 
 from src.utils.streamlit_interface import get_user_message, output_assistant_response
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
+# handler.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 
 class GeminiManager:
@@ -28,10 +30,7 @@ class GeminiManager:
 
     def generate_response(self, messages):
         return self.client.models.generate_content(
-                #model='gemini-2.5-pro-preview-03-25',
                 model=self.model_name,
-                #model='gemini-2.5-pro-exp-03-25',
-                #model='gemini-2.0-flash',
                 contents=messages,
                 config=types.GenerateContentConfig(
                     system_instruction=self.system_prompt,
@@ -68,67 +67,81 @@ class GeminiManager:
                         name=function_call.name,
                         response={"result":f"{function_call.name} with {function_call.args} doesn't follow the required format, please read the other tool implementations for reference." + str(e)})
             parts.append(tool_content)
-        return types.Content(
-            role='model' if self.model_name == "gemini-2.5-pro-exp-03-25" else 'tool',
-            parts=parts
-        )
+        return {
+                "role": "tool",
+                "content": repr(types.Content(
+                    role='model' if self.model_name == "gemini-2.5-pro-exp-03-25" else 'tool',
+                    parts=parts
+                ))
+            }
     
-    def run(self, messages):
+    def format_chat_history(self, messages=[]):
+        formatted_history = []
+        for message in messages:
+            # Skip thinking messages (messages with metadata)
+            if not (message.get("role") == "assistant" and "metadata" in message):
+                role = "model"
+                parts=[types.Part.from_text(text=message.get("content", ""))]
+                match message.get("role"):
+                    case "user":
+                        role = "user"
+                    case "tool":
+                        role = "tool"
+                        formatted_history.append(eval(message.get("content", "")))
+                        continue
+                    case "function_call":
+                        role = "model"
+                        formatted_history.append(eval(message.get("content", "")))
+                        continue
+                    case _:
+                        role = "model" 
+                formatted_history.append(types.Content(
+                    role=role,
+                    parts=parts
+                ))
+        return formatted_history
+    
+    def run(self, message, messages):
+        chat_history = self.format_chat_history(messages)
+        logger.debug(f"Chat history: {chat_history}")
         try:
-            response = suppress_output(self.generate_response)(messages)
+            response = suppress_output(self.generate_response)(chat_history)
         except Exception as e:
             logger.debug(f"Error generating response: {e}")
-            shouldRetry = get_user_message("An error occurred. Do you want to retry? (y/n): ")
-            if shouldRetry and shouldRetry.lower() == "y":
-                return self.run(messages)
-            else:
-                output_assistant_response("Ending the conversation.")
-                return messages
-
+            messages.append({
+                "role":"assistant",
+                "content":f"Error generating response: {e}"
+            })
+            logger.error(f"Error generating response: {e}")
+            return messages
         logger.debug(f"Response: {response}")
         
         if (not response.text and not response.function_calls):
-            output_assistant_response("No response from the model.")
-        
+            messages.append({
+                "role":"assistant",
+                "content":"No response from the model.",
+                "metadata":{"title":"No response from the model."}
+            })
+
         # Attach the llm response to the messages
-        if response.text is not None:
-            output_assistant_response("CEO: " + response.text)
-            # print("CEO:", response.text)
-            assistant_content = types.Content(
-                role='model' if self.model_name == "gemini-2.5-pro-exp-03-25" else 'assistant',
-                parts=[types.Part.from_text(text=response.text)],
-            )
-            messages.append(assistant_content)
+        if response.text is not None and response.text != "":
+            messages.append({
+                "role": "assistant",
+                "content": response.text
+            })
             
         # Attach the function call response to the messages
         if response.candidates[0].content and response.candidates[0].content.parts:
-            messages.append(response.candidates[0].content)
-            
+            # messages.append(response.candidates[0].content)
+            messages.append({
+                "role":"function_call",
+                "content": repr(response.candidates[0].content),
+            })
+            pass
+        
         # Invoke the function calls if any and attach the response to the messages
         if response.function_calls:
-            messages.append(self.handle_tool_calls(response))
-            shouldContinue = get_user_message("Should I continue? (y/n): ")
-            if shouldContinue.lower() == "y":
-                return self.run(messages)
-            else:
-                output_assistant_response("Ending the conversation.")
-                return messages
-        else:
-            logger.debug("No tool calls found in the response.")
-            # Start the loop again
-            return self.start_conversation(messages)
-    
-    def start_conversation(self, messages=[]):
-        question = get_user_message("User: ")
-        # question = input("User: ")
-        if question and ("exit" in question.lower() or "quit" in question.lower()):
-            output_assistant_response("Ending the conversation.")
-            return messages
-        user_content = types.Content(
-            role='user',
-            parts=[types.Part.from_text(text=question)],
-        )
-        messages.append(user_content)
-        
-        # Start the conversation loop
-        return self.run(messages)
+            calls = self.handle_tool_calls(response)
+            messages.append(calls)
+            return self.run(message, messages)
+        return messages

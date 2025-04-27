@@ -3,7 +3,8 @@ from typing import Dict, Type, Any, Optional
 import os
 import json
 import ollama
-from src.singleton import singleton
+from src.utils.singleton import singleton
+from src.utils.streamlit_interface import output_assistant_response
 
 class Agent(ABC):
     
@@ -47,12 +48,12 @@ class OllamaAgent(Agent):
         )
     
     def ask_agent(self, prompt):
-        print(f"Asked Agent {self.agent_name} a question")
+        output_assistant_response(f"Asked Agent {self.agent_name} a question")
         agent_response = ollama.chat(
             model=self.agent_name,
             messages=[{"role": "user", "content": prompt}],
         )
-        print(f"Agent {self.agent_name} answered with {agent_response.message.content}")
+        output_assistant_response(f"Agent {self.agent_name} answered with {agent_response.message.content}")
         return agent_response.message.content
     
     def delete_agent(self):
@@ -122,7 +123,7 @@ class AgentManager():
             else:
                 return {}
         except Exception as e:
-            print(f"Error listing agents: {e}")
+            output_assistant_response(f"Error listing agents: {e}")
             return {}
     
     def delete_agent(self, agent_name: str) -> None:
@@ -140,7 +141,7 @@ class AgentManager():
                 with open("./models/models.json", "w", encoding="utf8") as f:
                     f.write(json.dumps(models, indent=4))
         except Exception as e:
-            print(f"Error deleting agent: {e}")
+            output_assistant_response(f"Error deleting agent: {e}")
     
     
     def _save_agent(self, agent_name: str, base_model: str, system_prompt: str, 
@@ -176,7 +177,7 @@ class AgentManager():
                 f.write(json.dumps(models, indent=4))
                 
         except Exception as e:
-            print(f"Error saving agent {agent_name}: {e}")
+            output_assistant_response(f"Error saving agent {agent_name}: {e}")
 
     def _get_agent_type(self, base_model)->str:
 
@@ -216,4 +217,4 @@ class AgentManager():
                         invoke_cost
                     )
         except Exception as e:
-            print(f"Error loading agents: {e}")
+            output_assistant_response(f"Error loading agents: {e}")

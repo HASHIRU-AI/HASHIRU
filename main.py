@@ -2,6 +2,7 @@ from google.genai import types
 from src.CEO import GeminiManager
 from src.tool_loader import ToolLoader
 
+
 if __name__ == "__main__":
     # Define the tool metadata for orchestration.
     # Load the tools using the ToolLoader class.

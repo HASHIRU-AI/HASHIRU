@@ -7,10 +7,11 @@ from google.genai import types
 import sys
 
 from src.budget_manager import BudgetManager
-from src.singleton import singleton
+from src.utils.singleton import singleton
 from src.utils.suppress_outputs import suppress_output
 from tools.get_agents_tool import GetAgents
 from tools.tool_deletor import ToolDeletor
+from src.utils.streamlit_interface import output_assistant_response
 
 toolsImported = []
 
@@ -59,7 +60,7 @@ class ToolLoader:
                 if tool.inputSchema["create_cost"] is not None:
                     self.budget_manager.add_to_expense(tool.inputSchema["create_cost"])
 
-        print(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
+        output_assistant_response(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
 
     def load_tools(self):
         newToolsImported = []
@@ -76,12 +77,12 @@ class ToolLoader:
         self.toolsImported = newToolsImported
 
     def runTool(self, toolName, query):
-        print(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
+        output_assistant_response(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
         for tool in self.toolsImported:
             if tool.name == toolName:
                 self.update_budget(query, tool.inputSchema)
                 return tool.run(query)
-        print(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
+        output_assistant_response(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
         return {
             "status": "error",
             "message": f"Tool {toolName} not found",
@@ -152,7 +153,7 @@ class ToolLoader:
                 "output": None
             }
 
-toolLoader = ToolLoader()
+# toolLoader = ToolLoader()
 
 # Example usage
 # print(toolLoader.getTools())

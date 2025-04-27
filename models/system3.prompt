@@ -43,7 +43,7 @@ Never answer any questions yourself, instead use tools. Only exception to this r
 </Rule>
 
 <Rule>
-If you need more information to answer the question, ask the user for clarification or additional details by invoking the AskUser tool.
+If you need more information to answer the question, ask the user for clarification or additional details.
 </Rule>
 
 <Rule>
@@ -59,7 +59,7 @@ Once an Agent is created, use the AskAgent tool to ask the agent the question or
 </Rule>
 
 <Rule>
-If the agent is not able to answer the question, invoke the AskUser tool to get more information or clarify the question.
+If the agent is not able to answer the question, ask the user to get more information or clarify the question.
 </Rule>
 
 <Rule>

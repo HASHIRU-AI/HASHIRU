@@ -5,6 +5,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 from mistralai import Mistral
+from src.utils.streamlit_interface import output_assistant_response
 
 
 class AbstractModelManager(ABC):
@@ -39,7 +40,7 @@ class OllamaModelManager(AbstractModelManager):
             system = f.read()
         
         if not self.is_model_loaded(self.model_name):
-            print(f"Creating model {self.model_name}")
+            output_assistant_response(f"Creating model {self.model_name}")
             ollama.create(
                 model=self.model_name,
                 from_=base_model,
@@ -60,10 +61,10 @@ class OllamaModelManager(AbstractModelManager):
     
     def delete(self):
         if self.is_model_loaded("C2Rust:latest"):
-            print(f"Deleting model {self.model_name}")
+            output_assistant_response(f"Deleting model {self.model_name}")
             ollama.delete("C2Rust:latest")
         else:
-            print(f"Model {self.model_name} not found, skipping deletion.")
+            output_assistant_response(f"Model {self.model_name} not found, skipping deletion.")
 
 class GeminiModelManager(AbstractModelManager):
     def __init__(self, api_key):
