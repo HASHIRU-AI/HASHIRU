@@ -9,13 +9,13 @@ import sys
 from src.budget_manager import BudgetManager
 from src.utils.singleton import singleton
 from src.utils.suppress_outputs import suppress_output
-from tools.get_agents_tool import GetAgents
-from tools.tool_deletor import ToolDeletor
+from default_tools.get_agents_tool import GetAgents
+from default_tools.tool_deletor import ToolDeletor
 from src.utils.streamlit_interface import output_assistant_response
 
 toolsImported = []
 
-TOOLS_DIRECTORY = os.path.abspath("./tools")
+TOOLS_DIRECTORIES = [os.path.abspath("./default_tools"), os.path.abspath("./tools")]
 
 class Tool:
     def __init__(self, toolClass):
@@ -64,16 +64,17 @@ class ToolLoader:
 
     def load_tools(self):
         newToolsImported = []
-        for filename in os.listdir(TOOLS_DIRECTORY):
-            if filename.endswith(".py") and filename != "__init__.py":
-                module_name = filename[:-3]
-                spec = importlib.util.spec_from_file_location(module_name, f"{TOOLS_DIRECTORY}/{filename}")
-                foo = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(foo)
-                class_name = foo.__all__[0]
-                toolClass = getattr(foo, class_name)
-                toolObj = Tool(toolClass)
-                newToolsImported.append(toolObj)
+        for directory in TOOLS_DIRECTORIES:
+            for filename in os.listdir(directory):
+                if filename.endswith(".py") and filename != "__init__.py":
+                    module_name = filename[:-3]
+                    spec = importlib.util.spec_from_file_location(module_name, f"{directory}/{filename}")
+                    foo = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(foo)
+                    class_name = foo.__all__[0]
+                    toolClass = getattr(foo, class_name)
+                    toolObj = Tool(toolClass)
+                    newToolsImported.append(toolObj)
         self.toolsImported = newToolsImported
 
     def runTool(self, toolName, query):

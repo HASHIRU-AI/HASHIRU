@@ -29,6 +29,13 @@ class ToolDeletor():
         print("Running Tool Deletor")
         name = kwargs.get("name")
         file_path = kwargs.get("file_path")
+        # make sure the file path is in tools/
+        if not file_path.startswith("tools/"):
+            return {
+                "status": "error",
+                "message": "File path must start with tools/",
+                "output": None
+            }
         os = importlib.import_module("os")
         os.remove(file_path)
         return {
