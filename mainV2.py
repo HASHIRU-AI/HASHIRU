@@ -20,7 +20,10 @@ if __name__ == "__main__":
         return "", history
     
     with gr.Blocks() as demo:
-        chatbot = gr.Chatbot(type="messages")
+        chatbot = gr.Chatbot(
+            avatar_images=("HASHIRU_2.png", "HASHIRU.png"),
+            type="messages"
+        )
         input_box = gr.Textbox()
         clear = gr.ClearButton([input_box, chatbot])
 
