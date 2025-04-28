@@ -1,24 +1,63 @@
 from google.genai import types
-from src.CEO import GeminiManager
+from src.manager import GeminiManager
 from src.tool_loader import ToolLoader
-
+import gradio as gr
+import time
 
 if __name__ == "__main__":
     # Define the tool metadata for orchestration.
     # Load the tools using the ToolLoader class.
     tool_loader = ToolLoader()
 
-    model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.0-flash")
+    model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.5-pro-preview-03-25")
     
-    task_prompt = (
-        "What is the peak price of trump coin in the last 30 days? "
-        "Please provide the price in USD. "
-    )
+    def user_message(msg: str, history: list) -> tuple[str, list]:
+        """Adds user message to chat history"""
+        history.append(gr.ChatMessage(role="user", content=msg))
+        return "", history
+
+    def handle_undo(history, undo_data: gr.UndoData):
+        return history[:undo_data.index], history[undo_data.index]['content']
     
-    # Request a CEO response with the prompt.
-    # user_prompt_content = types.Content(
-    #     role='user',
-    #     parts=[types.Part.from_text(text=task_prompt)],
-    # )
-    # response = model_manager.request([user_prompt_content])
-    response = model_manager.start_conversation()
+    def handle_retry(history, retry_data: gr.RetryData):
+        new_history = history[:retry_data.index+1]
+        # yield new_history, gr.update(interactive=False,)
+        yield from model_manager.run(new_history)
+        
+    def handle_edit(history, edit_data: gr.EditData):
+        new_history = history[:edit_data.index+1]
+        new_history[-1]['content'] = edit_data.value
+        # yield new_history, gr.update(interactive=False,)
+        yield from model_manager.run(new_history)
+    
+    with gr.Blocks(fill_width=True, fill_height=True) as demo:
+        gr.Markdown("# Hashiru AI")
+        
+        chatbot = gr.Chatbot(
+            avatar_images=("HASHIRU_2.png", "HASHIRU.png"),
+            type="messages",
+            show_copy_button=True,
+            editable="user",
+            scale=1
+        )
+        input_box = gr.Textbox(label="Chat Message", scale=0, interactive=True, submit_btn=True)
+        
+        chatbot.undo(handle_undo, chatbot, [chatbot, input_box])
+        chatbot.retry(handle_retry, chatbot, [chatbot, input_box])
+        chatbot.edit(handle_edit, chatbot, [chatbot, input_box])
+        
+        input_box.submit(
+            user_message,  # Add user message to chat
+            inputs=[input_box, chatbot],
+            outputs=[input_box, chatbot],
+            queue=False,
+        ).then(
+            model_manager.run,  # Generate and stream response
+            inputs=chatbot,
+            outputs=[chatbot, input_box],
+            queue=True,
+            show_progress="full",
+            trigger_mode="always_last"
+        )
+
+    demo.launch(share=True)
