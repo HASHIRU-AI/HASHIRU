@@ -1,129 +1,156 @@
 from gradio_client import Client
-import geopandas as gpd
+from datasets import load_dataset
 import json
 import time
 import random
 import os
 from datetime import datetime
-from pathlib import Path
+import re
 
-
-def load_countries(geo_path):
+def get_last_assistant_content(agent_response_json):
     """
-    Load country centroids list from a GeoJSON/Shapefile via GeoPandas.
-    Returns a list of country names.
+    Parses the agent's full response JSON to find the content of the last
+    turn with the 'assistant' role that contains content.
+    Returns the content string if found, otherwise an empty string.
     """
-    gdf = gpd.read_file(geo_path)
-    # pick a name field
-    name_field = next((c for c in ["ADMIN","NAME","NAME_EN","NAME_LONG","SOVEREIGN","COUNTRY"] if c in gdf.columns), None)
-    if not name_field:
-        # fallback to first non-geometry
-        non_geom = [c for c in gdf.columns if c.lower() != "geometry"]
-        name_field = non_geom[0]
+    content = ""
+    # Find the content of the last turn with the 'assistant' role
+    if agent_response_json and 'agent_response' in agent_response_json and isinstance(agent_response_json['agent_response'], list):
+         for turn in reversed(agent_response_json['agent_response']):
+              # Check for 'assistant' role and if the turn has content
+              turn_content = turn.get('content')
+              if turn.get('role') == 'assistant' and turn_content is not None and turn_content != "":
+                   content = turn_content
+                   break # Found the last assistant turn with non-empty content
 
-    return gdf[name_field].dropna().unique().tolist()
+    return content
 
-
-def benchmark_globle_api(
-    server_url: str = "http://127.0.0.1:7860/",
-    geo_path: str = "./tools/util/countries.geojson",
-    num_trials: int = 10,
-    results_dir: str = "results"
-):
+def benchmark_hle(num_samples=20, categories=None):
     """
-    Benchmark a GlobleDistanceTool deployed behind a Gradio API.
-
-    Each trial resets the game, reads the hidden target, then issues random guesses until correct or gave up.
-    Results are written to JSONL, one line per trial.
+    Benchmark agent performance on HLE dataset
+    
+    Args:
+        num_samples: Number of samples to test
+        categories: List of categories to include (None for all)
     """
-    # prepare client and results
-    client = Client(server_url)
-    os.makedirs(results_dir, exist_ok=True)
+    # Load HLE dataset
+    print("Loading HLE dataset...")
+    dataset = load_dataset("cais/hle")
+    
+    # Initialize client
+    client = Client("http://127.0.0.1:7860/")
+    
+    # Create results directory if it doesn't exist
+    os.makedirs("results", exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_file = Path(results_dir) / f"globle_api_benchmark_{timestamp}.jsonl"
-
-    # load country list locally
-    country_list = load_countries(geo_path)
-
-    all_trials = []
-    for trial in range(1, num_trials + 1):
-        # reset game
+    results_file = f"results/hle_benchmark_{timestamp}.jsonl"
+    
+    # Select samples
+    all_samples = []
+    for split in ['validation', 'test']:  # Using validation and test splits
+        if split in dataset:
+            all_samples.extend(dataset[split])
+    
+    # Filter by category if specified
+    if categories:
+        all_samples = [s for s in all_samples if s.get('category') in categories]
+    
+    # Filter out prompts mentioning images (text-substring only)
+    filtered_samples = [s for s in all_samples if 'image' not in s.get('input', '').lower()]
+    removed = len(all_samples) - len(filtered_samples)
+    if removed > 0:
+        print(f"Filtered out {removed} samples containing 'image'.")
+    all_samples = filtered_samples
+    
+    # Select random samples
+    if len(all_samples) > num_samples:
+        samples = random.sample(all_samples, num_samples)
+    else:
+        samples = all_samples
+        print(f"Warning: Only found {len(samples)} samples after filtering.")
+    
+    print(f"Running benchmark on {len(samples)} samples...")
+    
+    # Run benchmarks
+    results = []
+    for i, sample in enumerate(samples):
+        print(f"\nProcessing sample {i+1}/{len(samples)}")
+        category = sample.get('category', 'Unknown')
+        prompt = sample.get('question', '')
+        print(f"Category: {category}")
+        print(f"Question: {prompt[:100]}...")
+        
+        # Send query to agent
         try:
-            client.predict(
-                {"geo_path": geo_path, "guess": "", "reset": True},
+            start_time = time.time()
+            response = client.predict(
+                messages=[{"role": "user", "content": prompt}],
                 api_name="/run"
             )
-        except Exception:
-            # reset call may error due to missing guess—but state is reset on server
-            pass
+            end_time = time.time()
 
-        # read target from the shared state file
-        state = json.loads(Path.home().joinpath(".Globle_distance_state.json").read_text())
-        target = state["target"]
+            target_answer_phrase = sample.get('answer', '').strip()
 
-        trial_record = {"trial": trial, "target": target, "guesses": []}
-        guess_count = 0
+            agent_final_response_content = get_last_assistant_content(response)
 
-        # loop until terminal
-        while True:
-            guess = random.choice([c for c in country_list if c != target])
-            guess_count += 1
+            is_correct = False
 
-            start = time.time()
-            out = client.predict(
-                {"geo_path": geo_path, "guess": guess, "reset": False},
-                api_name="/run"
-            )
-            latency = time.time() - start
-
-            # parse output structure
-            status = out.get("status")
-            msg = out.get("message")
-            output = out.get("output", {})
-            result = output.get("result")
-
-            trial_record["guesses"].append({
-                "guess": guess,
-                "time_s": latency,
-                "status": status,
-                "message": msg,
-                "output": output
-            })
-
-            if result == "gave_up":
-                trial_record["failed"] = True
-                break
-            if result == "correct":
-                trial_record["failed"] = False
-                trial_record["guess_count"] = guess_count
-                break
-
-        # write JSONL line
-        with open(results_file, "a") as f:
-            f.write(json.dumps(trial_record) + "\n")
-        all_trials.append(trial_record)
-
-    # summary
-    latencies = [g["time_s"] for t in all_trials for g in t["guesses"]]
-    avg_latency = sum(latencies) / len(latencies) if latencies else 0.0
-    print(f"Completed {num_trials} trials. Avg latency: {avg_latency:.3f}s over {len(latencies)} calls.")
-    print(f"Results saved to {results_file}")
-
-    return all_trials
-
+            # Only attempt the check if both the target phrase and the agent content are non-empty
+            if target_answer_phrase and agent_final_response_content:
+                # Perform the simple case-insensitive substring check
+                if target_answer_phrase.lower() in agent_final_response_content.lower():
+                    is_correct = True
+            
+            # Record result
+            result = {
+                "sample_id": sample.get('id', f'sample_{i}'),
+                "category": category,
+                "input": prompt,
+                "target_output": sample.get('answer', ''),
+                "agent_full_response": response,
+                "agent_final_response": agent_final_response_content,
+                "response_time": end_time - start_time,
+                "is_correct": is_correct
+            }
+            
+            results.append(result)
+            
+            # Write to file immediately to preserve progress
+            with open(results_file, 'a') as f:
+                f.write(json.dumps(result) + '\n')
+            
+            print(f"Response received in {end_time - start_time:.2f} seconds")
+            print(f"Response: {response[:100]}...")
+            
+            # Add a delay to avoid overwhelming the server
+            time.sleep(1)
+            
+        except Exception as e:
+            print(f"Error processing sample: {e}")
+            continue
+    
+    # Print summary statistics
+    print("\n===== HLE BENCHMARK SUMMARY =====")
+    print(f"Samples processed: {len(results)}")
+    
+    # Categorize by categories
+    by_category = {}
+    for result in results:
+        category = result.get('category', 'Unknown')
+        by_category.setdefault(category, []).append(result)
+    
+    print("\nSamples by category:")
+    for category, items in by_category.items():
+        print(f"  {category}: {len(items)} samples")
+    
+    avg_time = sum(r.get('response_time', 0) for r in results) / len(results) if results else 0
+    print(f"\nAverage response time: {avg_time:.2f} seconds")
+    print(f"Results saved to: {results_file}")
+    
+    return results
 
 if __name__ == "__main__":
-    import argparse
-    p = argparse.ArgumentParser(description="Benchmark GlobleDistanceTool via Gradio API")
-    p.add_argument("--server", type=str, default="http://127.0.0.1:7860/", help="Gradio server URL")
-    p.add_argument("--geo", type=str, default="./tools/util/countries.geojson", help="Path to geojson file")
-    p.add_argument("--trials", type=int, default=10, help="Number of games to run")
-    p.add_argument("--outdir", type=str, default="results", help="Output directory for JSONL results")
-    args = p.parse_args()
-
-    benchmark_globle_api(
-        server_url=args.server,
-        geo_path=args.geo,
-        num_trials=args.trials,
-        results_dir=args.outdir
+    benchmark_hle(
+        num_samples=1,
+        categories=None
     )
