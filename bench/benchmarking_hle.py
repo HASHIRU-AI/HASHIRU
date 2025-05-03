@@ -7,23 +7,41 @@ import os
 from datetime import datetime
 import re
 
-def get_last_assistant_content(agent_response_json):
+def get_last_assistant_content(resp):
     """
-    Parses the agent's full response JSON to find the content of the last
-    turn with the 'assistant' role that contains content.
-    Returns the content string if found, otherwise an empty string.
+    Return the last assistant utterance from the response object
+    produced by `client.predict`.
     """
-    content = ""
-    # Find the content of the last turn with the 'assistant' role
-    if agent_response_json and 'agent_response' in agent_response_json and isinstance(agent_response_json['agent_response'], list):
-         for turn in reversed(agent_response_json['agent_response']):
-              # Check for 'assistant' role and if the turn has content
-              turn_content = turn.get('content')
-              if turn.get('role') == 'assistant' and turn_content is not None and turn_content != "":
-                   content = turn_content
-                   break # Found the last assistant turn with non-empty content
+    # ❶ If the server wraps things in a (messages, meta) tuple
+    if isinstance(resp, tuple):
+        resp = resp[0]
 
-    return content
+    # ❷ At this point `resp` must be the list of message dicts
+    if not isinstance(resp, list):
+        return ""
+
+    for turn in reversed(resp):
+        if turn.get("role") != "assistant":
+            continue
+
+        # a) plain messages
+        if turn.get("content"):
+            return turn["content"]
+
+        # b) tool / function_response wrapper
+        fr = turn.get("function_response", {})
+        out = fr.get("result", {}).get("output")
+        if out:
+            return out
+
+        # c) messages stored as Part objects inside `content`
+        cont = turn.get("content")
+        if isinstance(cont, dict):
+            parts = cont.get("parts", [])
+            if parts and parts[0].get("text"):
+                return parts[0]["text"]
+
+    return ""
 
 def benchmark_hle(num_samples=20, categories=None):
     """
