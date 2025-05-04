@@ -18,7 +18,7 @@ class AgentCreator():
                 },
                 "base_model": {
                     "type": "string",
-                    "description": "A base model from which the new agent mode is to be created. Available models are: llama3.2, mistral, gemini-2.0-flash"
+                    "description": "A base model from which the new agent mode is to be created. Available models are: llama3.2, mistral, gemini-2.5-flash-preview-04-17, gemini-2.5-pro-preview-03-25, gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-flash, gemini-1.5-flash-8b, gemini-1.5-pro, and gemini-2.0-flash-live-001"
                 },
                 "system_prompt": {
                     "type": "string",
@@ -44,10 +44,60 @@ class AgentCreator():
                     "create_cost": 20,
                     "invoke_cost": 50,
                 },
+                "gemini-2.5-flash-preview-04-17": {
+                    "description": "Adaptive thinking, cost efficiency",
+                    "create_cost": 20,
+                    "invoke_cost": 50
+                },
+                "gemini-2.5-pro-preview-03-25": {
+                    "description": "Enhanced thinking and reasoning, multimodal understanding, advanced coding, and more",
+                    "create_cost": 20,
+                    "invoke_cost": 50
+                },
                 "gemini-2.0-flash": {
-                    "description": "40 Billion parameter model",
-                    "create_cost": 30,
-                    "invoke_cost": 60,
+                    "description": "Next generation features, speed, thinking, realtime streaming, and multimodal generation",
+                    "create_cost": 20,
+                    "invoke_cost": 50
+                },
+                "gemini-2.0-flash-lite": {
+                    "description": "Cost efficiency and low latency",
+                    "create_cost": 20,
+                    "invoke_cost": 50
+                },
+                "gemini-1.5-flash": {
+                    "description": "Fast and versatile performance across a diverse variety of tasks",
+                    "create_cost": 20,
+                    "invoke_cost": 50
+                },
+                "gemini-1.5-flash-8b": {
+                    "description": "High volume and lower intelligence tasks",
+                    "create_cost": 20,
+                    "invoke_cost": 50
+                },
+                "gemini-1.5-pro": {
+                    "description": "Complex reasoning tasks requiring more intelligence",
+                    "create_cost": 20,
+                    "invoke_cost": 50
+                },
+                # "gemini-embedding-exp": {
+                #     "description": "Measuring the relatedness of text strings",
+                #     "create_cost": 20,
+                #     "invoke_cost": 50
+                # },
+                # "imagen-3.0-generate-002": {
+                #     "description": "Our most advanced image generation model",
+                #     "create_cost": 20,
+                #     "invoke_cost": 50
+                # },
+                # "veo-2.0-generate-001": {
+                #     "description": "High quality video generation",
+                #     "create_cost": 20,
+                #     "invoke_cost": 50
+                # },
+                "gemini-2.0-flash-live-001": {
+                    "description": "Low-latency bidirectional voice and video interactions",
+                    "create_cost": 20,
+                    "invoke_cost": 50
                 }
             }
         }
