@@ -95,9 +95,9 @@ class GeminiAgent(Agent):
         self.messages = []
 @singleton
 class AgentManager():
-    budget_manager = BudgetManager()
+    budget_manager: BudgetManager = BudgetManager()
     def __init__(self):
-        self._agents = {}
+        self._agents: Dict[str, Agent] = {}
         self._agent_types ={
             "ollama": OllamaAgent,
             "gemini": GeminiAgent
@@ -111,19 +111,15 @@ class AgentManager():
         if agent_name in self._agents:
             raise ValueError(f"Agent {agent_name} already exists")
         
-        agent_type = self._get_agent_type(base_model)
-        agent_class = self._agent_types.get(agent_type)
-        
-        if not agent_class:
-            raise ValueError(f"Unsupported base model {base_model}")
-        
-        if not self.budget_manager.can_spend(create_cost):
-            raise ValueError(f"Do not have enough budget to create the tool. "
-                        +f"Creating the tool costs {create_cost} but only {self.budget_manager.get_current_remaining_budget()} is remaining")
-        
-        self.budget_manager.add_to_expense(create_cost)
-        # create agent
-        self._agents[agent_name] = agent_class(agent_name, base_model, system_prompt, create_cost,invoke_cost )
+        self._agents[agent_name] = self.create_agent_class(
+            agent_name, 
+            base_model, 
+            system_prompt, 
+            description=description,
+            create_cost=create_cost,
+            invoke_cost=invoke_cost,
+            **additional_params  # For any future parameters we might want to add
+        )
         
         #save agent to file
         self._save_agent(
@@ -135,9 +131,28 @@ class AgentManager():
             invoke_cost=invoke_cost,
             **additional_params  # For any future parameters we might want to add
         )
-        
         return (self._agents[agent_name], self.budget_manager.get_current_remaining_budget())
     
+    def validate_budget(self, amount: float) -> None:
+        if not self.budget_manager.can_spend(amount):
+            raise ValueError(f"Do not have enough budget to create the tool. "
+                        +f"Creating the tool costs {amount} but only {self.budget_manager.get_current_remaining_budget()} is remaining")
+        
+    def create_agent_class(self, agent_name: str, base_model: str, system_prompt: str, description: str = "", create_cost: float = 0, invoke_cost: float = 0,
+                    **additional_params) -> Agent:
+        agent_type = self._get_agent_type(base_model)
+        agent_class = self._agent_types.get(agent_type)
+        
+        if not agent_class:
+            raise ValueError(f"Unsupported base model {base_model}")
+        
+        self.validate_budget(create_cost)
+        
+        self.budget_manager.add_to_expense(create_cost)
+        # create agent
+        return agent_class(agent_name, base_model, system_prompt, create_cost,invoke_cost)
+        
+
     def get_agent(self, agent_name: str) -> Agent:
         """Get existing agent by name"""
         if agent_name not in self._agents:
@@ -167,12 +182,10 @@ class AgentManager():
             return {}
     
     def delete_agent(self, agent_name: str) -> int:
-        if agent_name not in self._agents:
-            raise ValueError(f"Agent {agent_name} does not exist")
+        agent = self.get_agent(agent_name)
         
-        self.budget_manager.add_to_expense(-1 * self._agents[agent_name].creation_cost)
-        self._agents[agent_name].delete_agent()
-        
+        self.budget_manager.remove_from_expense(agent.creation_cost)
+        agent.delete_agent()
         
         del self._agents[agent_name]
         try:
@@ -188,12 +201,10 @@ class AgentManager():
         return self.budget_manager.get_current_remaining_budget()
     
     def ask_agent(self, agent_name: str, prompt: str) -> Tuple[str,int]:
-        agent = self._agents[agent_name]
+        agent = self.get_agent(agent_name)
         
-        if not self.budget_manager.can_spend(agent.invoke_cost):
-            raise ValueError(f"Do not have enough budget to ask Agent {agent_name} a question. "
-                        +f"Asking Agent {agent_name} costs {agent.invoke_cost} but only {self.budget_manager.get_current_remaining_budget()} is remaining")
-        
+        self.validate_budget(agent.invoke_cost)
+
         response = agent.ask_agent(prompt)        
         return (response, self.budget_manager.get_current_remaining_budget())
     
@@ -264,6 +275,15 @@ class AgentManager():
                 
                 if manager_class:
                     # Create the agent with the appropriate manager class
+                    self._agents[name] = self.create_agent_class(
+                        name, 
+                        base_model, 
+                        system_prompt, 
+                        description=data.get("description", ""),
+                        create_cost=creation_cost,
+                        invoke_cost=invoke_cost,
+                        **data.get("additional_params", {})
+                    )
                     self._agents[name] = manager_class(
                         name, 
                         base_model,

@@ -2,6 +2,7 @@ import importlib
 import importlib.util
 import os
 import types
+from typing import List
 import pip
 from google.genai import types
 import sys
@@ -27,7 +28,17 @@ class Tool:
         self.name = self.inputSchema["name"]
         self.description = self.inputSchema["description"]
         self.dependencies = self.tool.dependencies
-        for package in self.tool.dependencies:
+        self.create_cost = None
+        self.invoke_cost = None
+        if "create_cost" in self.tool.inputSchema:
+            self.create_cost = self.tool.inputSchema["create_cost"]
+        if "invoke_cost" in self.tool.inputSchema:
+            self.invoke_cost = self.tool.inputSchema["invoke_cost"]
+        if self.dependencies:
+            self.install_dependencies()
+    
+    def install_dependencies(self):
+        for package in self.dependencies:
             try:
                 __import__(package.split('==')[0])
             except ImportError:
@@ -40,25 +51,12 @@ class Tool:
         return self.tool.run(**query)
 
 @singleton
-class ToolLoader:
-    toolsImported = []
-    budget_manager = BudgetManager()
+class ToolManager:
+    toolsImported: List[Tool] = []
+    budget_manager: BudgetManager = BudgetManager()
 
     def __init__(self):
         self.load_tools()
-        self.load_costs()
-    
-    def load_costs(self):
-        get_agents = GetAgents()
-        agents = get_agents.run()["agents"]
-        for agent in agents:
-            agentConfig = agents[agent]
-            if agentConfig["create_cost"] is not None:
-                self.budget_manager.add_to_expense(agentConfig["create_cost"])
-        for tool in self.toolsImported:
-            if "create_cost" in tool.inputSchema:
-                if tool.inputSchema["create_cost"] is not None:
-                    self.budget_manager.add_to_expense(tool.inputSchema["create_cost"])
 
         output_assistant_response(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
 
@@ -75,12 +73,16 @@ class ToolLoader:
                     toolClass = getattr(foo, class_name)
                     toolObj = Tool(toolClass)
                     newToolsImported.append(toolObj)
+                    if toolObj.create_cost is not None:
+                        self.budget_manager.add_to_expense(toolObj.create_cost)
         self.toolsImported = newToolsImported
 
     def runTool(self, toolName, query):
         output_assistant_response(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
         for tool in self.toolsImported:
             if tool.name == toolName:
+                if tool.invoke_cost is not None:
+                    self.budget_manager.add_to_expense(tool.invoke_cost)
                 return tool.run(query)
         output_assistant_response(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
         return {
@@ -118,6 +120,9 @@ class ToolLoader:
             tool_deletor.run(name=toolName, file_path=toolFile)
             for tool in self.toolsImported:
                 if tool.name == toolName:
+                    # remove budget for the tool
+                    if tool.create_cost is not None:
+                        self.budget_manager.remove_from_expense(tool.create_cost)
                     self.toolsImported.remove(tool)
                     return {
                         "status": "success",
@@ -130,9 +135,3 @@ class ToolLoader:
                 "message": f"Tool {toolName} not found",
                 "output": None
             }
-
-# toolLoader = ToolLoader()
-
-# Example usage
-# print(toolLoader.getTools())
-# print(toolLoader.runTool("AgentCreator", {"agent_name": "Kunla","base_model":"llama3.2","system_prompt": "You love making the indian dish called Kulcha. You declare that in every conversation you have in a witty way." }))

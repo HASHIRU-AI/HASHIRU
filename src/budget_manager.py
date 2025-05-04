@@ -21,3 +21,8 @@ class BudgetManager():
         if not self.can_spend(cost):
             raise Exception("No budget remaining")
         self.current_expense += cost
+    
+    def remove_from_expense(self, cost):
+        if self.current_expense - cost < 0:
+            raise Exception("Cannot remove more than current expense")
+        self.current_expense -= cost

@@ -1,6 +1,6 @@
 from google.genai import types
 from src.manager import GeminiManager
-from src.tool_loader import ToolLoader
+from src.tool_manager import ToolManager
 import gradio as gr
 import time
 import base64
@@ -22,11 +22,7 @@ _header_html = f"""
 """
 
 if __name__ == "__main__":
-    # Define the tool metadata for orchestration.
-    # Load the tools using the ToolLoader class.
-    tool_loader = ToolLoader()
-
-    model_manager = GeminiManager(toolsLoader=tool_loader, gemini_model="gemini-2.0-flash")
+    model_manager = GeminiManager(gemini_model="gemini-2.0-flash")
     
     def user_message(msg: str, history: list) -> tuple[str, list]:
         """Adds user message to chat history"""
@@ -54,7 +50,7 @@ if __name__ == "__main__":
     css = """
     #title-row { background: #2c2c2c; border-radius: 8px; padding: 8px; }
     """
-    with gr.Blocks(css=css) as demo:
+    with gr.Blocks(css=css, fill_width=True, fill_height=True) as demo:
         with gr.Row():
             gr.HTML(_header_html)
             model_dropdown = gr.Dropdown(
@@ -67,7 +63,7 @@ if __name__ == "__main__":
                     ],
                     value="HASHIRU",
                     # label="HASHIRU",
-                    scale=4,
+                    scale=2,
                     interactive=True,
             )
 

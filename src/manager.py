@@ -4,7 +4,7 @@ from google.genai.types import *
 import os
 from dotenv import load_dotenv
 import sys
-from src.tool_loader import ToolLoader
+from src.tool_manager import ToolManager
 from src.utils.suppress_outputs import suppress_output
 import logging
 import gradio as gr
@@ -16,17 +16,29 @@ logger.addHandler(handler)
 
 
 class GeminiManager:
-    def __init__(self, toolsLoader: ToolLoader, system_prompt_file="./models/system3.prompt", gemini_model="gemini-2.5-pro-exp-03-25"):
+    def __init__(self, toolsLoader: ToolManager = None,
+                 system_prompt_file="./models/system3.prompt",
+                 gemini_model="gemini-2.5-pro-exp-03-25",
+                 local_only=False, allow_tool_creation=True,
+                 cloud_only=False, use_economy=True):
         load_dotenv()
+        self.toolsLoader: ToolManager = toolsLoader
+        if not toolsLoader:
+            self.toolsLoader: ToolManager = ToolManager()
+
+        self.local_only = local_only
+        self.allow_tool_creation = allow_tool_creation
+        self.cloud_only = cloud_only
+        self.use_economy = use_economy
+
         self.API_KEY = os.getenv("GEMINI_KEY")
         self.client = genai.Client(api_key=self.API_KEY)
-        self.toolsLoader: ToolLoader = toolsLoader
         self.toolsLoader.load_tools()
         self.model_name = gemini_model
         with open(system_prompt_file, 'r', encoding="utf8") as f:
             self.system_prompt = f.read()
         self.messages = []
-
+        
     def generate_response(self, messages):
         return self.client.models.generate_content(
             model=self.model_name,

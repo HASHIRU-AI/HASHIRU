@@ -72,7 +72,7 @@ def benchmark_nyt_connections(num_samples=20, categories=None):
         if categories and sample["category"] not in categories:
             continue
         print(f"Sample {i}: {sample['contest']}")
-        prompt = f"Given the following words, group them into 4 categories of 4 words each:\n{' '.join(sample['words'])}\n\n"
+        prompt = f"Given the following words, group them into 4 categories of 4 words each:\n{' '.join(sample['words'])}\n\n Once you've solved it, final output should be in the following format Group 1: word1, word2, word3, word4\nGroup 2: ..."
         start_time = time.time()
         response = client.predict(messages=[{"role": "user", "content": prompt}], api_name="/run")
         end_time = time.time()
