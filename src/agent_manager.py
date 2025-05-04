@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Type, Any, Optional
+from typing import Dict, Type, Any, Optional, Tuple
 import os
 import json
 import ollama
@@ -10,6 +10,8 @@ from google.genai import types
 from google.genai.types import *
 import os
 from dotenv import load_dotenv
+from src.budget_manager import BudgetManager
+
 class Agent(ABC):
     
     def __init__(self, agent_name: str, base_model: str, system_prompt: str, creation_cost: str, invoke_cost: str):
@@ -93,7 +95,7 @@ class GeminiAgent(Agent):
         self.messages = []
 @singleton
 class AgentManager():
-    
+    budget_manager = BudgetManager()
     def __init__(self):
         self._agents = {}
         self._agent_types ={
@@ -104,7 +106,7 @@ class AgentManager():
         self._load_agents()
     
     def create_agent(self, agent_name: str, base_model: str, system_prompt: str, description: str = "", create_cost: float = 0, invoke_cost: float = 0, 
-                 **additional_params) -> Agent:
+                 **additional_params) -> Tuple[Agent, int]:
         
         if agent_name in self._agents:
             raise ValueError(f"Agent {agent_name} already exists")
@@ -115,6 +117,11 @@ class AgentManager():
         if not agent_class:
             raise ValueError(f"Unsupported base model {base_model}")
         
+        if not self.budget_manager.can_spend(create_cost):
+            raise ValueError(f"Do not have enough budget to create the tool. "
+                        +f"Creating the tool costs {create_cost} but only {self.budget_manager.get_current_remaining_budget()} is remaining")
+        
+        self.budget_manager.add_to_expense(create_cost)
         # create agent
         self._agents[agent_name] = agent_class(agent_name, base_model, system_prompt, create_cost,invoke_cost )
         
@@ -129,7 +136,7 @@ class AgentManager():
             **additional_params  # For any future parameters we might want to add
         )
         
-        return self._agents[agent_name]
+        return (self._agents[agent_name], self.budget_manager.get_current_remaining_budget())
     
     def get_agent(self, agent_name: str) -> Agent:
         """Get existing agent by name"""
@@ -159,10 +166,13 @@ class AgentManager():
             output_assistant_response(f"Error listing agents: {e}")
             return {}
     
-    def delete_agent(self, agent_name: str) -> None:
+    def delete_agent(self, agent_name: str) -> int:
         if agent_name not in self._agents:
             raise ValueError(f"Agent {agent_name} does not exist")
+        
+        self.budget_manager.add_to_expense(-1 * self._agents[agent_name].creation_cost)
         self._agents[agent_name].delete_agent()
+        
         
         del self._agents[agent_name]
         try:
@@ -175,7 +185,17 @@ class AgentManager():
                     f.write(json.dumps(models, indent=4))
         except Exception as e:
             output_assistant_response(f"Error deleting agent: {e}")
+        return self.budget_manager.get_current_remaining_budget()
     
+    def ask_agent(self, agent_name: str, prompt: str) -> Tuple[str,int]:
+        agent = self._agents[agent_name]
+        
+        if not self.budget_manager.can_spend(agent.invoke_cost):
+            raise ValueError(f"Do not have enough budget to ask Agent {agent_name} a question. "
+                        +f"Asking Agent {agent_name} costs {agent.invoke_cost} but only {self.budget_manager.get_current_remaining_budget()} is remaining")
+        
+        response = agent.ask_agent(prompt)        
+        return (response, self.budget_manager.get_current_remaining_budget())
     
     def _save_agent(self, agent_name: str, base_model: str, system_prompt: str, 
                     description: str = "", create_cost: float = 0, invoke_cost: float = 0, 

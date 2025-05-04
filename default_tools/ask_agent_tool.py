@@ -34,10 +34,9 @@ class AskAgent():
         agent_name = kwargs.get("agent_name")
         prompt = kwargs.get("prompt")
         agent_manger = AgentManager()
-        budget_manager = BudgetManager()
 
         try:
-            agent = agent_manger.get_agent(agent_name=agent_name)
+            agent_response, remaining_budget = agent_manger.ask_agent(agent_name=agent_name, prompt=prompt)
         except ValueError as e:
             return {
                 "status": "error",
@@ -45,21 +44,10 @@ class AskAgent():
                 "output": None
             }
 
-        agent_costs = agent.get_costs()
-        agent_question_cost = agent_costs["invoke_cost"]
-        print("Agent question cost", agent_question_cost)
-        
-        if not budget_manager.can_spend(agent_question_cost):
-            return {
-                "status": "error",
-                "message": f"Do not have enough budget to ask the agent a question. Asking the agent costs {agent_question_cost} but only {budget_manager.get_current_remaining_budget()} is remaining",
-                "output": None
-            }
-
-        agent_response = agent.ask_agent(prompt=prompt)
         print("Agent response", agent_response)
         return {
             "status": "success",
             "message": "Agent has replied to the given prompt",
             "output": agent_response,
+            "remaining_budget": remaining_budget
         }

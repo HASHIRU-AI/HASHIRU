@@ -20,7 +20,7 @@ TOOLS_DIRECTORIES = [os.path.abspath("./default_tools"), os.path.abspath("./tool
 class Tool:
     def __init__(self, toolClass):
         suppress_output(self.load_tool)(toolClass)
-
+        
     def load_tool(self, toolClass):
         self.tool = toolClass()
         self.inputSchema = self.tool.inputSchema
@@ -81,7 +81,6 @@ class ToolLoader:
         output_assistant_response(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
         for tool in self.toolsImported:
             if tool.name == toolName:
-                self.update_budget(query, tool.inputSchema)
                 return tool.run(query)
         output_assistant_response(f"Budget Remaining: {self.budget_manager.get_current_remaining_budget()}")
         return {
@@ -90,28 +89,6 @@ class ToolLoader:
             "output": None
         }
     
-    def update_budget(self, query, inputSchema):
-        if "creates" in inputSchema:
-            selector = inputSchema["creates"]["selector"]
-            if selector in query:
-                create_cost = inputSchema["creates"]["types"][query[selector]]["create_cost"]
-                if not self.budget_manager.can_spend(create_cost):
-                    return {
-                        "status": "error",
-                        "message": f"Do not have enough budget to create the tool. "
-                        +f"Creating the tool costs {create_cost} but only {self.budget_manager.get_current_remaining_budget()} is remaining",
-                        "output": None
-                    }
-                self.budget_manager.add_to_expense(create_cost)
-        if "invoke_cost" in inputSchema:
-            invoke_cost = inputSchema["invoke_cost"]
-            if not self.budget_manager.can_spend(invoke_cost):
-                return {
-                    "status": "error",
-                    "message": f"Do not have enough budget to invoke the tool. "
-                    +f"Invoking the tool costs {invoke_cost} but only {self.budget_manager.get_current_remaining_budget()} is remaining",
-                    "output": None
-                }
 
     def getTools(self):
         toolsList = []

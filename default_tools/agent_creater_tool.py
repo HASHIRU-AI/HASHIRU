@@ -65,7 +65,7 @@ class AgentCreator():
 
         agent_manager = AgentManager()
         try:
-            agent_manager.create_agent(
+            _, remaining_budget = agent_manager.create_agent(
                 agent_name=agent_name,
                 base_model=base_model,
                 system_prompt=system_prompt,
@@ -83,5 +83,5 @@ class AgentCreator():
         return {
             "status": "success",
             "message": "Agent successfully created",
-            "cost": create_cost,
+            "remaining_budget": remaining_budget,
         }

@@ -28,26 +28,18 @@ class FireAgent():
         agent_name= kwargs.get("agent_name")
 
         agent_manager = AgentManager()
-        
-        agent = agent_manager.get_agent(agent_name=agent_name)
-        
-        agent_costs = agent.get_costs()
-        
+                
         try:
-            agent_manager.delete_agent(agent_name=agent_name)
+            remaining_budget = agent_manager.delete_agent(agent_name=agent_name)
         except ValueError as e:
             return {
                 "status": "error",
                 "message": f"Error occurred: {str(e)}",
                 "output": None
             }
-            
-        budget_manager = BudgetManager()
-        
-        budget_manager.add_to_expense(-1* int(agent_costs["create_cost"]))
 
         return {
             "status": "success",
             "message": "Agent successfully fired.",
-            "current_expense": budget_manager.get_current_expense()
+            "remaining_budget": remaining_budget
         }
