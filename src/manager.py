@@ -116,9 +116,11 @@ class GeminiManager:
                     parts=parts
                 ))
         return formatted_history
-
+    
+    def ask_llm(self, messages):
+        yield from self.run(messages)
+        
     def run(self, messages):
-        print("Messages: ", messages)
         chat_history = self.format_chat_history(messages)
         logger.debug(f"Chat history: {chat_history}")
         try:
@@ -133,7 +135,6 @@ class GeminiManager:
             yield messages, gr.update(interactive=True)
             return
         logger.debug(f"Response: {response}")
-        print("Response: ", response)
 
         if (not response.text and not response.function_calls):
             messages.append({
@@ -164,5 +165,4 @@ class GeminiManager:
             messages.append(calls)
             yield from self.run(messages)
             return
-        print("Final messages: ", messages)
         yield messages, gr.update(interactive=True)

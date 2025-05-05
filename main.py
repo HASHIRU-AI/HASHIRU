@@ -51,49 +51,58 @@ if __name__ == "__main__":
     #title-row { background: #2c2c2c; border-radius: 8px; padding: 8px; }
     """
     with gr.Blocks(css=css, fill_width=True, fill_height=True) as demo:
-        with gr.Row():
-            gr.HTML(_header_html)
-            model_dropdown = gr.Dropdown(
-                    choices=[
-                        "HASHIRU",
-                        "Static-HASHIRU",
-                        "Cloud-Only HASHIRU",
-                        "Local-Only HASHIRU",
-                        "No-Economy HASHIRU",
-                    ],
-                    value="HASHIRU",
-                    # label="HASHIRU",
-                    scale=2,
-                    interactive=True,
-            )
+        local_storage = gr.BrowserState(["", ""])
+        with gr.Column(scale=1):
+            with gr.Row(scale=0):
+                gr.HTML(_header_html)
+                model_dropdown = gr.Dropdown(
+                        choices=[
+                            "HASHIRU",
+                            "Static-HASHIRU",
+                            "Cloud-Only HASHIRU",
+                            "Local-Only HASHIRU",
+                            "No-Economy HASHIRU",
+                        ],
+                        value="HASHIRU",
+                        # label="HASHIRU",
+                        interactive=True,
+                )
 
-        model_dropdown.change(fn=update_model, inputs=model_dropdown, outputs=[])
-
-        chatbot = gr.Chatbot(
-            avatar_images=("HASHIRU_2.png", "HASHIRU.png"),
-            type="messages",
-            show_copy_button=True,
-            editable="user",
-            scale=1
-        )
-        input_box = gr.Textbox(label="Chat Message", scale=0, interactive=True, submit_btn=True)
-        
-        chatbot.undo(handle_undo, chatbot, [chatbot, input_box])
-        chatbot.retry(handle_retry, chatbot, [chatbot, input_box])
-        chatbot.edit(handle_edit, chatbot, [chatbot, input_box])
-        
-        input_box.submit(
-            user_message,  # Add user message to chat
-            inputs=[input_box, chatbot],
-            outputs=[input_box, chatbot],
-            queue=False,
-        ).then(
-            model_manager.run,  # Generate and stream response
-            inputs=chatbot,
-            outputs=[chatbot, input_box],
-            queue=True,
-            show_progress="full",
-            trigger_mode="always_last"
-        )
-
-    demo.launch(share=True)
+                model_dropdown.change(fn=update_model, inputs=model_dropdown, outputs=[])
+            with gr.Row(scale=1):
+                with gr.Sidebar(position="left"):
+                    buttons = []
+                    for i in range(1, 6):
+                        button = gr.Button(f"Button {i}", elem_id=f"button-{i}")
+                        button.click(fn=lambda x=i: print(f"Button {x} clicked"), inputs=[], outputs=[])
+                        buttons.append(button)
+                with gr.Column(scale=1):
+                    chatbot = gr.Chatbot(
+                        avatar_images=("HASHIRU_2.png", "HASHIRU.png"),
+                        type="messages",
+                        show_copy_button=True,
+                        editable="user",
+                        scale=1,
+                        render_markdown=True,
+                    )
+                    input_box = gr.Textbox(label="Chat Message", scale=0, interactive=True, submit_btn=True)
+                    
+                    chatbot.undo(handle_undo, chatbot, [chatbot, input_box])
+                    chatbot.retry(handle_retry, chatbot, [chatbot, input_box])
+                    chatbot.edit(handle_edit, chatbot, [chatbot, input_box])
+                    
+                    input_box.submit(
+                        user_message,  # Add user message to chat
+                        inputs=[input_box, chatbot],
+                        outputs=[input_box, chatbot],
+                        queue=False,
+                    ).then(
+                        model_manager.ask_llm,  # Generate and stream response
+                        inputs=chatbot,
+                        outputs=[chatbot, input_box],
+                        queue=True,
+                        show_progress="full",
+                        trigger_mode="always_last"
+                    )
+    
+    demo.launch()
