@@ -40,13 +40,31 @@ class GeminiManager:
         self.messages = []
         
     def generate_response(self, messages):
+        tools = self.toolsLoader.getTools()
+        function = types.FunctionDeclaration(
+                name="DigestConversation",
+                description="Digest the conversation and store the summary provided.",
+                parameters=types.Schema(
+                    type = "object",
+                    properties={
+                        # string that summarizes the conversation
+                        "summary": types.Schema(
+                            type="string",
+                            description="A summary of the conversation including all the important points.",
+                        ),
+                    },
+                    required=["summary"],
+                ),
+            )
+        toolType = types.Tool(function_declarations=[function])
+        tools.append(toolType)
         return self.client.models.generate_content(
             model=self.model_name,
             contents=messages,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
                 temperature=0.2,
-                tools=self.toolsLoader.getTools(),
+                tools=tools,
             ),
         )
 
@@ -56,6 +74,13 @@ class GeminiManager:
             toolResponse = None
             logger.info(
                 f"Function Name: {function_call.name}, Arguments: {function_call.args}")
+            if function_call.name == "DigestConversation":
+                logger.info("Digesting conversation...")
+                summary = function_call.args["summary"]
+                return {
+                    "role": "summary",
+                    "content": f"{summary}",
+                }
             try:
                 toolResponse = self.toolsLoader.runTool(
                     function_call.name, function_call.args)
@@ -116,9 +141,6 @@ class GeminiManager:
                     parts=parts
                 ))
         return formatted_history
-    
-    def ask_llm(self, messages):
-        yield from self.run(messages)
         
     def run(self, messages):
         chat_history = self.format_chat_history(messages)
@@ -132,7 +154,7 @@ class GeminiManager:
                 "content": f"Error generating response: {e}"
             })
             logger.error(f"Error generating response: {e}")
-            yield messages, gr.update(interactive=True)
+            yield messages
             return
         logger.debug(f"Response: {response}")
 
@@ -149,7 +171,7 @@ class GeminiManager:
                 "role": "assistant",
                 "content": response.text
             })
-            yield messages, gr.update(interactive=False,)
+            yield messages
 
         # Attach the function call response to the messages
         if response.candidates[0].content and response.candidates[0].content.parts:
@@ -165,4 +187,4 @@ class GeminiManager:
             messages.append(calls)
             yield from self.run(messages)
             return
-        yield messages, gr.update(interactive=True)
+        yield messages
