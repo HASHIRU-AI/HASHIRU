@@ -11,5 +11,5 @@ for agent in models:
         ollama.delete(agent)
     except Exception as e:
         output_assistant_response(f"Error deleting agent {agent}: {e}")
-    with open("./models/models.json", "w", encoding="utf8") as f:
+    with open("./src/models/models.json", "w", encoding="utf8") as f:
         f.write(json.dumps({}, indent=4))
