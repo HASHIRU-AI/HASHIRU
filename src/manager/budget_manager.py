@@ -1,4 +1,4 @@
-from src.utils.singleton import singleton
+from src.manager.utils.singleton import singleton
 
 @singleton
 class BudgetManager():

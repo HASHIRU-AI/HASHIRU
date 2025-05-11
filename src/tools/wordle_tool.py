@@ -33,7 +33,7 @@ class WordleTool():
     def __init__(self):
         self.secret_word = None
         self.word_list_url = "https://github.com/kiprobinson/wordle-solver/raw/main/app/resources/word-list.txt"
-        self.file_path = "secret_word.json"  # Path for storing the secret word
+        self.file_path = "src/data/secret_word.json"  # Path for storing the secret word
 
     def _load_word_list(self):
         try:

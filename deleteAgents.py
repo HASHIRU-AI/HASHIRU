@@ -1,8 +1,8 @@
 import json
 import ollama
-from src.utils.streamlit_interface import output_assistant_response
+from src.manager.utils.streamlit_interface import output_assistant_response
 
-with open("./models/models.json", "r", encoding="utf8") as f:
+with open("./src/models/models.json", "r", encoding="utf8") as f:
     models = f.read()
 models = json.loads(models)
 for agent in models:

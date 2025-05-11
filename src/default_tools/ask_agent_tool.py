@@ -1,5 +1,5 @@
-from src.budget_manager import BudgetManager
-from src.agent_manager import AgentManager
+from src.manager.budget_manager import BudgetManager
+from src.manager.agent_manager import AgentManager
 
 __all__ = ['AskAgent']
 

@@ -1,7 +1,7 @@
 
 __all__ = ['GetBudget']
 
-from src.budget_manager import BudgetManager
+from src.manager.budget_manager import BudgetManager
 
 
 class GetBudget():

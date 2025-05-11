@@ -4,8 +4,8 @@ from google.genai.types import *
 import os
 from dotenv import load_dotenv
 import sys
-from src.tool_manager import ToolManager
-from src.utils.suppress_outputs import suppress_output
+from src.manager.tool_manager import ToolManager
+from src.manager.utils.suppress_outputs import suppress_output
 import logging
 import gradio as gr
 
@@ -17,7 +17,7 @@ logger.addHandler(handler)
 
 class GeminiManager:
     def __init__(self, toolsLoader: ToolManager = None,
-                 system_prompt_file="./models/system3.prompt",
+                 system_prompt_file="./src/models/system3.prompt",
                  gemini_model="gemini-2.5-pro-exp-03-25",
                  local_only=False, allow_tool_creation=True,
                  cloud_only=False, use_economy=True):

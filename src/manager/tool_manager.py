@@ -7,16 +7,16 @@ import pip
 from google.genai import types
 import sys
 
-from src.budget_manager import BudgetManager
-from src.utils.singleton import singleton
-from src.utils.suppress_outputs import suppress_output
-from default_tools.get_agents_tool import GetAgents
-from default_tools.tool_deletor import ToolDeletor
-from src.utils.streamlit_interface import output_assistant_response
+from src.manager.budget_manager import BudgetManager
+from src.manager.utils.singleton import singleton
+from src.manager.utils.suppress_outputs import suppress_output
+from src.default_tools.get_agents_tool import GetAgents
+from src.default_tools.tool_deletor import ToolDeletor
+from src.manager.utils.streamlit_interface import output_assistant_response
 
 toolsImported = []
 
-TOOLS_DIRECTORIES = [os.path.abspath("./default_tools"), os.path.abspath("./tools")]
+TOOLS_DIRECTORIES = [os.path.abspath("./src/default_tools"), os.path.abspath("./src/tools")]
 
 class Tool:
     def __init__(self, toolClass):

@@ -5,7 +5,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 from mistralai import Mistral
-from src.utils.streamlit_interface import output_assistant_response
+from src.manager.utils.streamlit_interface import output_assistant_response
 
 
 class AbstractModelManager(ABC):

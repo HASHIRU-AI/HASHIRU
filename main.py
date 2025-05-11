@@ -1,7 +1,7 @@
 import gradio as gr
 
 import base64
-from src.manager import GeminiManager
+from src.manager.manager import GeminiManager
 
 model_manager = GeminiManager(gemini_model="gemini-2.0-flash")
 

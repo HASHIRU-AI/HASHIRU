@@ -1,4 +1,4 @@
-from src.agent_manager import AgentManager
+from src.manager.agent_manager import AgentManager
 
 __all__ = ['FireAgent']
 

@@ -1,4 +1,4 @@
-from src.utils.runtime_selector import detect_runtime_environment
+from src.manager.utils.runtime_selector import detect_runtime_environment
 from cost_benefit import get_best_model
 import os
 from dotenv import load_dotenv

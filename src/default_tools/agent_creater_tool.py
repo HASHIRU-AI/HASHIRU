@@ -1,6 +1,6 @@
-from src.agent_manager import AgentManager
-from src.config.model_selector import choose_best_model
-from src.utils.runtime_selector import detect_runtime_environment
+from src.manager.agent_manager import AgentManager
+from src.manager.config.model_selector import choose_best_model
+from src.manager.utils.runtime_selector import detect_runtime_environment
 __all__ = ['AgentCreator']
 
 class AgentCreator():

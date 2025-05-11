@@ -3,14 +3,14 @@ from typing import Dict, Type, Any, Optional, Tuple
 import os
 import json
 import ollama
-from src.utils.singleton import singleton
-from src.utils.streamlit_interface import output_assistant_response
+from src.manager.utils.singleton import singleton
+from src.manager.utils.streamlit_interface import output_assistant_response
 from google import genai
 from google.genai import types
 from google.genai.types import *
 import os
 from dotenv import load_dotenv
-from src.budget_manager import BudgetManager
+from src.manager.budget_manager import BudgetManager
 
 class Agent(ABC):
     
