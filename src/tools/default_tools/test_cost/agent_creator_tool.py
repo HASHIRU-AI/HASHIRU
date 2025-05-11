@@ -109,34 +109,39 @@ class AgentCreator():
 
     def run(self, **kwargs):
         print("Running Agent Creator")
+
         agent_name = kwargs.get("agent_name")
+        base_model = kwargs.get("base_model")
 
-        # Get full model info (not just name)
-        model_info = choose_best_model(return_full=True)
-        base_model = kwargs.get("base_model") or choose_best_model()
-        base_model = model_info["model"]
-        token_cost = model_info.get("token_cost", 0.0001)
-        speed = model_info.get("tokens_sec", 30)
-        score = model_info.get("score", 1)
+        # NEW: read flags from kwargs
+        use_local_only = kwargs.get("use_local_only", False)
+        use_api_only = kwargs.get("use_api_only", False)
 
-        env = detect_runtime_environment()
-        print(f"\n[DEBUG] Detected Runtime Environment: {env}")
+        if not base_model:
+            env = detect_runtime_environment()
+            print(f"\n[DEBUG] Detected Runtime Environment: {env}")
+            
+            from src.cost_benefit import get_best_model
+            model_meta = get_best_model(
+                runtime_env=env,
+                use_local_only=use_local_only,
+                use_api_only=use_api_only
+            )
+            base_model = model_meta["model"]
+        else:
+            model_meta = {"model": base_model}
+
         print(f"[DEBUG] Selected Model: {base_model}")
-        print(f"[DEBUG] Token Cost: {token_cost}, Speed: {speed}, Score: {score}")
+
+        if base_model not in self.inputSchema["creates"]["types"]:
+            print(f"[WARN] Auto-selected model '{base_model}' not in schema. Falling back to gemini-2.0-flash")
+            base_model = "gemini-2.0-flash"
 
         system_prompt = kwargs.get("system_prompt")
         description = kwargs.get("description")
-        #create_cost = self.inputSchema["creates"]["types"][base_model]["create_cost"]
-        #if base_model not in self.inputSchema["creates"]["types"]:
-        #    print(f"[WARN] Auto-selected model '{base_model}' not in schema. Falling back to gemini-2.0-flash")
-        #    base_model = "gemini-2.0-flash"
-        #invoke_cost = self.inputSchema["creates"]["types"][base_model]["invoke_cost"]
 
-        # Dynamically calculated costs
-        create_cost = round(10 + (token_cost * 10000) + (50 / (speed + 1)), 2)
-        invoke_cost = round(create_cost * 2, 2)
-
-        print(f"[INFO] Assigned Create Cost: {create_cost}, Invoke Cost: {invoke_cost}")
+        create_cost = self.inputSchema["creates"]["types"][base_model]["create_cost"]
+        invoke_cost = self.inputSchema["creates"]["types"][base_model]["invoke_cost"]
 
         agent_manager = AgentManager()
         try:
@@ -157,8 +162,7 @@ class AgentCreator():
 
         return {
             "status": "success",
-            "message": "Agent successfully created",
+            "message": f"Agent '{agent_name}' created using model '{base_model}'",
+            "model_info": model_meta,
             "remaining_budget": remaining_budget,
         }
-
-    

@@ -3,48 +3,58 @@ import subprocess
 import time
 import requests
 
+def detect_available_budget(runtime_env: str) -> int:
+    import torch
+    if "local" in runtime_env and torch.cuda.is_available():
+        total_vram_mb = torch.cuda.get_device_properties(0).total_memory // (1024 ** 2)
+        return min(total_vram_mb, 100)
+    else:
+        return 100
 
-def get_best_model(weights: dict, runtime_env: str) -> dict:
-    #placeholders
-    models = {
-        "llama3.2": {"size": 2.5, "token_cost": 0.0001, "speed": 30},
-        "mistral": {"size": 4.2, "token_cost": 0.0002, "speed": 50},
-        "gemini-2.0-flash": {"size": 6.1, "token_cost": 0.0005, "speed": 60},
-        "gemini-2.5-pro-preview-03-25": {"size": 8.2, "token_cost": 0.002, "speed": 45}
+
+def get_best_model(runtime_env: str, use_local_only=False, use_api_only=False) -> dict:
+    # Model info (cost, tokens/sec, type)
+    static_costs = {
+        "llama3.2": {"size": 20, "token_cost": 0.0001, "tokens_sec": 30, "type": "local"},
+        "mistral": {"size": 40, "token_cost": 0.0002, "tokens_sec": 50, "type": "local"},
+        "gemini-2.0-flash": {"size": 60, "token_cost": 0.0005, "tokens_sec": 60, "type": "api"},
+        "gemini-2.5-pro-preview-03-25": {"size": 80, "token_cost": 0.002, "tokens_sec": 45, "type": "api"}
     }
 
-    penalty = {
-        "gpu": 1.0,
-        "cpu-local": 2.0,
-        "cloud-only": 1.5
-    }
+    def detect_available_budget(runtime_env: str) -> int:
+        import torch
+        if "local" in runtime_env and torch.cuda.is_available():
+            total_vram_mb = torch.cuda.get_device_properties(0).total_memory // (1024 ** 2)
+            return min(total_vram_mb, 100)
+        else:
+            return 100
+
+    budget = detect_available_budget(runtime_env)
 
     best_model = None
-    best_score = float("-inf")  # Track max score
+    best_speed = -1
 
-    for model, metrics in models.items():
-        p = penalty.get(runtime_env, 2.0)
-
-        cost_score = (
-            weights["w_size"] * metrics["size"] * p +
-            weights["w_token_cost"] * metrics["token_cost"] * p +
-            weights["w_speed"] * (100 - metrics["speed"])
-        )
-        benefit_score = weights["w_speed"] * metrics["speed"]
-
-        decision_score = benefit_score / cost_score if cost_score != 0 else 0
-
-        if decision_score > best_score:
-            best_score = decision_score
+    for model, info in static_costs.items():
+        if info["size"] > budget:
+            continue
+        if use_local_only and info["type"] != "local":
+            continue
+        if use_api_only and info["type"] != "api":
+            continue
+        if info["tokens_sec"] > best_speed:
             best_model = model
+            best_speed = info["tokens_sec"]
 
     if not best_model:
-        return "No suitable model found"
+        return {
+            "model": "llama3.2",
+            "token_cost": static_costs["llama3.2"]["token_cost"],
+            "tokens_sec": static_costs["llama3.2"]["tokens_sec"],
+            "note": "Defaulted due to no models fitting filters"
+        }
 
     return {
         "model": best_model,
-        "score": best_score,
-        "token_cost": models[best_model]["token_cost"],
-        "tokens_sec": models[best_model]["speed"],
-        "output": f"Sample output from {best_model}"
+        "token_cost": static_costs[best_model]["token_cost"],
+        "tokens_sec": static_costs[best_model]["tokens_sec"]
     }
