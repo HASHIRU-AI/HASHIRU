@@ -176,7 +176,7 @@ class GeminiManager:
         return results
     
     def run(self, messages):
-        memories = self.get_k_memories(messages[-1]['content'], k=5, threshold=0.0)
+        memories = self.get_k_memories(messages[-1]['content'], k=5, threshold=0.1)
         if len(memories) > 0:
             messages.append({
                 "role": "memories",
