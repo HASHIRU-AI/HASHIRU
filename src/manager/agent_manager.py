@@ -12,6 +12,9 @@ import os
 from dotenv import load_dotenv
 from src.manager.budget_manager import BudgetManager
 
+MODEL_PATH = "./src/models/"
+MODEL_FILE_PATH = "./src/models/models.json"
+
 class Agent(ABC):
     
     def __init__(self, agent_name: str, base_model: str, system_prompt: str, creation_cost: str, invoke_cost: str):
@@ -105,7 +108,10 @@ class AgentManager():
         
         self._load_agents()
     
-    def create_agent(self, agent_name: str, base_model: str, system_prompt: str, description: str = "", create_cost: float = 0, invoke_cost: float = 0, 
+    def create_agent(self, agent_name: str, 
+                     base_model: str, system_prompt: str, 
+                     description: str = "", create_cost: float = 0, 
+                     invoke_cost: float = 0, 
                  **additional_params) -> Tuple[Agent, int]:
         
         if agent_name in self._agents:
@@ -163,8 +169,8 @@ class AgentManager():
     def list_agents(self) -> dict:
         """Return agent information (name, description, costs)"""
         try:
-            if os.path.exists("./models/models.json"):
-                with open("./models/models.json", "r", encoding="utf8") as f:
+            if os.path.exists(MODEL_FILE_PATH):
+                with open(MODEL_FILE_PATH, "r", encoding="utf8") as f:
                     full_models = json.loads(f.read())
                     
                 # Create a simplified version with only the description and costs
@@ -191,12 +197,12 @@ class AgentManager():
         
         del self._agents[agent_name]
         try:
-            if os.path.exists("./models/models.json"):
-                with open("./models/models.json", "r", encoding="utf8") as f:
+            if os.path.exists(MODEL_FILE_PATH):
+                with open(MODEL_FILE_PATH, "r", encoding="utf8") as f:
                     models = json.loads(f.read())
                     
                 del models[agent_name]
-                with open("./models/models.json", "w", encoding="utf8") as f:
+                with open(MODEL_FILE_PATH, "w", encoding="utf8") as f:
                     f.write(json.dumps(models, indent=4))
         except Exception as e:
             output_assistant_response(f"Error deleting agent: {e}")
@@ -216,11 +222,11 @@ class AgentManager():
         """Save a single agent to the models.json file"""
         try:
             # Ensure the directory exists
-            os.makedirs("./models", exist_ok=True)
+            os.makedirs(MODEL_PATH, exist_ok=True)
             
             # Read existing models file or create empty dict if it doesn't exist
             try:
-                with open("./models/models.json", "r", encoding="utf8") as f:
+                with open(MODEL_FILE_PATH, "r", encoding="utf8") as f:
                     models = json.loads(f.read())
             except (FileNotFoundError, json.JSONDecodeError):
                 models = {}
@@ -239,7 +245,7 @@ class AgentManager():
                 models[agent_name][key] = value
             
             # Write the updated models back to the file
-            with open("./models/models.json", "w", encoding="utf8") as f:
+            with open(MODEL_FILE_PATH, "w", encoding="utf8") as f:
                 f.write(json.dumps(models, indent=4))
                 
         except Exception as e:
@@ -259,10 +265,10 @@ class AgentManager():
     def _load_agents(self) -> None:
         """Load agent configurations from disk"""
         try:
-            if not os.path.exists("./models/models.json"):
+            if not os.path.exists(MODEL_FILE_PATH):
                 return
                 
-            with open("./models/models.json", "r", encoding="utf8") as f:
+            with open(MODEL_FILE_PATH, "r", encoding="utf8") as f:
                 models = json.loads(f.read())
             
             for name, data in models.items():

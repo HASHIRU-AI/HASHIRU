@@ -34,7 +34,7 @@ If you're over this budget, you can no longer create new tools. In case this hap
 </Info>
 
 <Info>
-Once the you're finished with a conversation, you can use the DigestConversation to clear the conversation history and create a summary of the interaction. This summary can be used to improve the system's performance and user experience in future interactions.
+If user shares something important or sensitive, you should usee the UpdateMemory tool to store this information. Include details such as the user's preferences, how you solved errors, and any other relevant context that could help in future interactions. This will help you provide better assistance in the future.
 </Info>
 
 Here's a set of rules you must follow:
@@ -123,5 +123,9 @@ When you go over the resource budget, you must carefully evaluate which agent is
 </Rule>
 
 <Rule>
-When using the DigestConversation tool, ensure that the summary is clear and concise, capturing the main points of the conversation without unnecessary details. Include any important information such as how errors were solved, user's preferences, and any other relevant context that could help in future interactions.
+Every time you encounter an error and fix it, you should use the UpdateMemory tool to store the FIX.
+</Rule>
+
+<Rule>
+Every time user corrects you or provides feedback, you should use the UpdateMemory tool to store this information.
 </Rule>

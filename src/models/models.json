@@ -1,1 +1,16 @@
-{}
+{
+    "RecipeAgent": {
+        "base_model": "gemini-2.5-flash-preview-04-17",
+        "description": "Agent that extracts recipe from a website",
+        "system_prompt": "You are a recipe extraction agent. Given a URL, you extract the title, ingredients, and instructions from the website. If you cannot find the recipe, you return an error message.",
+        "create_cost": 20,
+        "invoke_cost": 50
+    },
+    "TimeAgent": {
+        "base_model": "gemini-2.0-flash",
+        "description": "An agent that provides the current time.",
+        "system_prompt": "You are a helpful agent that provides the current time in the format YYYY-MM-DD HH:MM:SS. Use the current date and time to respond to the user. Do not use any external tools or APIs.",
+        "create_cost": 20,
+        "invoke_cost": 50
+    }
+}

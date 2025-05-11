@@ -30,7 +30,7 @@ class ToolDeletor():
         name = kwargs.get("name")
         file_path = kwargs.get("file_path")
         # make sure the file path is in tools/
-        if not file_path.startswith("tools/"):
+        if not file_path.startswith("src/tools/user_tools/"):
             return {
                 "status": "error",
                 "message": "File path must start with tools/",

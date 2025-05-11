@@ -23,6 +23,15 @@ class ToolCreator():
             "required": ["name", "tool_code"],
         }
     }
+    
+    def validate_tool_code(self, tool_code):
+        # Basic validation to check if the code is a valid Python function
+        try:
+            compile(tool_code, '<string>', 'exec')
+            return True, None
+        except SyntaxError as e:
+            print(f"Syntax error in tool code: {e}")
+            return False, e
 
     def run(self, **kwargs):
         print("Running Tool Creator")
@@ -31,7 +40,7 @@ class ToolCreator():
         print(f"Tool Name: {name}")
         print(f"Tool Content: {content}")
         # Create the tool file
-        tool_file_path = f"tools/{name}.py"
+        tool_file_path = f"src/tools/user_tools/{name}.py"
         with open(tool_file_path, "w") as tool_file:
             tool_file.write(content)
         print(f"Tool file created at {tool_file_path}")

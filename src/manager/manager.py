@@ -98,14 +98,11 @@ class GeminiManager:
                 self.toolsLoader.load_tools()
             except Exception as e:
                 logger.info(f"Error loading tools: {e}. Deleting the tool.")
-                thinking += f"Error loading tools: {e}. Deleting the tool.\n"
                 yield {
                     "role": "assistant",
-                    "content": thinking,
+                    "content": f"Error loading tools: {e}. Deleting the tool.\n",
                     "metadata": {
-                        "title": title,
-                        "id": i,
-                        "status": "done",
+                        "title": "Trying to load the newly created tool",
                     }
                 }
                 # delete the created tool
