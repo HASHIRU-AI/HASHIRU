@@ -146,12 +146,13 @@ class AgentManager():
         if not agent_class:
             raise ValueError(f"Unsupported base model {base_model}")
         
+        created_agent = agent_class(agent_name, base_model, system_prompt, create_cost,invoke_cost)
+        
         self.validate_budget(create_cost)
         
         self.budget_manager.add_to_expense(create_cost)
         # create agent
-        return agent_class(agent_name, base_model, system_prompt, create_cost,invoke_cost)
-        
+        return created_agent
 
     def get_agent(self, agent_name: str) -> Agent:
         """Get existing agent by name"""
@@ -172,7 +173,8 @@ class AgentManager():
                     simplified_agents[name] = {
                         "description": data.get("description", ""),
                         "create_cost": data.get("create_cost", 0),
-                        "invoke_cost": data.get("invoke_cost", 0)
+                        "invoke_cost": data.get("invoke_cost", 0),
+                        "base_model": data.get("base_model", ""),
                     }
                 return simplified_agents
             else:

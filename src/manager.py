@@ -38,26 +38,9 @@ class GeminiManager:
         with open(system_prompt_file, 'r', encoding="utf8") as f:
             self.system_prompt = f.read()
         self.messages = []
-        
+
     def generate_response(self, messages):
         tools = self.toolsLoader.getTools()
-        function = types.FunctionDeclaration(
-                name="DigestConversation",
-                description="Digest the conversation and store the summary provided.",
-                parameters=types.Schema(
-                    type = "object",
-                    properties={
-                        # string that summarizes the conversation
-                        "summary": types.Schema(
-                            type="string",
-                            description="A summary of the conversation including all the important points.",
-                        ),
-                    },
-                    required=["summary"],
-                ),
-            )
-        toolType = types.Tool(function_declarations=[function])
-        tools.append(toolType)
         return self.client.models.generate_content(
             model=self.model_name,
             contents=messages,
@@ -70,17 +53,23 @@ class GeminiManager:
 
     def handle_tool_calls(self, response):
         parts = []
+        i = 0
         for function_call in response.function_calls:
+            title = ""
+            thinking = ""
             toolResponse = None
             logger.info(
                 f"Function Name: {function_call.name}, Arguments: {function_call.args}")
-            if function_call.name == "DigestConversation":
-                logger.info("Digesting conversation...")
-                summary = function_call.args["summary"]
-                return {
-                    "role": "summary",
-                    "content": f"{summary}",
+            title = f"Invoking `{function_call.name}` with `{function_call.args}`\n"
+            yield {
+                "role": "assistant",
+                "content": thinking,
+                "metadata": {
+                    "title": title,
+                    "id": i,
+                    "status": "pending",
                 }
+            }
             try:
                 toolResponse = self.toolsLoader.runTool(
                     function_call.name, function_call.args)
@@ -88,10 +77,20 @@ class GeminiManager:
                 logger.warning(f"Error running tool: {e}")
                 toolResponse = {
                     "status": "error",
-                    "message": f"Tool {function_call.name} failed to run.",
+                    "message": f"Tool `{function_call.name}` failed to run.",
                     "output": str(e),
                 }
             logger.debug(f"Tool Response: {toolResponse}")
+            thinking += f"Tool responded with ```\n{toolResponse}\n```\n"
+            yield {
+                "role": "assistant",
+                "content": thinking,
+                "metadata": {
+                    "title": title,
+                    "id": i,
+                    "status": "done",
+                }
+            }
             tool_content = types.Part.from_function_response(
                 name=function_call.name,
                 response={"result": toolResponse})
@@ -99,6 +98,16 @@ class GeminiManager:
                 self.toolsLoader.load_tools()
             except Exception as e:
                 logger.info(f"Error loading tools: {e}. Deleting the tool.")
+                thinking += f"Error loading tools: {e}. Deleting the tool.\n"
+                yield {
+                    "role": "assistant",
+                    "content": thinking,
+                    "metadata": {
+                        "title": title,
+                        "id": i,
+                        "status": "done",
+                    }
+                }
                 # delete the created tool
                 self.toolsLoader.delete_tool(
                     toolResponse['output']['tool_name'], toolResponse['output']['tool_file_path'])
@@ -106,7 +115,8 @@ class GeminiManager:
                     name=function_call.name,
                     response={"result": f"{function_call.name} with {function_call.args} doesn't follow the required format, please read the other tool implementations for reference." + str(e)})
             parts.append(tool_content)
-        return {
+            i += 1
+        yield {
             "role": "tool",
             "content": repr(types.Content(
                     role='model' if self.model_name == "gemini-2.5-pro-exp-03-25" else 'tool',
@@ -141,7 +151,7 @@ class GeminiManager:
                     parts=parts
                 ))
         return formatted_history
-        
+
     def run(self, messages):
         chat_history = self.format_chat_history(messages)
         logger.debug(f"Chat history: {chat_history}")
@@ -183,8 +193,11 @@ class GeminiManager:
 
         # Invoke the function calls if any and attach the response to the messages
         if response.function_calls:
-            calls = self.handle_tool_calls(response)
-            messages.append(calls)
+            for call in self.handle_tool_calls(response):
+                yield messages + [call]
+                if (call.get("role") == "tool" 
+                    or (call.get("role") == "assistant" and call.get("metadata", {}).get("status") == "done")):
+                    messages.append(call)
             yield from self.run(messages)
             return
         yield messages
