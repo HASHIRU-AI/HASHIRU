@@ -8,6 +8,9 @@ from src.manager.tool_manager import ToolManager
 from src.manager.utils.suppress_outputs import suppress_output
 import logging
 import gradio as gr
+from sentence_transformers import SentenceTransformer
+import torch
+from src.tools.default_tools.memory_manager import MemoryManager
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -35,6 +38,7 @@ class GeminiManager:
         self.client = genai.Client(api_key=self.API_KEY)
         self.toolsLoader.load_tools()
         self.model_name = gemini_model
+        self.memory_manager = MemoryManager()
         with open(system_prompt_file, 'r', encoding="utf8") as f:
             self.system_prompt = f.read()
         self.messages = []
@@ -131,6 +135,9 @@ class GeminiManager:
                 match message.get("role"):
                     case "user":
                         role = "user"
+                    case "memories":
+                        role = "user"
+                        parts = [types.Part.from_text(text="User memories: "+message.get("content", ""))]
                     case "tool":
                         role = "tool"
                         formatted_history.append(
@@ -149,7 +156,41 @@ class GeminiManager:
                 ))
         return formatted_history
 
+    def get_k_memories(self, query, k=5, threshold=0.0):
+        memories = MemoryManager().get_memories()
+        if len(memories) == 0:
+            return []
+        top_k = min(k, len(memories))
+        # Semantic Retrieval with GPU
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
+        doc_embeddings = model.encode(memories, convert_to_tensor=True, device=device)
+        query_embedding = model.encode(query, convert_to_tensor=True, device=device)
+        similarity_scores = model.similarity(query_embedding, doc_embeddings)[0]
+        scores, indices = torch.topk(similarity_scores, k=top_k)
+        results = []
+        for score, idx in zip(scores, indices):
+            print(memories[idx], f"(Score: {score:.4f})")
+            if score >= threshold:
+                results.append(memories[idx])
+        return results
+    
     def run(self, messages):
+        memories = self.get_k_memories(messages[-1]['content'], k=5, threshold=0.0)
+        if len(memories) > 0:
+            messages.append({
+                "role": "memories",
+                "content": f"{memories}",
+            })
+            messages.append({
+                "role": "assistant",
+                "content": f"Memories: {memories}",
+                "metadata": {"title": "Memories"}
+            })
+            yield messages
+        yield from self.invoke_manager(messages)
+    
+    def invoke_manager(self, messages):
         chat_history = self.format_chat_history(messages)
         logger.debug(f"Chat history: {chat_history}")
         try:
@@ -195,6 +236,6 @@ class GeminiManager:
                 if (call.get("role") == "tool" 
                     or (call.get("role") == "assistant" and call.get("metadata", {}).get("status") == "done")):
                     messages.append(call)
-            yield from self.run(messages)
+            yield from self.invoke_manager(messages)
             return
         yield messages
