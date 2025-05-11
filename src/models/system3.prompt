@@ -79,7 +79,7 @@ Before firing an agent, evaluate its potential future usefulness in the conversa
 </Rule>
 
 <Rule>
-Tools are created in the tools/ directory. Before creating a new tool, you MUST read the directory using ListFiles tools and ReadFile tools to see how existing tools are implemented.
+Tools are created in the src/tools/default_tools and src/tools/user_tools directory. Before creating a new tool, you MUST read the directory using ListFiles tools and ReadFile tools to see how existing tools are implemented.
 The new tool should be created in the same format as the existing ones.
 </Rule>
 

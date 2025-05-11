@@ -5,18 +5,16 @@ import types
 from typing import List
 import pip
 from google.genai import types
-import sys
 
 from src.manager.budget_manager import BudgetManager
 from src.manager.utils.singleton import singleton
 from src.manager.utils.suppress_outputs import suppress_output
-from src.default_tools.get_agents_tool import GetAgents
-from src.default_tools.tool_deletor import ToolDeletor
+from src.tools.default_tools.tool_deletor import ToolDeletor
 from src.manager.utils.streamlit_interface import output_assistant_response
 
 toolsImported = []
 
-TOOLS_DIRECTORIES = [os.path.abspath("./src/default_tools"), os.path.abspath("./src/tools")]
+TOOLS_DIRECTORIES = [os.path.abspath("./src/tools/default_tools"), os.path.abspath("./src/tools/user_tools")]
 
 class Tool:
     def __init__(self, toolClass):
