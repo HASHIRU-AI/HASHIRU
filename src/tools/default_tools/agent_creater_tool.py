@@ -31,8 +31,7 @@ class AgentCreator():
                     "description": "Description of the agent. This is a string that describes the agent and its capabilities. It should be a single line description.",
                 },
             },
-            "required": ["agent_name", "system_prompt", "description"],
-            #"required": ["agent_name", "base_model", "system_prompt", "description"],
+            "required": ["agent_name", "base_model", "system_prompt", "description"],
         },
         "creates": {
             "selector": "base_model",
@@ -110,18 +109,13 @@ class AgentCreator():
     def run(self, **kwargs):
         print("Running Agent Creator")
         agent_name = kwargs.get("agent_name")
-        #base_model = kwargs.get("base_model")
-        base_model = kwargs.get("base_model") or choose_best_model()
-        env = detect_runtime_environment()
-        print(f"\n[DEBUG] Detected Runtime Environment: {env}")
+        base_model = kwargs.get("base_model")
+
         print(f"[DEBUG] Selected Model: {base_model}")
 
         system_prompt = kwargs.get("system_prompt")
         description = kwargs.get("description")
         create_cost = self.inputSchema["creates"]["types"][base_model]["create_cost"]
-        if base_model not in self.inputSchema["creates"]["types"]:
-            print(f"[WARN] Auto-selected model '{base_model}' not in schema. Falling back to gemini-2.0-flash")
-            base_model = "gemini-2.0-flash"
         invoke_cost = self.inputSchema["creates"]["types"][base_model]["invoke_cost"]
 
         agent_manager = AgentManager()
