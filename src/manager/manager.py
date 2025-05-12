@@ -20,7 +20,7 @@ logger.addHandler(handler)
 
 class GeminiManager:
     def __init__(self, toolsLoader: ToolManager = None,
-                 system_prompt_file="./src/models/system3.prompt",
+                 system_prompt_file="./src/models/system4.prompt",
                  gemini_model="gemini-2.5-pro-exp-03-25",
                  local_only=False, allow_tool_creation=True,
                  cloud_only=False, use_economy=True):
