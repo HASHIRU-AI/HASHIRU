@@ -1,6 +1,4 @@
 from src.manager.agent_manager import AgentManager
-from src.manager.config.model_selector import choose_best_model
-from src.manager.utils.runtime_selector import detect_runtime_environment
 from src.tools.default_tools.agent_cost_manager import AgentCostManager
 __all__ = ['AgentCreator']
 
@@ -40,10 +38,8 @@ class AgentCreator():
     def run(self, **kwargs):
         print("Running Agent Creator")
         agent_name = kwargs.get("agent_name")
-        #base_model = kwargs.get("base_model")
-        base_model = kwargs.get("base_model") or choose_best_model()
-        env = detect_runtime_environment()
-        print(f"\n[DEBUG] Detected Runtime Environment: {env}")
+        base_model = kwargs.get("base_model")
+
         print(f"[DEBUG] Selected Model: {base_model}")
 
         system_prompt = kwargs.get("system_prompt")
