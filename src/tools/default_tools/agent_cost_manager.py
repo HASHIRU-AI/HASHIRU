@@ -18,7 +18,7 @@ class AgentCostManager():
         "llama3.2": {
             "description": "3 Billion parameter model",
             "create_cost": 10,
-            "invoke_cost": 20,
+            "invoke_cost": 10,
         },
         "mistral": {
             "description": "7 Billion parameter model",

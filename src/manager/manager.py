@@ -196,7 +196,6 @@ class GeminiManager:
         logger.debug(f"Chat history: {chat_history}")
         try:
             response = suppress_output(self.generate_response)(chat_history)
-            print(f"Response: {response}")
         except Exception as e:
             messages.append({
                 "role": "assistant",
