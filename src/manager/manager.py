@@ -137,7 +137,7 @@ class GeminiManager:
                         role = "user"
                     case "memories":
                         role = "user"
-                        parts = [types.Part.from_text(text="User memories: "+message.get("content", ""))]
+                        parts = [types.Part.from_text(text="Relevant memories: "+message.get("content", ""))]
                     case "tool":
                         role = "tool"
                         formatted_history.append(
