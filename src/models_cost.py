@@ -40,41 +40,47 @@ class ModelRegistry:
             },
             "gemini-2.0-flash": {
                 "size": 6,
-                "tokens_sec": 60,
+                "tokens_sec": 170,
                 "type": "api",
                 "description": "Fast and efficient API model"
             },
             "gemini-2.5-pro-preview-03-25": {
                 "size": 10,
-                "tokens_sec": 45,
+                "tokens_sec": 148,
                 "type": "api",
                 "description": "High-reasoning API model"
             },
             "gemini-1.5-flash": {
                 "size": 7,
-                "tokens_sec": 55,
+                "tokens_sec": 190,
                 "type": "api",
                 "description": "Fast general-purpose model"
             },
             "gemini-2.0-flash-lite": {
                 "size": 5,
-                "tokens_sec": 58,
+                "tokens_sec": 208,
                 "type": "api",
                 "description": "Low-latency, cost-efficient API model"
             },
             "gemini-2.0-flash-live-001": {
                 "size": 9,
-                "tokens_sec": 52,
+                "tokens_sec": 190,
                 "type": "api",
                 "description": "Voice/video low-latency API model"
             }
         }
 
+        
         models = {}
         for name, model in raw_models.items():
             is_api = model["type"] == "api"
-            create_cost = self.estimate_create_cost(model["size"], is_api)
-            invoke_cost = self.estimate_invoke_cost(model["tokens_sec"], is_api)
+
+            if is_api:
+                # Flat cost for all API models
+                create_cost, invoke_cost = 20, 50
+            else:
+                create_cost = self.estimate_create_cost(model["size"], is_api=False)
+                invoke_cost = self.estimate_invoke_cost(model["tokens_sec"], is_api=False)
 
             models[name] = ModelInfo(
                 name=name,
@@ -85,7 +91,6 @@ class ModelRegistry:
                 create_cost=create_cost,
                 invoke_cost=invoke_cost
             )
-
         return models
 
     def get_filtered_models(self) -> Dict[str, ModelInfo]:
