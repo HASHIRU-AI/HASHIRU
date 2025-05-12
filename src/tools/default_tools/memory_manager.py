@@ -2,6 +2,7 @@
 __all__ = ['MemoryManager']
 
 import json
+import os
 
 
 class MemoryManager():
@@ -43,9 +44,11 @@ class MemoryManager():
         return memory_list
 
     def update_memories(self, memories):
-        # save the memory to src/data/memory.json
+        os.makedirs("src/data", exist_ok=True)
+            # Save the memory to src/data/memory.json
         with open("src/data/memory.json", "w") as f:
             json.dump(memories, f, indent=4)
+
 
 
     def run(self, **kwargs):
