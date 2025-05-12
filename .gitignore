@@ -16,3 +16,4 @@ results/
 *.fdb_latexmk
 *.synctex.gz
 secret_word.json
+src/data/

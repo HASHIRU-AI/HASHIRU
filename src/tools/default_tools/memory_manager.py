@@ -9,7 +9,7 @@ class MemoryManager():
 
     inputSchema = {
         "name": "MemoryManager",
-        "description": "Updates, retrieves, or deletes the memory of an AI agent.",
+        "description": "Updates, retrieves, or deletes the memory for a user. Only store important information such as user preferences, error solutions, and other information that can help you improve your performance.",
         "parameters": {
             "type": "object",
             "properties":{
