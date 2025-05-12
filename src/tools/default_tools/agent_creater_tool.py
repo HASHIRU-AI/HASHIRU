@@ -1,6 +1,7 @@
 from src.manager.agent_manager import AgentManager
 from src.manager.config.model_selector import choose_best_model
 from src.manager.utils.runtime_selector import detect_runtime_environment
+from src.tools.default_tools.agent_cost_manager import AgentCostManager
 __all__ = ['AgentCreator']
 
 class AgentCreator():
@@ -20,7 +21,7 @@ class AgentCreator():
                 },
                 "base_model": {
                     "type": "string",
-                    "description": "A base model from which the new agent mode is to be created. Available models are: llama3.2, mistral, gemini-2.5-flash-preview-04-17, gemini-2.5-pro-preview-03-25, gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-flash, gemini-1.5-flash-8b, gemini-1.5-pro, and gemini-2.0-flash-live-001"
+                    "description": "A base model from which the new agent mode is to be created. Check the available models using the AgentCostManager tool.",
                 },
                 "system_prompt": {
                     "type": "string",
@@ -31,78 +32,7 @@ class AgentCreator():
                     "description": "Description of the agent. This is a string that describes the agent and its capabilities. It should be a single line description.",
                 },
             },
-            "required": ["agent_name", "system_prompt", "description"],
-            #"required": ["agent_name", "base_model", "system_prompt", "description"],
-        },
-        "creates": {
-            "selector": "base_model",
-            "types": {
-                "llama3.2":{
-                    "description": "3 Billion parameter model",
-                    "create_cost": 10,
-                    "invoke_cost": 20,
-                },
-                "mistral":{
-                    "description": "7 Billion parameter model",
-                    "create_cost": 20,
-                    "invoke_cost": 50,
-                },
-                "gemini-2.5-flash-preview-04-17": {
-                    "description": "Adaptive thinking, cost efficiency",
-                    "create_cost": 20,
-                    "invoke_cost": 50
-                },
-                "gemini-2.5-pro-preview-03-25": {
-                    "description": "Enhanced thinking and reasoning, multimodal understanding, advanced coding, and more",
-                    "create_cost": 20,
-                    "invoke_cost": 50
-                },
-                "gemini-2.0-flash": {
-                    "description": "Next generation features, speed, thinking, realtime streaming, and multimodal generation",
-                    "create_cost": 20,
-                    "invoke_cost": 50
-                },
-                "gemini-2.0-flash-lite": {
-                    "description": "Cost efficiency and low latency",
-                    "create_cost": 20,
-                    "invoke_cost": 50
-                },
-                "gemini-1.5-flash": {
-                    "description": "Fast and versatile performance across a diverse variety of tasks",
-                    "create_cost": 20,
-                    "invoke_cost": 50
-                },
-                "gemini-1.5-flash-8b": {
-                    "description": "High volume and lower intelligence tasks",
-                    "create_cost": 20,
-                    "invoke_cost": 50
-                },
-                "gemini-1.5-pro": {
-                    "description": "Complex reasoning tasks requiring more intelligence",
-                    "create_cost": 20,
-                    "invoke_cost": 50
-                },
-                # "gemini-embedding-exp": {
-                #     "description": "Measuring the relatedness of text strings",
-                #     "create_cost": 20,
-                #     "invoke_cost": 50
-                # },
-                # "imagen-3.0-generate-002": {
-                #     "description": "Our most advanced image generation model",
-                #     "create_cost": 20,
-                #     "invoke_cost": 50
-                # },
-                # "veo-2.0-generate-001": {
-                #     "description": "High quality video generation",
-                #     "create_cost": 20,
-                #     "invoke_cost": 50
-                # },
-                "gemini-2.0-flash-live-001": {
-                    "description": "Low-latency bidirectional voice and video interactions",
-                    "create_cost": 20,
-                    "invoke_cost": 50
-                }
-            }
+            "required": ["agent_name", "base_model", "system_prompt", "description"],
         }
     }
 
@@ -118,11 +48,12 @@ class AgentCreator():
 
         system_prompt = kwargs.get("system_prompt")
         description = kwargs.get("description")
-        create_cost = self.inputSchema["creates"]["types"][base_model]["create_cost"]
-        if base_model not in self.inputSchema["creates"]["types"]:
+        model_costs = AgentCostManager().get_costs()
+        create_cost = model_costs[base_model]["create_cost"]
+        if base_model not in model_costs:
             print(f"[WARN] Auto-selected model '{base_model}' not in schema. Falling back to gemini-2.0-flash")
             base_model = "gemini-2.0-flash"
-        invoke_cost = self.inputSchema["creates"]["types"][base_model]["invoke_cost"]
+        invoke_cost = model_costs[base_model]["invoke_cost"]
 
         agent_manager = AgentManager()
         try:

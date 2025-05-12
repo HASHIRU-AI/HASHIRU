@@ -1,6 +1,7 @@
 from src.manager.utils.singleton import singleton
 import torch
 import psutil
+
 @singleton
 class BudgetManager():
     TOTAL_BUDGET = 100

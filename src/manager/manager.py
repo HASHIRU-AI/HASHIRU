@@ -163,6 +163,7 @@ class GeminiManager:
         top_k = min(k, len(memories))
         # Semantic Retrieval with GPU
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f"Using device: {device}")
         model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
         doc_embeddings = model.encode(memories, convert_to_tensor=True, device=device)
         query_embedding = model.encode(query, convert_to_tensor=True, device=device)
@@ -195,13 +196,13 @@ class GeminiManager:
         logger.debug(f"Chat history: {chat_history}")
         try:
             response = suppress_output(self.generate_response)(chat_history)
+            print(f"Response: {response}")
         except Exception as e:
-            logger.debug(f"Error generating response: {e}")
             messages.append({
                 "role": "assistant",
                 "content": f"Error generating response: {e}"
             })
-            logger.error(f"Error generating response: {e}")
+            logger.error(f"Error generating response", e)
             yield messages
             return
         logger.debug(f"Response: {response}")

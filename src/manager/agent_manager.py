@@ -141,8 +141,8 @@ class AgentManager():
     
     def validate_budget(self, amount: float) -> None:
         if not self.budget_manager.can_spend(amount):
-            raise ValueError(f"Do not have enough budget to create the tool. "
-                        +f"Creating the tool costs {amount} but only {self.budget_manager.get_current_remaining_budget()} is remaining")
+            raise ValueError(f"Do not have enough budget to create/use the agent. "
+                        +f"Creating/Using the agent costs {amount} but only {self.budget_manager.get_current_remaining_budget()} is remaining")
         
     def create_agent_class(self, agent_name: str, base_model: str, system_prompt: str, description: str = "", create_cost: float = 0, invoke_cost: float = 0,
                     **additional_params) -> Agent:
