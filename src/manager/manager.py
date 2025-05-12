@@ -158,6 +158,8 @@ class GeminiManager:
 
     def get_k_memories(self, query, k=5, threshold=0.0):
         memories = MemoryManager().get_memories()
+        for i in range(len(memories)):
+            memories[i] = memories[i]['memory']
         if len(memories) == 0:
             return []
         top_k = min(k, len(memories))
