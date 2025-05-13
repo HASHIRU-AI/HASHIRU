@@ -75,16 +75,18 @@ jobs:
               }
           PY
 
-      # only push when the workflow is triggered by a direct push to main
-      - name: Commit & push if the file changed
+      - name: Commit & push only when the file was missing
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
+          set -e
           git config user.name  "github-actions"
           git config user.email "github-actions@github.com"
-          if ! git diff --quiet src/cost_benefit.py; then
-            git add  src/cost_benefit.py
-            git commit -m "chore(ci): auto‑restore src/cost_benefit.py [skip ci]"
+
+          # If the file is NOT in the current Git index, add‑commit‑push.
+          if ! git ls-files --error-unmatch src/cost_benefit.py >/dev/null 2>&1; then
+            git add src/cost_benefit.py
+            git commit -m "chore(ci): restore missing src/cost_benefit.py [skip ci]"
             git push origin HEAD:main
           else
-            echo "No changes detected"
+            echo "src/cost_benefit.py already exists in the repository – nothing to restore"
           fi
