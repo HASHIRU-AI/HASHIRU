@@ -150,8 +150,8 @@ class AgentCreator():
                 base_model=base_model,
                 system_prompt=system_prompt,
                 description=description,
-                create_cost=create_cost,
-                invoke_cost=invoke_cost
+                create_resource_cost=create_cost,
+                invoke_resource_cost=invoke_cost
             )
         except ValueError as e:
             return {

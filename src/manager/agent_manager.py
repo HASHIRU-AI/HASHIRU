@@ -17,12 +17,20 @@ MODEL_FILE_PATH = "./src/models/models.json"
 
 class Agent(ABC):
     
-    def __init__(self, agent_name: str, base_model: str, system_prompt: str, creation_cost: str, invoke_cost: str):
+    def __init__(self, agent_name: str, 
+                 base_model: str, 
+                 system_prompt: str, 
+                 create_resource_cost: int, 
+                 invoke_resource_cost: int,
+                 create_expense_cost: int = 0,
+                 invoke_expense_cost: int = 0,):
         self.agent_name = agent_name
         self.base_model = base_model
         self.system_prompt = system_prompt
-        self.creation_cost = creation_cost
-        self.invoke_cost = invoke_cost
+        self.create_resource_cost = create_resource_cost
+        self.invoke_resource_cost = invoke_resource_cost
+        self.create_expense_cost = create_expense_cost
+        self.invoke_expense_cost = invoke_expense_cost
         self.create_model()
         
     @abstractmethod
@@ -42,8 +50,10 @@ class Agent(ABC):
     
     def get_costs(self):
         return {
-            "create_cost": self.creation_cost,
-            "invoke_cost": self.invoke_cost
+            "create_resource_cost": self.create_resource_cost,
+            "invoke_resource_cost": self.invoke_resource_cost,
+            "create_expense_cost": self.create_expense_cost,
+            "invoke_expense_cost": self.invoke_expense_cost
         }
     
 class OllamaAgent(Agent):
@@ -69,7 +79,14 @@ class OllamaAgent(Agent):
         ollama.delete(self.agent_name)
     
 class GeminiAgent(Agent):
-    def __init__(self, agent_name: str, base_model: str, system_prompt: str, creation_cost: str, invoke_cost: str):
+    def __init__(self, 
+                 agent_name: str, 
+                 base_model: str, 
+                 system_prompt: str, 
+                 create_resource_cost: int, 
+                 invoke_resource_cost: int,
+                 create_expense_cost: int = 0,
+                 invoke_expense_cost: int = 0,):
         load_dotenv()
         self.api_key = os.getenv("GEMINI_KEY")
         if not self.api_key:
@@ -79,7 +96,13 @@ class GeminiAgent(Agent):
         self.client = genai.Client(api_key=self.api_key)
         
         # Call parent constructor after API setup
-        super().__init__(agent_name, base_model, system_prompt, creation_cost, invoke_cost)
+        super().__init__(agent_name, 
+                         base_model, 
+                         system_prompt, 
+                         create_resource_cost, 
+                         invoke_resource_cost,
+                         create_expense_cost,
+                         invoke_expense_cost)
 
     def create_model(self):
         self.messages = []
@@ -110,8 +133,10 @@ class AgentManager():
     
     def create_agent(self, agent_name: str, 
                      base_model: str, system_prompt: str, 
-                     description: str = "", create_cost: float = 0, 
-                     invoke_cost: float = 0, 
+                     description: str = "", create_resource_cost: float = 0, 
+                     invoke_resource_cost: float = 0, 
+                     create_expense_cost: float = 0,
+                     invoke_expense_cost: float = 0,
                  **additional_params) -> Tuple[Agent, int]:
         
         if agent_name in self._agents:
@@ -122,8 +147,10 @@ class AgentManager():
             base_model, 
             system_prompt, 
             description=description,
-            create_cost=create_cost,
-            invoke_cost=invoke_cost,
+            create_resource_cost=create_resource_cost,
+            invoke_resource_cost=invoke_resource_cost,
+            create_expense_cost=create_expense_cost,
+            invoke_expense_cost=invoke_expense_cost,
             **additional_params  # For any future parameters we might want to add
         )
         
@@ -133,18 +160,35 @@ class AgentManager():
             base_model, 
             system_prompt, 
             description=description,
-            create_cost=create_cost,
-            invoke_cost=invoke_cost,
+            create_resource_cost=create_resource_cost,
+            invoke_resource_cost=invoke_resource_cost,
+            create_expense_cost=create_expense_cost,
+            invoke_expense_cost=invoke_expense_cost,
             **additional_params  # For any future parameters we might want to add
         )
-        return (self._agents[agent_name], self.budget_manager.get_current_remaining_budget())
+        return (self._agents[agent_name], 
+                self.budget_manager.get_current_remaining_resource_budget(), 
+                self.budget_manager.get_current_remaining_expense_budget())
     
-    def validate_budget(self, amount: float) -> None:
-        if not self.budget_manager.can_spend(amount):
-            raise ValueError(f"Do not have enough budget to create/use the agent. "
-                        +f"Creating/Using the agent costs {amount} but only {self.budget_manager.get_current_remaining_budget()} is remaining")
+    def validate_budget(self, 
+                        resource_cost: float=0,
+                        expense_cost: float=0) -> None:
+        if not self.budget_manager.can_spend_resource(resource_cost):
+            raise ValueError(f"Do not have enough resource budget to create/use the agent. "
+                        +f"Creating/Using the agent costs {resource_cost} but only {self.budget_manager.get_current_remaining_resource_budget()} is remaining")
+        if not self.budget_manager.can_spend_expense(expense_cost):
+            raise ValueError(f"Do not have enough expense budget to create/use the agent. "
+                        +f"Creating/Using the agent costs {expense_cost} but only {self.budget_manager.get_current_remaining_expense_budget()} is remaining")
         
-    def create_agent_class(self, agent_name: str, base_model: str, system_prompt: str, description: str = "", create_cost: float = 0, invoke_cost: float = 0,
+    def create_agent_class(self, 
+                           agent_name: str,
+                           base_model: str, 
+                           system_prompt: str, 
+                           description: str = "", 
+                           create_resource_cost: float = 0, 
+                           invoke_resource_cost: float = 0,
+                           create_expense_cost: float = 0,
+                           invoke_expense_cost: float = 0,
                     **additional_params) -> Agent:
         agent_type = self._get_agent_type(base_model)
         agent_class = self._agent_types.get(agent_type)
@@ -152,11 +196,19 @@ class AgentManager():
         if not agent_class:
             raise ValueError(f"Unsupported base model {base_model}")
         
-        created_agent = agent_class(agent_name, base_model, system_prompt, create_cost,invoke_cost)
+        created_agent = agent_class(agent_name, 
+                                    base_model, 
+                                    system_prompt, 
+                                    create_resource_cost,
+                                    invoke_resource_cost,
+                                    create_expense_cost,
+                                    invoke_expense_cost,)
         
-        self.validate_budget(create_cost)
+        self.validate_budget(create_resource_cost, 
+                             create_expense_cost)
         
-        self.budget_manager.add_to_expense(create_cost)
+        self.budget_manager.add_to_resource_budget(create_resource_cost)
+        self.budget_manager.add_to_expense_budget(create_expense_cost)
         # create agent
         return created_agent
 
@@ -178,8 +230,10 @@ class AgentManager():
                 for name, data in full_models.items():
                     simplified_agents[name] = {
                         "description": data.get("description", ""),
-                        "create_cost": data.get("create_cost", 0),
-                        "invoke_cost": data.get("invoke_cost", 0),
+                        "create_resource_cost": data.get("create_resource_cost", 0),
+                        "invoke_resource_cost": data.get("invoke_resource_cost", 0),
+                        "create_expense_cost": data.get("create_expense_cost", 0),
+                        "invoke_expense_cost": data.get("invoke_expense_cost", 0),
                         "base_model": data.get("base_model", ""),
                     }
                 return simplified_agents
@@ -192,7 +246,7 @@ class AgentManager():
     def delete_agent(self, agent_name: str) -> int:
         agent = self.get_agent(agent_name)
         
-        self.budget_manager.remove_from_expense(agent.creation_cost)
+        self.budget_manager.remove_from_resource_expense(agent.create_resource_cost)
         agent.delete_agent()
         
         del self._agents[agent_name]
@@ -206,18 +260,31 @@ class AgentManager():
                     f.write(json.dumps(models, indent=4))
         except Exception as e:
             output_assistant_response(f"Error deleting agent: {e}")
-        return self.budget_manager.get_current_remaining_budget()
+        return (self.budget_manager.get_current_remaining_resource_budget(), 
+                self.budget_manager.get_current_remaining_expense_budget())
     
     def ask_agent(self, agent_name: str, prompt: str) -> Tuple[str,int]:
         agent = self.get_agent(agent_name)
         
-        self.validate_budget(agent.invoke_cost)
+        self.validate_budget(agent.invoke_resource_cost, 
+                             agent.invoke_expense_cost)
+        
+        self.budget_manager.add_to_expense_budget(agent.invoke_expense_cost)
 
         response = agent.ask_agent(prompt)        
-        return (response, self.budget_manager.get_current_remaining_budget())
+        return (response, 
+                self.budget_manager.get_current_remaining_resource_budget(), 
+                self.budget_manager.get_current_remaining_expense_budget())
     
-    def _save_agent(self, agent_name: str, base_model: str, system_prompt: str, 
-                    description: str = "", create_cost: float = 0, invoke_cost: float = 0, 
+    def _save_agent(self, 
+                    agent_name: str, 
+                    base_model: str, 
+                    system_prompt: str, 
+                    description: str = "", 
+                    create_resource_cost: float = 0, 
+                    invoke_resource_cost: float = 0, 
+                    create_expense_cost: float = 0,
+                    invoke_expense_cost: float = 0,
                     **additional_params) -> None:
         """Save a single agent to the models.json file"""
         try:
@@ -236,8 +303,10 @@ class AgentManager():
                 "base_model": base_model,
                 "description": description,
                 "system_prompt": system_prompt,
-                "create_cost": create_cost,
-                "invoke_cost": invoke_cost,
+                "create_resource_cost": create_resource_cost,
+                "invoke_resource_cost": invoke_resource_cost,
+                "create_expense_cost": create_expense_cost,
+                "invoke_expense_cost": invoke_expense_cost,
             }
             
             # Add any additional parameters that were passed
@@ -276,8 +345,10 @@ class AgentManager():
                     continue
                 base_model = data["base_model"]
                 system_prompt = data["system_prompt"]
-                creation_cost = data["create_cost"]
-                invoke_cost = data["invoke_cost"]
+                create_resource_cost = data.get("create_resource_cost", 0)
+                invoke_resource_cost = data.get("invoke_resource_cost", 0)
+                create_expense_cost = data.get("create_expense_cost", 0)
+                invoke_expense_cost = data.get("invoke_expense_cost", 0)
                 model_type = self._get_agent_type(base_model)
                 manager_class = self._agent_types.get(model_type)
                 
@@ -288,16 +359,20 @@ class AgentManager():
                         base_model, 
                         system_prompt, 
                         description=data.get("description", ""),
-                        create_cost=creation_cost,
-                        invoke_cost=invoke_cost,
+                        create_resource_cost=create_resource_cost,
+                        invoke_resource_cost=invoke_resource_cost,
+                        create_expense_cost=create_expense_cost,
+                        invoke_expense_cost=invoke_expense_cost,
                         **data.get("additional_params", {})
                     )
                     self._agents[name] = manager_class(
                         name, 
                         base_model,
                         system_prompt,
-                        creation_cost,
-                        invoke_cost
+                        create_resource_cost,
+                        invoke_resource_cost,
+                        create_expense_cost,
+                        invoke_expense_cost,
                     )
         except Exception as e:
             output_assistant_response(f"Error loading agents: {e}")

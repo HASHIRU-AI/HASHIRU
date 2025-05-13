@@ -45,21 +45,25 @@ class AgentCreator():
         system_prompt = kwargs.get("system_prompt")
         description = kwargs.get("description")
         model_costs = AgentCostManager().get_costs()
-        create_cost = model_costs[base_model]["create_cost"]
         if base_model not in model_costs:
             print(f"[WARN] Auto-selected model '{base_model}' not in schema. Falling back to gemini-2.0-flash")
             base_model = "gemini-2.0-flash"
-        invoke_cost = model_costs[base_model]["invoke_cost"]
+        create_resource_cost = model_costs[base_model].get("create_resource_cost", 0)
+        invoke_resource_cost = model_costs[base_model].get("invoke_resource_cost", 0)
+        create_expense_cost = model_costs[base_model].get("create_expense_cost", 0)
+        invoke_expense_cost = model_costs[base_model].get("invoke_expense_cost", 0)
 
         agent_manager = AgentManager()
         try:
-            _, remaining_budget = agent_manager.create_agent(
+            _, remaining_resource_budget, remaining_expense_budget = agent_manager.create_agent(
                 agent_name=agent_name,
                 base_model=base_model,
                 system_prompt=system_prompt,
                 description=description,
-                create_cost=create_cost,
-                invoke_cost=invoke_cost
+                create_resource_cost=create_resource_cost,
+                invoke_resource_cost=invoke_resource_cost,
+                create_expense_cost=create_expense_cost,
+                invoke_expense_cost=invoke_expense_cost
             )
         except ValueError as e:
             return {
@@ -71,5 +75,6 @@ class AgentCreator():
         return {
             "status": "success",
             "message": "Agent successfully created",
-            "remaining_budget": remaining_budget,
+            "remaining_resource_budget": remaining_resource_budget,
+            "remaining_expense_budget": remaining_expense_budget
         }

@@ -4,15 +4,18 @@ import psutil
 
 @singleton
 class BudgetManager():
-    TOTAL_BUDGET = 100
+    total_resource_budget = 100
+    current_resource_usage = 0
+    total_expense_budget = 1000
     current_expense = 0
     is_budget_initialized = False
+    
     def __init__(self):
         if not self.is_budget_initialized:
-            self.TOTAL_BUDGET = self.set_total_budget()
+            self.total_resource_budget = self.calculate_total_budget()
             self.is_budget_initialized = True
         
-    def set_total_budget(self)-> int:
+    def calculate_total_budget(self)-> int:
         total_mem = 0
         if torch.cuda.is_available():
             gpu_index = torch.cuda.current_device()
@@ -28,24 +31,41 @@ class BudgetManager():
             print(f"Total RAM: {total_mem:.2f} GB")
         return round((total_mem / 16) * 100)
 
-    def get_total_budget(self):
-        return self.TOTAL_BUDGET
+    def get_total_resource_budget(self):
+        return self.total_resource_budget
+    
+    def get_current_resource_usage(self):
+        return self.current_resource_usage
+    
+    def get_current_remaining_resource_budget(self):
+        return self.total_resource_budget - self.current_resource_usage
+    
+    def can_spend_resource(self, cost):
+        return True if self.current_resource_usage + cost <= self.total_resource_budget else False
+        
+    def add_to_resource_budget(self, cost):
+        if not self.can_spend_resource(cost):
+            raise Exception("No resource budget remaining")
+        self.current_resource_usage += cost
+    
+    def remove_from_resource_expense(self, cost):
+        if self.current_resource_usage - cost < 0:
+            raise Exception("Not enough resource budget to remove")
+        self.current_resource_usage -= cost
+    
+    def get_total_expense_budget(self):
+        return self.total_expense_budget
     
     def get_current_expense(self):
         return self.current_expense
     
-    def get_current_remaining_budget(self):
-        return self.TOTAL_BUDGET - self.current_expense
+    def get_current_remaining_expense_budget(self):
+        return self.total_expense_budget - self.current_expense
     
-    def can_spend(self, cost):
-        return True if self.current_expense + cost <= self.TOTAL_BUDGET else False
-        
-    def add_to_expense(self, cost):
-        if not self.can_spend(cost):
-            raise Exception("No budget remaining")
+    def can_spend_expense(self, cost):
+        return True if self.current_expense + cost <= self.total_expense_budget else False
+    
+    def add_to_expense_budget(self, cost):
+        if not self.can_spend_expense(cost):
+            raise Exception("No expense budget remaining")
         self.current_expense += cost
-    
-    def remove_from_expense(self, cost):
-        if self.current_expense - cost < 0:
-            raise Exception("Cannot remove more than current expense")
-        self.current_expense -= cost
