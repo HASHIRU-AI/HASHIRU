@@ -8,6 +8,8 @@
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{tabularx}
 \usepackage{tcolorbox}
 \tcbuselibrary{skins}
 
@@ -262,7 +264,7 @@ We evaluate using quantitative and qualitative metrics:
 \label{sec:examples}
 In this section, we provide examples of how HASHIRU operates in practice, demonstrating its dynamic management, hybrid intelligence, memory and autonomous tool creation capabilities.
 
-\subsection{Example 3: Memory}
+\subsection{Example 1: Memory}
 \begin{figure}[h]
     \centering
     \begin{minipage}{0.45\textwidth}
@@ -319,6 +321,7 @@ In this section, we provide examples of how HASHIRU operates in practice, demons
         \begin{itemize}
             \item \href{https://www.sprinklesandsprouts.com/garlic-bacon-pasta/}{Garlic Bacon Pasta}
             \item \href{https://www.theburntbuttertable.com/creamy-bacon-pasta-sauce/}{Creamy Bacon Pasta Sauce}
+            \item \dots
         \end{itemize}
         
         Would you like me to get the content of any of these websites?
@@ -326,6 +329,138 @@ In this section, we provide examples of how HASHIRU operates in practice, demons
     \end{minipage}
     \caption{HASHIRU updating and deleting its memory based on user input. Continuation of Figure \ref{fig:memory_example}.}
     \label{fig:memory_example2}
+\end{figure}
+
+\subsection{Example 2: Novelty Assessment via Coordinated Tool Use}
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}{0.95\textwidth}
+    
+    \begin{userbox}
+    Is this idea novel: ``a dynamically managed, resource-aware hierarchical multi-agent system that prioritizes cost-efficient local models, integrates autonomous tool creation, and employs an internal economic model to balance performance, adaptability, and stability in intelligent task coordination''?
+    \end{userbox}
+    
+    \begin{assistantbox}
+    To determine if the idea is novel, I will break it down into smaller parts and search for each part. Then I will combine the results to see if the whole idea is novel.
+    
+    Here's the breakdown:
+    \begin{itemize}
+        \item Dynamically managed multi-agent system
+        \item Resource-aware hierarchical multi-agent system
+        \item Cost-efficient local models in multi-agent systems
+        \item Autonomous tool creation in multi-agent systems
+        \item Internal economic model for multi-agent systems
+    \end{itemize}
+    
+    I will use the \texttt{GoogleSearchTool} to search for each of these parts.
+    
+    \texttt{Invoking GoogleSearchTool with \{'query': 'dynamically managed multi-agent system'\}}
+    
+    \texttt{Invoking GoogleSearchTool with \{'query': 'resource-aware hierarchical multi-agent system'\}}
+    
+    \texttt{Invoking GoogleSearchTool with \{'query': 'cost-efficient local models in multi-agent systems'\}}
+    
+    \texttt{Invoking GoogleSearchTool with \{'query': 'autonomous tool creation in multi-agent systems'\}}
+    
+    \texttt{Invoking GoogleSearchTool with \{'query': 'internal economic model for multi-agent systems'\}}
+    
+    The search results indicate that each of the individual components of the idea has been explored in existing research. However, the novelty lies in the specific combination and integration of these elements.
+    
+    To further assess the novelty, I will use the \texttt{ArxivTool} to search for papers that combine multiple aspects of the idea.
+    
+    \texttt{Invoking ArxivTool with \{'query': 'dynamically managed resource-aware hierarchical multi-agent system'\}}
+    
+    \texttt{Invoking ArxivTool with \{'query': 'multi-agent system autonomous tool creation economic model'\}}
+    
+    The ArxivTool results show some papers that touch on combinations of these concepts, but none seem to address the entire idea as presented. Specifically, the combination of dynamic management, resource-awareness, hierarchical structure, cost-efficient local models, autonomous tool creation, and an internal economic model appears to be a novel synthesis.
+    
+    \textbf{Therefore, based on the search results, the idea seems novel.}
+    \end{assistantbox}
+    \caption{HASHIRU assessing the novelty of a complex idea by breaking it down into components and searching for each part.}
+    \end{minipage}
+    \label{fig:novelty_assessment}
+\end{figure}
+
+\clearpage
+\twocolumn
+    
+\begin{figure}
+    \centering
+    \begin{minipage}{0.95\textwidth}
+    \begin{userbox}
+        Which papers mention the ideas?
+        \end{userbox}
+        
+        \begin{assistantbox}
+        To provide a comprehensive answer, I will analyze the summaries of the papers returned by the ArxivTool and GoogleSearchTool to identify which papers mention the key ideas in your prompt.
+        
+        \textbf{The key ideas are:}
+        \begin{itemize}
+            \item Dynamically managed
+            \item Resource-aware
+            \item Hierarchical
+            \item Cost-efficient local models
+            \item Autonomous tool creation
+            \item Internal economic model
+        \end{itemize}
+        
+        I will go through each paper and identify which of these ideas are mentioned.
+        
+        \texttt{Invoking ArxivTool with \{'query': 'dynamically managed resource-aware hierarchical multi-agent system'\}} \\
+        \texttt{Invoking ArxivTool with \{'query': 'multi-agent system autonomous tool creation economic model'\}}
+        
+        \textbf{ArxivTool Results (Query: ``dynamically managed resource-aware hierarchical multi-agent system'')}
+        
+        \begin{itemize}
+            \item \textit{Hierarchical stock assessment methods improve management performance in multi-species, data-limited fisheries} \\
+            Hierarchical: Yes \\
+            Dynamically managed: Implied through ``management performance''
+            
+            \item \textit{Hierarchical Reinforcement Learning for Optimal Agent Grouping in Cooperative Systems} \\
+            Hierarchical: Yes \\
+            Dynamically managed: Yes, through ``dynamic and optimal policy adjustments.''
+            
+            \item \textit{Efficient Hierarchical Storage Management Framework Empowered by Reinforcement Learning} \\
+            Hierarchical: Yes \\
+            Cost-efficient local models: Implied through ``efficient'' \\
+            Dynamically managed: Yes, through ``dynamic migration policy''
+            
+            \item \textit{Autonomous Deep Agent} \\
+            Hierarchical: Yes \\
+            Autonomous tool creation: Yes, via ``Autonomous API \& Tool Creation (AATC) system'' \\
+            Dynamically managed: Yes, ``dynamically decomposes high-level objectives''
+            
+            \item \textit{Adaptive Network Intervention for Complex Systems: A Hierarchical Graph Reinforcement Learning Approach} \\
+            Hierarchical: Yes \\
+            Dynamically managed: Yes, through ``dynamic networks''
+        \end{itemize}
+        
+        \textbf{ArxivTool Results (Query: ``multi-agent system autonomous tool creation economic model'')}
+        
+        \begin{itemize}
+            \item \textit{Autonomics: an autonomous and intelligent economic platform and next generation money tool} \\
+            Autonomous tool creation: Implied \\
+            Internal economic model: Yes
+            
+            \item \textit{From Single Agent to Multi-Agent: Improving Traffic Signal Control} \\
+            No relevant keywords mentioned.
+            
+            \item \textit{Autonomous Deep Agent} \\
+            Hierarchical: Yes \\
+            Autonomous tool creation: Yes
+            
+            \item \textit{Beyond the Sum: Unlocking AI Agents Potential Through Market Forces} \\
+            Internal economic model: Yes
+            
+            \item \textit{Particle-Hole Creation in Condensed Matter: A Conceptual Framework for Modeling Money-Debt Dynamics in Economics} \\
+            Internal economic model: Yes
+        \end{itemize}
+        
+        \end{assistantbox}
+        \caption{Continuation of Figure \ref{fig:novelty_assessment}. HASHIRU analyzing the summaries of the papers returned by the ArxivTool and GoogleSearchTool to identify which papers mention the key ideas in the user prompt.}
+    \end{minipage}
+
 \end{figure}
 
 \end{document}
