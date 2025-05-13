@@ -79,8 +79,8 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           set -e
-          git config user.name  "github-actions"
-          git config user.email "github-actions@github.com"
+          git config user.name  "HARSHIL PATEL"
+          git config user.email "hpppatel@ucdavis.edu"
 
           # If the file is NOT in the current Git index, add‑commit‑push.
           if ! git ls-files --error-unmatch src/cost_benefit.py >/dev/null 2>&1; then
