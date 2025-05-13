@@ -25,6 +25,11 @@ class AgentCostManager():
             "create_resource_cost": 20,
             "invoke_resource_cost": 50,
         },
+        "deepseek-r1": {
+            "description": "7 Billion reasoning model",
+            "create_resource_cost": 20,
+            "invoke_resource_cost": 50,
+        },
         "gemini-2.5-flash-preview-04-17": {
             "description": "Adaptive thinking, cost efficiency",
             "create_expense_cost": 20,

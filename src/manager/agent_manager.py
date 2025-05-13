@@ -326,6 +326,8 @@ class AgentManager():
             return "ollama"
         elif base_model == "mistral":
             return "ollama"
+        elif base_model == "deepseek-r1":
+            return "ollama"
         elif "gemini" in base_model:
             return "gemini"
         else:
