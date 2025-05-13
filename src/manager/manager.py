@@ -23,7 +23,8 @@ class GeminiManager:
                  system_prompt_file="./src/models/system4.prompt",
                  gemini_model="gemini-2.5-pro-exp-03-25",
                  local_only=False, allow_tool_creation=True,
-                 cloud_only=False, use_economy=True):
+                 cloud_only=False, use_economy=True,
+                 use_memory=True):
         load_dotenv()
         self.toolsLoader: ToolManager = toolsLoader
         if not toolsLoader:
@@ -33,12 +34,13 @@ class GeminiManager:
         self.allow_tool_creation = allow_tool_creation
         self.cloud_only = cloud_only
         self.use_economy = use_economy
+        self.use_memory = use_memory
 
         self.API_KEY = os.getenv("GEMINI_KEY")
         self.client = genai.Client(api_key=self.API_KEY)
         self.toolsLoader.load_tools()
         self.model_name = gemini_model
-        self.memory_manager = MemoryManager()
+        self.memory_manager = MemoryManager() if use_memory else None
         with open(system_prompt_file, 'r', encoding="utf8") as f:
             self.system_prompt = f.read()
         self.messages = []
@@ -158,6 +160,8 @@ class GeminiManager:
         return formatted_history
 
     def get_k_memories(self, query, k=5, threshold=0.0):
+        if not self.use_memory:
+            return []
         memories = MemoryManager().get_memories()
         for i in range(len(memories)):
             memories[i] = memories[i]['memory']
@@ -165,7 +169,12 @@ class GeminiManager:
             return []
         top_k = min(k, len(memories))
         # Semantic Retrieval with GPU
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if torch.cuda.is_available():
+            device = 'cuda'
+        elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+            device = 'mps'
+        else:
+            device = 'cpu'
         print(f"Using device: {device}")
         model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
         doc_embeddings = model.encode(memories, convert_to_tensor=True, device=device)
@@ -180,18 +189,19 @@ class GeminiManager:
         return results
     
     def run(self, messages):
-        memories = self.get_k_memories(messages[-1]['content'], k=5, threshold=0.1)
-        if len(memories) > 0:
-            messages.append({
-                "role": "memories",
-                "content": f"{memories}",
-            })
-            messages.append({
-                "role": "assistant",
-                "content": f"Memories: {memories}",
-                "metadata": {"title": "Memories"}
-            })
-            yield messages
+        if self.use_memory:
+            memories = self.get_k_memories(messages[-1]['content'], k=5, threshold=0.1)
+            if len(memories) > 0:
+                messages.append({
+                    "role": "memories",
+                    "content": f"{memories}",
+                })
+                messages.append({
+                    "role": "assistant",
+                    "content": f"Memories: {memories}",
+                    "metadata": {"title": "Memories"}
+                })
+                yield messages
         yield from self.invoke_manager(messages)
     
     def invoke_manager(self, messages):
