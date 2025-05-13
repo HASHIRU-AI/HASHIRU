@@ -8,6 +8,13 @@
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{hyperref}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+
+% Define styles for user and assistant boxes
+\newtcolorbox{userbox}{colback=blue!5,colframe=blue!40!black,title=User}
+\newtcolorbox{assistantbox}{colback=gray!10,colframe=black,title=Assistant}
+
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
@@ -249,5 +256,76 @@ We evaluate using quantitative and qualitative metrics:
 
 \bibliography{references}
 \bibliographystyle{plain}
+
+\appendix
+\section{Examples of HASHIRU in Action}
+\label{sec:examples}
+In this section, we provide examples of how HASHIRU operates in practice, demonstrating its dynamic management, hybrid intelligence, memory and autonomous tool creation capabilities.
+
+\subsection{Example 3: Memory}
+\begin{figure}[h]
+    \centering
+    \begin{minipage}{0.45\textwidth}
+    \begin{userbox}
+    I am vegetarian.
+    \end{userbox}
+    
+    \begin{assistantbox}
+    Okay, I'll keep that in mind. I'll store this preference in my memory.
+    
+    \texttt{Invoking MemoryManager with \{`memory': `The user is vegetarian.', `action': `add\_memory', `key': `vegetarian'\}}
+    
+    I have stored that you are vegetarian. How can I help you today?
+    \end{assistantbox}
+    
+    \begin{userbox}
+    Give me a bacon pasta recipe.
+    \end{userbox}
+    
+    \begin{assistantbox}
+    Memories
+    
+    Memories: [`The user is vegetarian.']
+    
+    My apologies, but I cannot provide a bacon pasta recipe since you are vegetarian. Would you like a vegetarian pasta recipe instead?
+    \end{assistantbox}
+    \end{minipage}
+    \caption{HASHIRU enforcing a stored dietary preference in dialogue using its Memory Function.}
+    \label{fig:memory_example}
+    \end{figure}
+
+\begin{figure}[ht]
+    \centering
+    \begin{minipage}
+    {0.45\textwidth}
+    \begin{userbox}
+        I can eat bacon actually
+        \end{userbox}
+        
+        \begin{assistantbox}
+        Memories
+        
+        Memories: [’The user is vegetarian.’]
+        
+        I see. My apologies for the confusion. I had a conflicting memory that you were vegetarian. I will remove that memory and proceed with finding a bacon pasta recipe.
+        
+        \texttt{Invoking MemoryManager with \{'action': 'delete\_memory', 'key': 'The user is vegetarian.'\}}
+        
+        OK, I have removed the memory. Now I will search for a bacon pasta recipe.
+        
+        \texttt{Invoking GoogleSearchTool with \{'query': 'bacon pasta recipe'\}}
+        
+        Here are some bacon pasta recipes I found:
+        \begin{itemize}
+            \item \href{https://www.sprinklesandsprouts.com/garlic-bacon-pasta/}{Garlic Bacon Pasta}
+            \item \href{https://www.theburntbuttertable.com/creamy-bacon-pasta-sauce/}{Creamy Bacon Pasta Sauce}
+        \end{itemize}
+        
+        Would you like me to get the content of any of these websites?
+        \end{assistantbox}
+    \end{minipage}
+    \caption{HASHIRU updating and deleting its memory based on user input. Continuation of Figure \ref{fig:memory_example}.}
+    \label{fig:memory_example2}
+\end{figure}
 
 \end{document}
