@@ -5,6 +5,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 from mistralai import Mistral
+from groq import Groq
 from src.manager.utils.streamlit_interface import output_assistant_response
 
 
@@ -136,3 +137,42 @@ class MistralModelManager(AbstractModelManager):
     def delete(self):
         # Implement model deletion logic (if applicable)
         self.model = None
+
+class GroqModelManager(AbstractModelManager):
+    def __init__(self, api_key, model_name="llama-3.3-70b-versatile", system_prompt_file="system.prompt"):
+        super().__init__(model_name, system_prompt_file)
+        self.client = Groq(api_key=api_key)
+
+    def is_model_loaded(self, model):
+        # Groq models are referenced by name; assume always available if name matches
+        return model == self.model_name
+
+    def create_model(self, base_model=None, context_window=4096, temperature=0):
+        # Groq does not require explicit creation; no-op
+        if not self.is_model_loaded(self.model_name):
+            output_assistant_response(f"Model {self.model_name} is not available on Groq.")
+
+    def request(self, prompt, temperature=0, context_window=4096):
+        # Read system instruction
+        with open(self.system_prompt_file, 'r') as f:
+            system_instruction = f.read()
+
+        # Build messages
+        messages = [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt}
+        ]
+
+        # Send request
+        response = self.client.chat.completions.create(
+            messages=messages,
+            model=self.model_name,
+            temperature=temperature
+        )
+
+        # Extract and return content
+        return response.choices[0].message.content
+
+    def delete(self):
+        # No deletion support for Groq-managed models
+        output_assistant_response(f"Deletion not supported for Groq model {self.model_name}.")

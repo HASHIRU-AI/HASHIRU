@@ -8,6 +8,7 @@ from src.manager.utils.streamlit_interface import output_assistant_response
 from google import genai
 from google.genai import types
 from google.genai.types import *
+from groq import Groq
 import os
 from dotenv import load_dotenv
 from src.manager.budget_manager import BudgetManager
@@ -119,6 +120,44 @@ class GeminiAgent(Agent):
     
     def delete_agent(self):
         self.messages = []
+
+class GroqAgent(Agent):
+    def __init__(
+        self,
+        agent_name: str,
+        base_model: str = "llama-3.3-70b-versatile",
+        system_prompt: str = "system.prompt",
+    ):
+        self.agent_name = agent_name
+        self.base_model = base_model
+        # load API key from environment
+        api_key = os.getenv("GROQ_API_KEY")
+        self.client = Groq(api_key=api_key)
+        # read system prompt content
+        with open(system_prompt, 'r') as f:
+            self.system_instruction = f.read()
+
+    def create_model(self) -> None:
+        # Groq models are available by name; no creation step
+        pass
+
+    def ask_agent(self, prompt: str) -> str:
+        messages = [
+            {"role": "system", "content": self.system_instruction},
+            {"role": "user", "content": prompt},
+        ]
+        response = self.client.chat.completions.create(
+            messages=messages,
+            model=self.base_model,
+        )
+        result = response.choices[0].message.content
+        print(result)
+        return result
+
+    def delete_agent(self) -> None:
+        # No delete support for Groq
+        pass
+
 @singleton
 class AgentManager():
     budget_manager: BudgetManager = BudgetManager()
@@ -126,7 +165,8 @@ class AgentManager():
         self._agents: Dict[str, Agent] = {}
         self._agent_types ={
             "ollama": OllamaAgent,
-            "gemini": GeminiAgent
+            "gemini": GeminiAgent,
+            "groq": GroqAgent,
         }
         
         self._load_agents()
@@ -330,6 +370,8 @@ class AgentManager():
             return "ollama"
         elif "gemini" in base_model:
             return "gemini"
+        elif "groq" in base_model:
+            return "groq"
         else:
             return "unknown"
     
