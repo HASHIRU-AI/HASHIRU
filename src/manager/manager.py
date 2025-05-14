@@ -11,6 +11,7 @@ import gradio as gr
 from sentence_transformers import SentenceTransformer
 import torch
 from src.tools.default_tools.memory_manager import MemoryManager
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -134,10 +135,16 @@ class GeminiManager:
             # Skip thinking messages (messages with metadata)
             if not (message.get("role") == "assistant" and "metadata" in message):
                 role = "model"
-                parts = [types.Part.from_text(text=message.get("content", ""))]
                 match message.get("role"):
                     case "user":
                         role = "user"
+                        if isinstance(message["content"], tuple):
+                            path = message["content"][0]
+                            file = self.client.files.upload(file=path)
+                            formatted_history.append(file)
+                            continue
+                        else:
+                            parts = [types.Part.from_text(text=message.get("content", ""))]
                     case "memories":
                         role = "user"
                         parts = [types.Part.from_text(text="Relevant memories: "+message.get("content", ""))]
@@ -153,6 +160,7 @@ class GeminiManager:
                         continue
                     case _:
                         role = "model"
+                        parts = [types.Part.from_text(text=message.get("content", ""))]
                 formatted_history.append(types.Content(
                     role=role,
                     parts=parts
@@ -206,17 +214,19 @@ class GeminiManager:
     
     def invoke_manager(self, messages):
         chat_history = self.format_chat_history(messages)
+        print(f"Chat history: {chat_history}")
         logger.debug(f"Chat history: {chat_history}")
         try:
             response = suppress_output(self.generate_response)(chat_history)
         except Exception as e:
             messages.append({
                 "role": "assistant",
-                "content": f"Error generating response: {e}"
+                "content": f"Error generating response: {str(e)}",
+                "metadata": {"title": "Error generating response"}
             })
-            logger.error(f"Error generating response", e)
+            logger.error(f"Error generating response{e}")
             yield messages
-            return
+            return messages
         logger.debug(f"Response: {response}")
 
         if (not response.text and not response.function_calls):
@@ -250,5 +260,4 @@ class GeminiManager:
                     or (call.get("role") == "assistant" and call.get("metadata", {}).get("status") == "done")):
                     messages.append(call)
             yield from self.invoke_manager(messages)
-            return
         yield messages

@@ -25,15 +25,22 @@ css = """
 
 
 def run_model(message, history):
-    history.append({
-        "role": "user",
-        "content": message,
-    })
+    print(f"User: {message}")
+    print(f"History: {history}")
+    if 'text' in message:
+        history.append({
+            "role": "user",
+            "content": message['text']
+        })
+    if 'files' in message:
+        for file in message['files']:
+            history.append({
+                "role": "user",
+                "content": (file,)
+            })
+    print(f"History: {history}")
     yield "", history
     for messages in model_manager.run(history):
-        for message in messages:
-            if message.get("role") == "summary":
-                print(f"Summary: {message.get('content', '')}")
         yield "", messages
 
 
@@ -72,7 +79,12 @@ with gr.Blocks(css=css, fill_width=True, fill_height=True) as demo:
                 render_markdown=True,
                 placeholder="Type your message here...",
             )
-            gr.ChatInterface(fn=run_model, type="messages", chatbot=chatbot,
-                             additional_outputs=[chatbot], save_history=True)
+            gr.ChatInterface(fn=run_model,
+                             type="messages",
+                             chatbot=chatbot,
+                             additional_outputs=[chatbot],
+                             save_history=True,
+                             editable=True,
+                             multimodal=True,)
 if __name__ == "__main__":
     demo.launch()
