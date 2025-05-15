@@ -102,7 +102,7 @@ class GeminiManager:
                 name=function_call.name,
                 response={"result": toolResponse})
             try:
-                if function_call.name == "ToolCreator":
+                if function_call.name == "ToolCreator" or function_call.name == "ToolDeletor":
                     self.toolsLoader.load_tools()
             except Exception as e:
                 logger.info(f"Error loading tools: {e}. Deleting the tool.")
