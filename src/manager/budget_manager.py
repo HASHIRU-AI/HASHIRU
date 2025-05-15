@@ -6,7 +6,7 @@ import psutil
 class BudgetManager():
     total_resource_budget = 100
     current_resource_usage = 0
-    total_expense_budget = 1000
+    total_expense_budget = 10
     current_expense = 0
     is_budget_initialized = False
     
@@ -17,18 +17,20 @@ class BudgetManager():
         
     def calculate_total_budget(self)-> int:
         total_mem = 0
+        gpu_mem = 0
+        ram_mem = 0
         if torch.cuda.is_available():
             gpu_index = torch.cuda.current_device()
             gpu_name = torch.cuda.get_device_name(gpu_index)
             total_vram = torch.cuda.get_device_properties(gpu_index).total_memory
-            total_mem = total_vram /1024 ** 3
+            gpu_mem = total_vram /1024 ** 3
             print(f"GPU detected: {gpu_name}")
-            print(f"Total VRAM: {total_mem:.2f} GB")
-        else:
-            mem = psutil.virtual_memory()
-            total_mem = mem.total/ 1024 ** 3
-            print("No GPU detected. Using CPU.")
-            print(f"Total RAM: {total_mem:.2f} GB")
+            print(f"Total VRAM: {gpu_mem:.2f} GB")
+        mem = psutil.virtual_memory()
+        ram_mem = mem.total/ 1024 ** 3
+        print("No GPU detected. Using CPU.")
+        print(f"Total RAM: {ram_mem:.2f} GB")
+        total_mem = gpu_mem + ram_mem
         return round((total_mem / 16) * 100)
 
     def get_total_resource_budget(self):
