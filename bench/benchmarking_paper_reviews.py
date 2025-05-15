@@ -64,25 +64,26 @@ def benchmark_paper_reviews(
     for idx, row in df.iterrows():
         paper_id = row[id_col]
         title = row["Title"]
-        prompt = "Create THREE agents with different personalities, expertise, and review styles. " \
+        prompt = "Create THREE agents with relevant personalities, expertise, and review styles. " \
                 "Each agent should provide a review of the paper, and recommend Accept/Reject for ICLR 2023. " \
                 "The review should be detailed and include strengths and weaknesses. " \
-                "You can use ArxivTool and WikipediaTool to get more information. " \
+                "You MUST use ArxivTool and WikipediaTool to get more information about novelty and correctness. " \
+                "GIVE A FINAL DECISION in the form of \"FINAL DECISION: <Accept/Reject>\". " \
                 "The paper title is: " + title + "\n\n" + row[text_col]
         print(f"[{idx+1}/{len(df)}] Paper ID: {paper_id}")
 
         try:
             start = time.time()
-            resp = client.predict(
-                messages=[{"role":"user","content": prompt}],
-                api_name="/run"
+            resp, history = client.predict(
+                message={"text": prompt, "files": []},
+                api_name="/chat"
             )
             elapsed = time.time() - start
 
             result = {
                 "paper_id": paper_id,
                 "prompt_snippet": prompt[:200],
-                "agent_review": resp,
+                "agent_review": history,
                 "ground_truth": row["Decision"],
                 "response_time": elapsed
             }
@@ -91,7 +92,7 @@ def benchmark_paper_reviews(
             with open(out_path, "a") as f:
                 f.write(json.dumps(result) + "\n")
 
-            print(f" → {elapsed:.2f}s, review length {len(resp)} chars")
+            print(f" → {elapsed:.2f}s, review length {len(history)} chars")
             results.append(result)
 
             # small delay
@@ -105,6 +106,6 @@ def benchmark_paper_reviews(
 if __name__ == "__main__":
     # example usage: adjust path & sample count as needed
     benchmark_paper_reviews(
-        csv_path="ICLR_2023.csv",
+        csv_path="bench/data/ICLR_2023.csv",
         num_samples=1
     )
