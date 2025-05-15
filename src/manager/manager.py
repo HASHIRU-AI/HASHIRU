@@ -140,8 +140,13 @@ class GeminiManager:
                         role = "user"
                         if isinstance(message["content"], tuple):
                             path = message["content"][0]
-                            file = self.client.files.upload(file=path)
-                            formatted_history.append(file)
+                            try:
+                                file = self.client.files.upload(file=path)
+                                formatted_history.append(file)
+                            except Exception as e:
+                                logger.error(f"Error uploading file: {e}")
+                                formatted_history.append(
+                                    types.Part.from_text(text="Error uploading file: "+str(e)))
                             continue
                         else:
                             parts = [types.Part.from_text(text=message.get("content", ""))]
@@ -197,19 +202,22 @@ class GeminiManager:
         return results
     
     def run(self, messages):
-        if self.use_memory:
-            memories = self.get_k_memories(messages[-1]['content'], k=5, threshold=0.1)
-            if len(memories) > 0:
-                messages.append({
-                    "role": "memories",
-                    "content": f"{memories}",
-                })
-                messages.append({
-                    "role": "assistant",
-                    "content": f"Memories: {memories}",
-                    "metadata": {"title": "Memories"}
-                })
-                yield messages
+        try:
+            if self.use_memory:
+                memories = self.get_k_memories(messages[-1]['content'], k=5, threshold=0.1)
+                if len(memories) > 0:
+                    messages.append({
+                        "role": "memories",
+                        "content": f"{memories}",
+                    })
+                    messages.append({
+                        "role": "assistant",
+                        "content": f"Memories: {memories}",
+                        "metadata": {"title": "Memories"}
+                    })
+                    yield messages
+        except Exception as e:
+            pass
         yield from self.invoke_manager(messages)
     
     def invoke_manager(self, messages):
