@@ -188,7 +188,6 @@ class GeminiManager:
             device = 'mps'
         else:
             device = 'cpu'
-        print(f"Using device: {device}")
         model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
         doc_embeddings = model.encode(memories, convert_to_tensor=True, device=device)
         query_embedding = model.encode(query, convert_to_tensor=True, device=device)
@@ -196,7 +195,6 @@ class GeminiManager:
         scores, indices = torch.topk(similarity_scores, k=top_k)
         results = []
         for score, idx in zip(scores, indices):
-            print(memories[idx], f"(Score: {score:.4f})")
             if score >= threshold:
                 results.append(memories[idx])
         return results
@@ -222,7 +220,6 @@ class GeminiManager:
     
     def invoke_manager(self, messages):
         chat_history = self.format_chat_history(messages)
-        print(f"Chat history: {chat_history}")
         logger.debug(f"Chat history: {chat_history}")
         try:
             response = suppress_output(self.generate_response)(chat_history)
