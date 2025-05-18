@@ -36,7 +36,7 @@ class AskAgent():
         agent_manger = AgentManager()
 
         try:
-            agent_response, remaining_budget = agent_manger.ask_agent(agent_name=agent_name, prompt=prompt)
+            agent_response, remaining_resource_budget, remaining_expense_budget = agent_manger.ask_agent(agent_name=agent_name, prompt=prompt)
         except ValueError as e:
             return {
                 "status": "error",
@@ -49,5 +49,6 @@ class AskAgent():
             "status": "success",
             "message": "Agent has replied to the given prompt",
             "output": agent_response,
-            "remaining_budget": remaining_budget
+            "remaining_resource_budget": remaining_resource_budget,
+            "remaining_expense_budget": remaining_expense_budget
         }

@@ -33,7 +33,7 @@ class ToolDeletor():
         if not file_path.startswith("src/tools/user_tools/"):
             return {
                 "status": "error",
-                "message": "File path must start with tools/",
+                "message": "File path must start with src/tools/user_tools/",
                 "output": None
             }
         os = importlib.import_module("os")

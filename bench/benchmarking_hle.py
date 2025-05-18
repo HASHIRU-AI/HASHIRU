@@ -101,15 +101,15 @@ def benchmark_hle(num_samples=20, categories=None):
         # Send query to agent
         try:
             start_time = time.time()
-            response = client.predict(
-                messages=[{"role": "user", "content": prompt}],
-                api_name="/run"
+            response, history = client.predict(
+                message={"text": prompt, "files": []},
+                api_name="/chat"
             )
             end_time = time.time()
 
             target_answer_phrase = sample.get('answer', '').strip()
 
-            agent_final_response_content = get_last_assistant_content(response)
+            agent_final_response_content = get_last_assistant_content(history)
 
             is_correct = False
 
@@ -125,7 +125,7 @@ def benchmark_hle(num_samples=20, categories=None):
                 "category": category,
                 "input": prompt,
                 "target_output": sample.get('answer', ''),
-                "agent_full_response": response,
+                "agent_full_response": history,
                 "agent_final_response": agent_final_response_content,
                 "response_time": end_time - start_time,
                 "is_correct": is_correct

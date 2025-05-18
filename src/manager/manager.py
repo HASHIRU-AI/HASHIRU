@@ -1,9 +1,13 @@
+from enum import Enum, auto
+from typing import List
 from google import genai
 from google.genai import types
 from google.genai.types import *
 import os
 from dotenv import load_dotenv
 import sys
+from src.manager.agent_manager import AgentManager
+from src.manager.budget_manager import BudgetManager
 from src.manager.tool_manager import ToolManager
 from src.manager.utils.suppress_outputs import suppress_output
 import logging
@@ -11,6 +15,7 @@ import gradio as gr
 from sentence_transformers import SentenceTransformer
 import torch
 from src.tools.default_tools.memory_manager import MemoryManager
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -18,30 +23,59 @@ handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(handler)
 
 
-class GeminiManager:
-    def __init__(self, toolsLoader: ToolManager = None,
-                 system_prompt_file="./src/models/system4.prompt",
-                 gemini_model="gemini-2.5-pro-exp-03-25",
-                 local_only=False, allow_tool_creation=True,
-                 cloud_only=False, use_economy=True):
-        load_dotenv()
-        self.toolsLoader: ToolManager = toolsLoader
-        if not toolsLoader:
-            self.toolsLoader: ToolManager = ToolManager()
+class Mode(Enum):
+    ENABLE_AGENT_CREATION = auto()
+    ENABLE_LOCAL_AGENTS = auto()
+    ENABLE_CLOUD_AGENTS = auto()
+    ENABLE_TOOL_CREATION = auto()
+    ENABLE_TOOL_INVOCATION = auto()
+    ENABLE_RESOURCE_BUDGET = auto()
+    ENABLE_ECONOMY_BUDGET = auto()
+    ENABLE_MEMORY = auto()
 
-        self.local_only = local_only
-        self.allow_tool_creation = allow_tool_creation
-        self.cloud_only = cloud_only
-        self.use_economy = use_economy
+
+class GeminiManager:
+    def __init__(self, system_prompt_file="./src/models/system4.prompt",
+                 gemini_model="gemini-2.5-pro-exp-03-25",
+                 modes: List[Mode] = []):
+        load_dotenv()
+        self.budget_manager = BudgetManager()
+
+        self.toolsLoader: ToolManager = ToolManager()
+
+        self.agentManager: AgentManager = AgentManager()
 
         self.API_KEY = os.getenv("GEMINI_KEY")
         self.client = genai.Client(api_key=self.API_KEY)
-        self.toolsLoader.load_tools()
         self.model_name = gemini_model
         self.memory_manager = MemoryManager()
         with open(system_prompt_file, 'r', encoding="utf8") as f:
             self.system_prompt = f.read()
         self.messages = []
+        self.set_modes(modes)
+
+    def get_current_modes(self):
+        return [mode.name for mode in self.modes]
+
+    def set_modes(self, modes: List[Mode]):
+        self.modes = modes
+        self.budget_manager.set_resource_budget_status(
+            self.check_mode(Mode.ENABLE_RESOURCE_BUDGET))
+        self.budget_manager.set_expense_budget_status(
+            self.check_mode(Mode.ENABLE_ECONOMY_BUDGET))
+        self.toolsLoader.set_creation_mode(
+            self.check_mode(Mode.ENABLE_TOOL_CREATION))
+        self.toolsLoader.set_invocation_mode(
+            self.check_mode(Mode.ENABLE_TOOL_INVOCATION))
+        self.agentManager.set_creation_mode(
+            self.check_mode(Mode.ENABLE_AGENT_CREATION))
+        self.agentManager.set_local_invocation_mode(
+            self.check_mode(Mode.ENABLE_LOCAL_AGENTS))
+        self.agentManager.set_cloud_invocation_mode(
+            self.check_mode(Mode.ENABLE_CLOUD_AGENTS))
+
+    def check_mode(self, mode: Mode):
+        return mode in self.modes
 
     def generate_response(self, messages):
         tools = self.toolsLoader.getTools()
@@ -99,7 +133,8 @@ class GeminiManager:
                 name=function_call.name,
                 response={"result": toolResponse})
             try:
-                self.toolsLoader.load_tools()
+                if function_call.name == "ToolCreator" or function_call.name == "ToolDeletor":
+                    self.toolsLoader.load_tools()
             except Exception as e:
                 logger.info(f"Error loading tools: {e}. Deleting the tool.")
                 yield {
@@ -131,13 +166,36 @@ class GeminiManager:
             # Skip thinking messages (messages with metadata)
             if not (message.get("role") == "assistant" and "metadata" in message):
                 role = "model"
-                parts = [types.Part.from_text(text=message.get("content", ""))]
                 match message.get("role"):
                     case "user":
                         role = "user"
+                        if isinstance(message["content"], tuple):
+                            path = message["content"][0]
+                            try:
+                                image_bytes = open(path, "rb").read()
+                                parts = [
+                                    types.Part.from_bytes(
+                                        data=image_bytes,
+                                        mime_type="image/png",
+                                    ),
+                                ]
+                            except Exception as e:
+                                logger.error(f"Error uploading file: {e}")
+                                parts = [types.Part.from_text(
+                                    text="Error uploading file: "+str(e))]
+                            formatted_history.append(
+                                types.Content(
+                                    role=role,
+                                    parts=parts
+                                ))
+                            continue
+                        else:
+                            parts = [types.Part.from_text(
+                                text=message.get("content", ""))]
                     case "memories":
-                        role = "user"
-                        parts = [types.Part.from_text(text="Relevant memories: "+message.get("content", ""))]
+                        role = "model"
+                        parts = [types.Part.from_text(
+                            text="Relevant memories: "+message.get("content", ""))]
                     case "tool":
                         role = "tool"
                         formatted_history.append(
@@ -150,6 +208,8 @@ class GeminiManager:
                         continue
                     case _:
                         role = "model"
+                        parts = [types.Part.from_text(
+                            text=message.get("content", ""))]
                 formatted_history.append(types.Content(
                     role=role,
                     parts=parts
@@ -164,35 +224,46 @@ class GeminiManager:
             return []
         top_k = min(k, len(memories))
         # Semantic Retrieval with GPU
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print(f"Using device: {device}")
+        if torch.cuda.is_available():
+            device = 'cuda'
+        elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+            device = 'mps'
+        else:
+            device = 'cpu'
         model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
-        doc_embeddings = model.encode(memories, convert_to_tensor=True, device=device)
-        query_embedding = model.encode(query, convert_to_tensor=True, device=device)
-        similarity_scores = model.similarity(query_embedding, doc_embeddings)[0]
+        doc_embeddings = model.encode(
+            memories, convert_to_tensor=True, device=device)
+        query_embedding = model.encode(
+            query, convert_to_tensor=True, device=device)
+        similarity_scores = model.similarity(
+            query_embedding, doc_embeddings)[0]
         scores, indices = torch.topk(similarity_scores, k=top_k)
         results = []
         for score, idx in zip(scores, indices):
-            print(memories[idx], f"(Score: {score:.4f})")
             if score >= threshold:
                 results.append(memories[idx])
         return results
-    
+
     def run(self, messages):
-        memories = self.get_k_memories(messages[-1]['content'], k=5, threshold=0.1)
-        if len(memories) > 0:
-            messages.append({
-                "role": "memories",
-                "content": f"{memories}",
-            })
-            messages.append({
-                "role": "assistant",
-                "content": f"Memories: {memories}",
-                "metadata": {"title": "Memories"}
-            })
-            yield messages
+        try:
+            if self.check_mode(Mode.ENABLE_MEMORY) and len(messages) > 0:
+                memories = self.get_k_memories(
+                    messages[-1]['content'], k=5, threshold=0.1)
+                if len(memories) > 0:
+                    messages.append({
+                        "role": "memories",
+                        "content": f"{memories}",
+                    })
+                    messages.append({
+                        "role": "assistant",
+                        "content": f"Memories: {memories}",
+                        "metadata": {"title": "Memories"}
+                    })
+                    yield messages
+        except Exception as e:
+            pass
         yield from self.invoke_manager(messages)
-    
+
     def invoke_manager(self, messages):
         chat_history = self.format_chat_history(messages)
         logger.debug(f"Chat history: {chat_history}")
@@ -201,11 +272,12 @@ class GeminiManager:
         except Exception as e:
             messages.append({
                 "role": "assistant",
-                "content": f"Error generating response: {e}"
+                "content": f"Error generating response: {str(e)}",
+                "metadata": {"title": "Error generating response"}
             })
-            logger.error(f"Error generating response", e)
+            logger.error(f"Error generating response{e}")
             yield messages
-            return
+            return messages
         logger.debug(f"Response: {response}")
 
         if (not response.text and not response.function_calls):
@@ -214,6 +286,8 @@ class GeminiManager:
                 "content": "No response from the model.",
                 "metadata": {"title": "No response from the model."}
             })
+            yield messages
+            return messages
 
         # Attach the llm response to the messages
         if response.text is not None and response.text != "":
@@ -235,9 +309,8 @@ class GeminiManager:
         if response.function_calls:
             for call in self.handle_tool_calls(response):
                 yield messages + [call]
-                if (call.get("role") == "tool" 
-                    or (call.get("role") == "assistant" and call.get("metadata", {}).get("status") == "done")):
+                if (call.get("role") == "tool"
+                        or (call.get("role") == "assistant" and call.get("metadata", {}).get("status") == "done")):
                     messages.append(call)
             yield from self.invoke_manager(messages)
-            return
         yield messages

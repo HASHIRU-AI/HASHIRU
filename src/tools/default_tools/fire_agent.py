@@ -29,7 +29,7 @@ class FireAgent():
         agent_manager = AgentManager()
                 
         try:
-            remaining_budget = agent_manager.delete_agent(agent_name=agent_name)
+            remaining_resource_budget, remaining_expense_budget = agent_manager.delete_agent(agent_name=agent_name)
         except ValueError as e:
             return {
                 "status": "error",
@@ -40,5 +40,6 @@ class FireAgent():
         return {
             "status": "success",
             "message": "Agent successfully fired.",
-            "remaining_budget": remaining_budget
+            "remaining_resource_budget": remaining_resource_budget,
+            "remaining_expense_budget": remaining_expense_budget
         }

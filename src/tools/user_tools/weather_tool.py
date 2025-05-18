@@ -19,7 +19,7 @@ class WeatherApi():
             },
             "required": ["location"],
         },
-        "invoke_cost": 0.1,
+        "invoke_resource_cost": 0.1,
     }
 
     def run(self, **kwargs):
