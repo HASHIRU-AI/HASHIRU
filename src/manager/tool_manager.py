@@ -55,14 +55,30 @@ class Tool:
 class ToolManager:
     toolsImported: List[Tool] = []
     budget_manager: BudgetManager = BudgetManager()
+    is_creation_enabled: bool = True
+    is_invocation_enabled: bool = True
 
     def __init__(self):
         self.load_tools()
         self._output_budgets()
     
+    def set_creation_mode(self, status: bool):
+        self.is_creation_enabled = status
+        if status:
+            output_assistant_response("Tool creation mode is enabled.")
+        else:
+            output_assistant_response("Tool creation mode is disabled.")
+    
+    def set_invocation_mode(self, status: bool):
+        self.is_invocation_enabled = status
+        if status:
+            output_assistant_response("Tool invocation mode is enabled.")
+        else:
+            output_assistant_response("Tool invocation mode is disabled.")
+    
     def _output_budgets(self):
         output_assistant_response(f"Resource budget Remaining: {self.budget_manager.get_current_remaining_resource_budget()}")
-        output_assistant_response(f"Expense budget Remaining: {self.budget_manager.get_current_remaining_resource_budget()}")
+        output_assistant_response(f"Expense budget Remaining: {self.budget_manager.get_current_remaining_expense_budget()}")
 
     def load_tools(self):
         newToolsImported = []
@@ -84,6 +100,11 @@ class ToolManager:
         self.toolsImported = newToolsImported
 
     def runTool(self, toolName, query):
+        if not self.is_invocation_enabled:
+            raise Exception("Tool invocation mode is disabled")
+        if toolName == "ToolCreator":
+            if not self.is_creation_enabled:
+                raise Exception("Tool creation mode is disabled")
         self._output_budgets()
         for tool in self.toolsImported:
             if tool.name == toolName:

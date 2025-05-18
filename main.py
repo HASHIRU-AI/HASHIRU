@@ -1,7 +1,9 @@
+from typing import List
 import gradio as gr
 
 import base64
-from src.manager.manager import GeminiManager
+from src.manager.manager import GeminiManager, Mode
+from enum import Enum
 
 _logo_bytes = open("HASHIRU_LOGO.png", "rb").read()
 _logo_b64 = base64.b64encode(_logo_bytes).decode()
@@ -25,8 +27,6 @@ css = """
 
 
 def run_model(message, history):
-    print(f"User: {message}")
-    print(f"History: {history}")
     if 'text' in message:
         history.append({
             "role": "user",
@@ -38,33 +38,30 @@ def run_model(message, history):
                 "role": "user",
                 "content": (file,)
             })
-    print(f"History: {history}")
     yield "", history
     for messages in model_manager.run(history):
         yield "", messages
 
 
-def update_model(model_name):
-    print(f"Model changed to: {model_name}")
-    pass
-
-
 with gr.Blocks(css=css, fill_width=True, fill_height=True) as demo:
-    model_manager = GeminiManager(gemini_model="gemini-2.0-flash")
-    
+    model_manager = GeminiManager(
+        gemini_model="gemini-2.0-flash", modes=[mode for mode in Mode])
+
+    def update_model(modeIndexes: List[int]):
+        modes = [Mode(i+1) for i in modeIndexes]
+        print(f"Selected modes: {modes}")
+        model_manager.set_modes(modes)
+
     with gr.Column(scale=1):
         with gr.Row(scale=0):
             gr.Markdown(_header_html)
             model_dropdown = gr.Dropdown(
-                choices=[
-                    "HASHIRU",
-                    "Static-HASHIRU",
-                    "Cloud-Only HASHIRU",
-                    "Local-Only HASHIRU",
-                    "No-Economy HASHIRU",
-                ],
-                value="HASHIRU",
+                choices=[mode.name for mode in Mode],
+                value=model_manager.get_current_modes,
                 interactive=True,
+                type="index",
+                multiselect=True,
+                label="Select Modes",
             )
 
             model_dropdown.change(
