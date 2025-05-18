@@ -69,7 +69,6 @@ async def logout(request: Request):
         f"https://{AUTH0_DOMAIN}/v2/logout"
         f"?client_id={AUTH0_CLIENT_ID}"
         f"&returnTo=http://localhost:7860/post-logout"
-        f"&federated"
     )
     return RedirectResponse(auth0_logout_url)
 
@@ -116,49 +115,71 @@ CSS = """
     border-radius: 4px;
     background-color: #f0f0f0;
 }
+
+/* Profile style improvements */
+.profile-container {
+    position: relative;
+    display: inline-block;
+    float: right;
+    margin-right: 20px;
+    z-index: 9999; /* Ensure this is higher than any other elements */
+}
+
 #profile-name {
-    background-color: #f97316; /* Orange */
-    color: white;
+    background-color: transparent; /* Transparent background */
+    color: #f97316; /* Orange text */
     font-weight: bold;
     padding: 10px 14px;
     border-radius: 6px;
     cursor: pointer;
     user-select: none;
-    display: inline-block;
-    position: relative;
-    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    min-height: 40px;
+    border: 2px solid #f97316; /* Add border */
 }
-/* Fix profile menu */
+
 #profile-menu {
-    position: absolute;
-    background: transparent;
+    position: fixed; /* Changed from absolute to fixed for better overlay */
+    right: auto; /* Let JS position it precisely */
+    top: auto; /* Let JS position it precisely */
+    background-color: transparent;
     border: 1px solid transparent;
     border-radius: 8px;
-    padding: 10px;
-    z-index: 1000;
-    box-shadow: 0px 4px 8px rgba(0,0,0,0.1);
-    margin-top: 5px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 10000; /* Very high z-index to ensure it's on top */
+    overflow: visible;
+    width: 160px;
 }
+
 #profile-menu.hidden {
     display: none;
 }
+
 #profile-menu button {
-    background-color: #f97316; /* Orange (Tailwind orange-500) */
+    background-color: #f97316; /* Orange background */
     border: none;
-    color: white;
+    color: white; /* White text */
     font-size: 16px;
+    border-radius: 8px;
     text-align: left;
     width: 100%;
-    padding: 10px;
-    margin-bottom: 5px;
-    border-radius: 6px;
+    padding: 12px 16px;
     cursor: pointer;
     transition: background-color 0.2s ease;
-}
-#profile-menu button:hover {
-    background-color: #ea580c; /* Darker orange on hover (Tailwind orange-600) */
+    display: block;
 }
 
+#profile-menu button:hover {
+    background-color: #ea580c; /* Darker orange on hover */
+}
+
+#profile-menu button .icon {
+    margin-right: 8px;
+    color: white; /* White icon color */
+}
 
 /* Fix dropdown issues */
 input[type="text"], select {
@@ -171,6 +192,37 @@ input[type="text"], select {
     overflow-y: auto;
 }
 
+/* User avatar styles */
+.user-avatar {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 20px; /* Larger font size */
+    color: #f97316; /* Orange color */
+}
+
+/* Fix for gradio interface */
+.gradio-container {
+    overflow: visible !important;
+}
+
+/* Fix other container issues that might cause scrolling */
+body, html {
+    overflow-x: hidden; /* Prevent horizontal scrolling */
+}
+
+#gradio-app, .gradio-container .overflow-hidden {
+    overflow: visible !important; /* Override any overflow hidden that might interfere */
+}
+
+/* Ensure dropdown appears above everything */
+.profile-container * {
+    z-index: 9999;
+}
 """
 
 def run_model(message, history):
@@ -194,10 +246,10 @@ with gr.Blocks(css=CSS, fill_width=True, fill_height=True) as demo:
         with gr.Column(scale=1, min_width=250):
             profile_html = gr.HTML(value="""
             <div class="profile-container">
-                <div id="profile-name" class="profile-btn">Guest</div>
-                <div id="profile-menu" class="dropdown hidden">
-                    <button onclick="window.location.href='/login'">🔐 Login</button>
-                    <button onclick="window.location.href='/logout'">🚪 Logout</button>
+                <div id="profile-name" class="user-avatar">G</div>
+                <div id="profile-menu" class="hidden">
+                    <button id="login-btn" onclick="window.location.href='/login'"><span class="icon">🔐</span> Login</button>
+                    <button id="logout-btn" onclick="window.location.href='/logout'"><span class="icon">🚪</span> Logout</button>
                 </div>
             </div>
             """)
@@ -227,27 +279,71 @@ with gr.Blocks(css=CSS, fill_width=True, fill_height=True) as demo:
     async () => {
         const profileBtn = document.getElementById("profile-name");
         const profileMenu = document.getElementById("profile-menu");
-
-        // Toggle menu
-        profileBtn.onclick = () => {
-            profileMenu.classList.toggle("hidden");
+        const loginBtn = document.getElementById("login-btn");
+        const logoutBtn = document.getElementById("logout-btn");
+        
+        // Position menu and handle positioning
+        function positionMenu() {
+            const btnRect = profileBtn.getBoundingClientRect();
+            profileMenu.style.position = "fixed";
+            profileMenu.style.top = (btnRect.bottom + 5) + "px";
+            profileMenu.style.left = (btnRect.right - profileMenu.offsetWidth) + "px"; // Align with right edge
         }
-
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', (event) => {
+            if (!profileBtn.contains(event.target) && !profileMenu.contains(event.target)) {
+                profileMenu.classList.add("hidden");
+            }
+        });
+        
+        // Toggle menu
+        profileBtn.onclick = (e) => {
+            e.stopPropagation();
+            positionMenu(); // Position before showing
+            profileMenu.classList.toggle("hidden");
+            
+            // If showing menu, make sure it's positioned correctly
+            if (!profileMenu.classList.contains("hidden")) {
+                setTimeout(positionMenu, 0); // Reposition after render
+            }
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (!profileMenu.classList.contains("hidden")) {
+                positionMenu();
+            }
+        });
+        
+        // Get initial letter for avatar
+        function getInitial(name) {
+            if (name && name.length > 0) {
+                return name.charAt(0);
+            }
+            return "?";
+        }
+        
         try {
             const res = await fetch('/api/login-status', { credentials: 'include' });
             const data = await res.json();
-            const name = data.status.replace("Logged in: ", "");
+            
             if (!data.status.includes("Logged out")) {
-                profileBtn.innerText = name;
-                document.querySelector("#profile-menu button[onclick*='/login']").style.display = "none";
-                document.querySelector("#profile-menu button[onclick*='/logout']").style.display = "block";
+                const name = data.status.replace("Logged in: ", "");
+                profileBtn.innerHTML = `<div class="user-avatar">${getInitial(name)}</div>`;
+                profileBtn.title = name;
+                loginBtn.style.display = "none";
+                logoutBtn.style.display = "block";
             } else {
-                profileBtn.innerText = "Guest";
-                document.querySelector("#profile-menu button[onclick*='/login']").style.display = "block";
-                document.querySelector("#profile-menu button[onclick*='/logout']").style.display = "none";
+                profileBtn.innerHTML = `<div class="user-avatar">G</div>`;
+                profileBtn.title = "Guest";
+                loginBtn.style.display = "block";
+                logoutBtn.style.display = "none";
             }
-        } catch {
-            profileBtn.innerText = "Login status unknown";
+        } catch (error) {
+            console.error("Error fetching login status:", error);
+            profileBtn.innerHTML = `<div class="user-avatar">?</div>`;
+            profileBtn.title = "Login status unknown";
         }
     }
     """)
