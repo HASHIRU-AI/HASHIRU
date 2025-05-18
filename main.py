@@ -1,6 +1,6 @@
 import os, base64
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -48,6 +48,20 @@ app.add_middleware(
 )
 
 # 4. Auth routes -------------------------------------------------------
+# Dependency to get the current user
+def get_user(request: Request):
+    user = request.session.get('user')
+    if user:
+        return user['name']
+    return None
+
+@app.get('/')
+def public(request: Request, user = Depends(get_user)):
+    if user:
+        return RedirectResponse("/gradio")
+    else:
+        return RedirectResponse("/main")
+
 @app.get("/login")
 async def login(request: Request):
     print("Session cookie:", request.cookies.get("session"))
@@ -236,6 +250,18 @@ def run_model(message, history):
 
 def update_model(name):
     print("Model changed to:", name)
+    
+with gr.Blocks() as login:
+    btn = gr.Button("Login")
+    _js_redirect = """
+    () => {
+        url = '/login' + window.location.search;
+        window.open(url, '_blank');
+    }
+    """
+    btn.click(None, js=_js_redirect)
+
+app = gr.mount_gradio_app(app, login, path="/main")
 
 with gr.Blocks(css=CSS, fill_width=True, fill_height=True) as demo:
     model_manager = GeminiManager(gemini_model="gemini-2.0-flash")
@@ -348,7 +374,7 @@ with gr.Blocks(css=CSS, fill_width=True, fill_height=True) as demo:
     }
     """)
 
-gr.mount_gradio_app(app, demo, path="/")
+app = gr.mount_gradio_app(app, demo, path="/gradio",auth_dependency=get_user)
 
 # 6. Entrypoint --------------------------------------------------------
 if __name__ == "__main__":
