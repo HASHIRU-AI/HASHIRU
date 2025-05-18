@@ -361,17 +361,21 @@ class AgentManager():
         agent: Agent = self.get_agent(agent_name)
         print(agent.get_type())
         print(agent_name)
-        print(self.is_local_invocation_enabled, self.is_cloud_invocation_enabled)
+        print(self.is_local_invocation_enabled,
+              self.is_cloud_invocation_enabled)
         if not self.is_local_invocation_enabled and agent.get_type() == "local":
             raise ValueError("Local invocation mode is disabled.")
 
         if not self.is_cloud_invocation_enabled and agent.get_type() == "cloud":
             raise ValueError("Cloud invocation mode is disabled.")
 
-        self.validate_budget(agent.invoke_resource_cost,
-                             agent.invoke_expense_cost)
+        n_tokens = len(prompt.split())/1000
 
-        self.budget_manager.add_to_expense_budget(agent.invoke_expense_cost)
+        self.validate_budget(agent.invoke_resource_cost,
+                             agent.invoke_expense_cost*n_tokens)
+
+        self.budget_manager.add_to_expense_budget(
+            agent.invoke_expense_cost*n_tokens)
 
         response = agent.ask_agent(prompt)
         return (response,
