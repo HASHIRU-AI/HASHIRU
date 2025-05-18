@@ -8,7 +8,7 @@ class GoogleSearchTool():
 
     inputSchema = {
         "name": "GoogleSearchTool",
-        "description": "Provides a list of URLs from google search results based on a query string.",
+        "description": "Provides a list of URLs from google search results based on a query string. Use the urls then to get the content of the page.",
         "parameters": {
             "type": "object",
             "properties": {
