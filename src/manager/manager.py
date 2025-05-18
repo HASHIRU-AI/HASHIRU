@@ -172,18 +172,28 @@ class GeminiManager:
                         if isinstance(message["content"], tuple):
                             path = message["content"][0]
                             try:
-                                file = self.client.files.upload(file=path)
-                                formatted_history.append(file)
+                                image_bytes = open(path, "rb").read()
+                                parts = [
+                                    types.Part.from_bytes(
+                                        data=image_bytes,
+                                        mime_type="image/png",
+                                    ),
+                                ]
                             except Exception as e:
                                 logger.error(f"Error uploading file: {e}")
-                                formatted_history.append(
-                                    types.Part.from_text(text="Error uploading file: "+str(e)))
+                                parts = [types.Part.from_text(
+                                    text="Error uploading file: "+str(e))]
+                            formatted_history.append(
+                                types.Content(
+                                    role=role,
+                                    parts=parts
+                                ))
                             continue
                         else:
                             parts = [types.Part.from_text(
                                 text=message.get("content", ""))]
                     case "memories":
-                        role = "user"
+                        role = "model"
                         parts = [types.Part.from_text(
                             text="Relevant memories: "+message.get("content", ""))]
                     case "tool":
@@ -193,7 +203,6 @@ class GeminiManager:
                         continue
                     case "function_call":
                         role = "model"
-                        print(message)
                         formatted_history.append(
                             eval(message.get("content", "")))
                         continue
