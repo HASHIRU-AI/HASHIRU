@@ -286,6 +286,8 @@ class GeminiManager:
                 "content": "No response from the model.",
                 "metadata": {"title": "No response from the model."}
             })
+            yield messages
+            return messages
 
         # Attach the llm response to the messages
         if response.text is not None and response.text != "":
