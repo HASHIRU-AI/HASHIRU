@@ -126,8 +126,9 @@ class GeminiManager:
                     "message": f"Tool `{function_call.name}` failed to run.",
                     "output": str(e),
                 }
-            logger.debug(f"Tool Response: {toolResponse}")
-            thinking += f"Tool responded with \n```json\n{json.dumps(toolResponse, indent=2)}\n```\n"
+            pretty_json = json.dumps(toolResponse, indent=4)
+            logger.debug(f"Tool Response: {pretty_json}")
+            thinking += f"Tool responded with \n```\n{pretty_json}\n```\n"
             yield {
                 "role": "assistant",
                 "content": thinking,
@@ -226,9 +227,10 @@ class GeminiManager:
         return formatted_history
 
     def get_k_memories(self, query, k=5, threshold=0.0):
-        memories = MemoryManager().get_memories()
-        for i in range(len(memories)):
-            memories[i] = memories[i]['memory']
+        raw_memories = MemoryManager().get_memories()
+        memories = []
+        for i in range(len(raw_memories)):
+            memories.append(raw_memories[i]['memory'])
         if len(memories) == 0:
             return []
         top_k = min(k, len(memories))
@@ -250,7 +252,7 @@ class GeminiManager:
         results = []
         for score, idx in zip(scores, indices):
             if score >= threshold:
-                results.append(memories[idx])
+                results.append(raw_memories[idx.item()])
         return results
 
     def run(self, messages):
@@ -265,7 +267,7 @@ class GeminiManager:
                     })
                     messages.append({
                         "role": "assistant",
-                        "content": f"Memories: {memories}",
+                        "content": f"Memories: \n```\n{json.dumps(memories, indent=4)}\n```\n",
                         "metadata": {"title": "Memories"}
                     })
                     yield messages
@@ -324,7 +326,6 @@ class GeminiManager:
 
         # Check if any text was received
         if len(full_text.strip()) == 0 and len(function_calls) == 0:
-            print(response_stream)
             messages.append({
                 "role": "assistant",
                 "content": "No response from the model.",
