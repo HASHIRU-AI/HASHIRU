@@ -273,7 +273,6 @@ class GeminiManager:
     def invoke_manager(self, messages):
         chat_history = self.format_chat_history(messages)
         logger.debug(f"Chat history: {chat_history}")
-        print(f"Chat history: {chat_history}")
         try:
             response_stream = suppress_output(
                 self.generate_response)(chat_history)
@@ -281,7 +280,6 @@ class GeminiManager:
             function_calls = []
             function_call_requests = []
             for chunk in response_stream:
-                print(chunk)
                 if chunk.text:
                     full_text += chunk.text
                     yield messages + [{
