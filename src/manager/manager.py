@@ -287,6 +287,9 @@ class GeminiManager:
                             "role": "assistant",
                             "content": full_text
                         }]
+                    else:
+                        print("Empty chunk received")
+                        print(chunk)
                 for candidate in chunk.candidates:
                     if candidate.content and candidate.content.parts:
                         function_call_requests.append({
@@ -305,6 +308,8 @@ class GeminiManager:
                 messages = messages + function_call_requests
             yield messages
         except Exception as e:
+            print(messages)
+            print(chat_history)
             messages.append({
                 "role": "assistant",
                 "content": f"Error generating response: {str(e)}",
@@ -315,13 +320,13 @@ class GeminiManager:
             return messages
 
         # Check if any text was received
-        if not full_text and len(function_calls) == 0:
+        if len(full_text.strip()) == 0 and len(function_calls) == 0:
+            print(response_stream)
             messages.append({
                 "role": "assistant",
                 "content": "No response from the model.",
                 "metadata": {"title": "No response from the model."}
             })
-            yield messages
 
         if function_calls and len(function_calls) > 0:
             for call in self.handle_tool_calls(function_calls):

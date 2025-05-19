@@ -3,15 +3,15 @@ from collections import defaultdict
 import re
 import time
 
-__all__ = ['GetWebsiteTool']
+__all__ = ['GetWebsite']
 
 
-class GetWebsiteTool():
+class GetWebsite():
     dependencies = ["requests", "beautifulsoup4==4.13.3"]
 
     inputSchema = {
-        "name": "GetWebsiteTool",
-        "description": "Returns a summary of the content of a website based on a query string.",
+        "name": "GetWebsite",
+        "description": "Returns the content of a website with enhanced error handling and output options.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -19,6 +19,16 @@ class GetWebsiteTool():
                     "type": "string",
                     "description": "The URL of the website to fetch content from.",
                 },
+                "output_type": {
+                    "type": "string",
+                    "enum": ["summary", "full_text"],
+                    "description": "The type of output to return. 'summary' returns a summary of the text, 'full_text' returns the full text content.",
+                    "default": "full_text"
+                },
+                "css_selector": {
+                    "type": "string",
+                    "description": "A CSS selector to extract specific content from the page.",
+                }
             },
             "required": ["url"],
         }
@@ -28,7 +38,7 @@ class GetWebsiteTool():
         # Clean the text more thoroughly
         text = re.sub(r'\[[0-9]*\]', ' ', text)
         text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r'[^a-zA-Z0-9.\s]', '', text) # Remove special characters except periods
+        text = re.sub(r'[^a-zA-Z0-9.\s]', '', text)  # Remove special characters except periods
 
         # Tokenize into sentences
         sentences = re.split(r'(?<=[.!?])\s+', text)
@@ -60,8 +70,8 @@ class GetWebsiteTool():
             score += sentence_length_factor * 0.1
 
             # Add a coherence score
-            if i > 0 and sentences[i-1] in sentence_scores:
-                previous_sentence_words = sentences[i-1].lower().split()
+            if i > 0 and sentences[i - 1] in sentence_scores:
+                previous_sentence_words = sentences[i - 1].lower().split()
                 common_words = set(words) & set(previous_sentence_words)
                 coherence_score = len(common_words) / len(words)
                 score += coherence_score * 0.1
@@ -90,9 +100,11 @@ class GetWebsiteTool():
             'Sec-Fetch-User': '?1',
             'Priority': 'u=0, i',
         }
-        print("Running web search")
+        print("Running enhanced web scraper")
 
         url = kwargs.get("url")
+        output_type = kwargs.get("output_type", "summary")
+        css_selector = kwargs.get("css_selector")
 
         if not url:
             return {
@@ -107,25 +119,43 @@ class GetWebsiteTool():
         BeautifulSoup = bs4.BeautifulSoup
         try:
             response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                # Parse the content using BeautifulSoup
-                soup = BeautifulSoup(response.content, 'html.parser')
+            response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+            response.encoding = response.apparent_encoding  # Handle encoding
+
+            # Parse the content using BeautifulSoup
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            if css_selector:
+                # Extract text from the selected elements
+                elements = soup.select(css_selector)
+                text = '\n'.join([element.get_text() for element in elements])
+            else:
                 # Extract text from the parsed HTML
                 text = soup.get_text()
 
+            if output_type == "summary":
                 # Summarize the text
                 output = self.summarize_text(text)
+            elif output_type == "full_text":
+                output = text
             else:
                 return {
                     "status": "error",
-                    "message": f"Failed to fetch content from {url}. Status code: {response.status_code}",
+                    "message": f"Invalid output_type: {output_type}",
                     "output": None
                 }
+
 
             return {
                 "status": "success",
                 "message": "Search completed successfully",
                 "output": output,
+            }
+        except requests.exceptions.RequestException as e:
+            return {
+                "status": "error",
+                "message": f"Request failed: {str(e)}",
+                "output": None
             }
         except Exception as e:
             return {
