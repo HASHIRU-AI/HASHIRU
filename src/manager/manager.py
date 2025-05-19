@@ -19,6 +19,7 @@ from pathlib import Path
 from google.genai.errors import APIError
 import backoff
 import mimetypes
+import json
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -126,7 +127,7 @@ class GeminiManager:
                     "output": str(e),
                 }
             logger.debug(f"Tool Response: {toolResponse}")
-            thinking += f"Tool responded with ```\n{toolResponse}\n```\n"
+            thinking += f"Tool responded with \n```json\n{json.dumps(toolResponse, indent=2)}\n```\n"
             yield {
                 "role": "assistant",
                 "content": thinking,
