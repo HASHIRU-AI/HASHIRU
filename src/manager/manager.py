@@ -80,12 +80,12 @@ class GeminiManager:
         return mode in self.modes
 
     @backoff.on_exception(backoff.expo,
-                            APIError,
-                            max_tries=3,
-                            jitter=None)
+                          APIError,
+                          max_tries=3,
+                          jitter=None)
     def generate_response(self, messages):
         tools = self.toolsLoader.getTools()
-        return self.client.models.generate_content(
+        return self.client.models.generate_content_stream(
             model=self.model_name,
             contents=messages,
             config=types.GenerateContentConfig(
@@ -95,10 +95,10 @@ class GeminiManager:
             ),
         )
 
-    def handle_tool_calls(self, response):
+    def handle_tool_calls(self, function_calls):
         parts = []
         i = 0
-        for function_call in response.function_calls:
+        for function_call in function_calls:
             title = ""
             thinking = ""
             toolResponse = None
@@ -199,9 +199,9 @@ class GeminiManager:
                             parts = [types.Part.from_text(
                                 text=message.get("content", ""))]
                     case "memories":
-                        role = "model"
+                        role = "user"
                         parts = [types.Part.from_text(
-                            text="Relevant memories: "+message.get("content", ""))]
+                            text="Here are the relevant memories for the user's query: "+message.get("content", ""))]
                     case "tool":
                         role = "tool"
                         formatted_history.append(
@@ -273,8 +273,39 @@ class GeminiManager:
     def invoke_manager(self, messages):
         chat_history = self.format_chat_history(messages)
         logger.debug(f"Chat history: {chat_history}")
+        print(f"Chat history: {chat_history}")
         try:
-            response = suppress_output(self.generate_response)(chat_history)
+            response_stream = suppress_output(
+                self.generate_response)(chat_history)
+            full_text = ""  # Accumulate the text from the stream
+            function_calls = []
+            function_call_requests = []
+            for chunk in response_stream:
+                print(chunk)
+                if chunk.text:
+                    full_text += chunk.text
+                    yield messages + [{
+                        "role": "assistant",
+                        "content": chunk.text
+                    }]
+                for candidate in chunk.candidates:
+                    if candidate.content and candidate.content.parts:
+                        # messages.append(response.candidates[0].content)
+                        function_call_requests.append({
+                            "role": "function_call",
+                            "content": repr(candidate.content),
+                        })
+                        for part in candidate.content.parts:
+                            if part.function_call:
+                                function_calls.append(part.function_call)
+            if full_text.strip() != "":
+                messages.append({
+                    "role": "assistant",
+                    "content": full_text,
+                })
+            if function_call_requests:
+                messages = messages + function_call_requests
+            yield messages
         except Exception as e:
             messages.append({
                 "role": "assistant",
@@ -284,41 +315,22 @@ class GeminiManager:
             logger.error(f"Error generating response{e}")
             yield messages
             return messages
-        logger.debug(f"Response: {response}")
 
-        if (not response.text and not response.function_calls):
+        # Check if any text was received
+        if not full_text and len(function_calls) == 0:
             messages.append({
                 "role": "assistant",
                 "content": "No response from the model.",
                 "metadata": {"title": "No response from the model."}
             })
-            print(response)
-            yield messages
-            return messages
-
-        # Attach the llm response to the messages
-        if response.text is not None and response.text != "":
-            messages.append({
-                "role": "assistant",
-                "content": response.text
-            })
             yield messages
 
-        # Attach the function call response to the messages
-        for candidate in response.candidates:
-            if candidate.content and candidate.content.parts:
-                # messages.append(response.candidates[0].content)
-                messages.append({
-                    "role": "function_call",
-                    "content": repr(candidate.content),
-                })
-
-        # Invoke the function calls if any and attach the response to the messages
-        if response.function_calls:
-            for call in self.handle_tool_calls(response):
+        if function_calls and len(function_calls) > 0:
+            for call in self.handle_tool_calls(function_calls):
                 yield messages + [call]
                 if (call.get("role") == "tool"
                         or (call.get("role") == "assistant" and call.get("metadata", {}).get("status") == "done")):
                     messages.append(call)
             yield from self.invoke_manager(messages)
-        yield messages
+        else:
+            yield messages

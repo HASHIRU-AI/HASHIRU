@@ -151,10 +151,11 @@ css = """
 
 def run_model(message, history):
     if 'text' in message:
-        history.append({
-            "role": "user",
-            "content": message['text']
-        })
+        if message['text'].strip() != "":
+            history.append({
+                "role": "user",
+                "content": message['text']
+            })
     if 'files' in message:
         for file in message['files']:
             history.append({
