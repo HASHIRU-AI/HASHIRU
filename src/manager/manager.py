@@ -343,13 +343,16 @@ class GeminiManager:
                         print(chunk)
                 for candidate in chunk.candidates:
                     if candidate.content and candidate.content.parts:
-                        function_call_requests.append({
-                            "role": "function_call",
-                            "content": repr(candidate.content),
-                        })
+                        has_function_call = False
                         for part in candidate.content.parts:
                             if part.function_call:
+                                has_function_call = True
                                 function_calls.append(part.function_call)
+                        if has_function_call:
+                            function_call_requests.append({
+                                "role": "function_call",
+                                "content": repr(candidate.content),
+                            })
             if full_text.strip() != "":
                 messages.append({
                     "role": "assistant",
