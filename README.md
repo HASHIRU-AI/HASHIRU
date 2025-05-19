@@ -1,82 +1,44 @@
 # HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization
-(For AgentX competition)
 
 ![HASHIRU_ARCH](HASHIRU_ARCH.png)
 
-## Overview
-HASHIRU is an agent-based framework designed to dynamically allocate and manage large language models (LLMs) and external APIs through a CEO model. The CEO model acts as a central manager, capable of hiring, firing, and directing multiple specialized agents (employees) over a given budget. It can also create and utilize external APIs as needed, making it highly flexible and scalable.
+## Project Overview
 
-## High-Level Overview
+This project provides a framework for creating and managing AI agents and tools. It includes features for managing resource and expense budgets, loading tools and agents, and interacting with various language models.
 
-1. Loads available tools using ToolLoader
-2. Instantiates a Gemini-powered CEO using GeminiManager
-3. Wraps the user prompt into a structured Content object
-4. Calls Gemini with the prompt
-5. Executes external tool calls if needed
-6. Returns a full response to the user
-7. Can ask the user for clarification if needed
+## Directory Structure
 
-After every step in the request, there is a checkpoint so that we can check what happened in that step (i.e., which tool was called, what was the response, etc.). This is useful for debugging and understanding the flow of the program.
+*   **src/**: Contains the source code for the project.
+    *   **tools/**: Contains the code for the tools that can be used by the agents.
+        *   **default\_tools/**: Contains the default tools provided with the project.
+        *   **user\_tools/**: Contains the tools created by the user.
+    *   **config/**: Contains configuration files for the project.
+    *   **utils/**: Contains utility functions and classes used throughout the project.
+    *   **models/**: Contains the configurations and system prompts for the agents. Includes `models.json` which stores agent definitions.
+    *   **manager/**: Contains the core logic for managing agents, tools, and budgets.
+        *   `agent_manager.py`: Manages the creation, deletion, and invocation of AI agents. Supports different agent types like Ollama, Gemini, and Groq.
+        *   `budget_manager.py`: Manages the resource and expense budgets for the project.
+        *   `tool_manager.py`: Manages the loading, running, and deletion of tools.
+        *   `llm_models.py`: Defines abstract base classes for different language model integrations.
+    *   **data/**: Contains data files, such as memory and secret words.
 
-## Features
-- **Cost-Benefit Matrix**:  
-  Selects the best LLM model (LLaMA, Mixtral, Gemini, DeepSeek, etc.) for any task using Ollama, based on latency, size, cost, quality, and speed.
-- **Dynamic Agent Management**:  
-  The CEO agent dynamically hires and fires specialized agents based on task requirements and budget constraints.
-- **API Integration**:  
-  Seamlessly integrates external APIs for enhanced functionality and scalability.
+## Key Components
 
-## How to Run
-
-Clone the repo and install the required dependencies:
-
-```bash
-git clone <repository-url>
-cd HASHIRU
-pip install -r requirements.txt
-```
-
-Run the main script:
-
-```bash
-python main.py
-```
+*   **Agent Management:** The `AgentManager` class in `src/manager/agent_manager.py` is responsible for creating, managing, and invoking AI agents. It supports different agent types, including local (Ollama) and cloud-based (Gemini, Groq) models.
+*   **Tool Management:** The `ToolManager` class in `src/manager/tool_manager.py` handles the loading and running of tools. Tools are loaded from the `src/tools/default_tools` and `src/tools/user_tools` directories.
+*   **Budget Management:** The `BudgetManager` class in `src/manager/budget_manager.py` manages the resource and expense budgets for the project. It tracks the usage of resources and expenses and enforces budget limits.
+*   **Model Integration:** The project supports integration with various language models, including Ollama, Gemini, and Groq. The `llm_models.py` file defines abstract base classes for these integrations.
 
 ## Usage
 
-### Cost-Benefit Matrix
+To use the project, you need to:
 
-The `cost_benefit.py` tool allows you to select the best LLM model for a given task based on customizable weights:
-
-```bash
-python tools/cost_benefit.py \
-  --prompt "Best places to visit in Davis" \
-  --latency 4 --size 2 --cost 5 --speed 3
-```
-
-Each weight is on a scale of **1** (least important) to **5** (most important):
-
-- `--latency`: Prefer faster responses (lower time to answer)
-- `--size`: Prefer smaller models (use less memory/resources)
-- `--cost`: Prefer cheaper responses (fewer tokens, lower token price)
-- `--speed`: Prefer models that generate tokens quickly (tokens/sec)
-
-### Example Output
-
-```plaintext
-Selected Model: Gemini
-Reason: Optimal balance of cost, speed, and latency for the given weights.
-```
+1.  Configure the budget in `src/manager/budget_manager.py`.
+2.  Create tools and place them in the `src/tools/default_tools` or `src/tools/user_tools` directories.
+3.  Create agents using the `AgentCreator` tool or the `AgentManager` class.
+4.  Invoke agents using the `AskAgent` tool or the `AgentManager` class.
+5.  Manage tools and agents using the `ToolManager` and `AgentManager` classes.
 
 ## Contributing
 
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix.
-3. Submit a pull request with a detailed description of your changes.
-
-## License
-
-This project is licensed under the MIT License. See the `LICENSE` file for details.
-
+Contributions are welcome! Please submit pull requests with bug fixes, new features, or improvements to the documentation.
