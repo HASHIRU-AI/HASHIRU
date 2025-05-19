@@ -221,8 +221,12 @@ class GeminiManager:
                         continue
                     case _:
                         role = "model"
+                        content = message.get("content", "")
+                        if content.strip() == "":
+                            print("Empty message received: ", message)
+                            continue
                         parts = [types.Part.from_text(
-                            text=message.get("content", ""))]
+                            text=content)]
                 formatted_history.append(types.Content(
                     role=role,
                     parts=parts
@@ -290,7 +294,7 @@ class GeminiManager:
             for chunk in response_stream:
                 if chunk.text:
                     full_text += chunk.text
-                    if chunk.text.strip() != "":
+                    if full_text.strip() != "":
                         yield messages + [{
                             "role": "assistant",
                             "content": full_text
