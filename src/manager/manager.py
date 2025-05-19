@@ -16,6 +16,8 @@ from sentence_transformers import SentenceTransformer
 import torch
 from src.tools.default_tools.memory_manager import MemoryManager
 from pathlib import Path
+from google.genai.errors import APIError
+import backoff
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -77,6 +79,10 @@ class GeminiManager:
     def check_mode(self, mode: Mode):
         return mode in self.modes
 
+    @backoff.on_exception(backoff.expo,
+                            APIError,
+                            max_tries=3,
+                            jitter=None)
     def generate_response(self, messages):
         tools = self.toolsLoader.getTools()
         return self.client.models.generate_content(
@@ -286,6 +292,7 @@ class GeminiManager:
                 "content": "No response from the model.",
                 "metadata": {"title": "No response from the model."}
             })
+            print(response)
             yield messages
             return messages
 
