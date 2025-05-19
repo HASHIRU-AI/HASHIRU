@@ -305,12 +305,13 @@ class GeminiManager:
             yield messages
 
         # Attach the function call response to the messages
-        if response.candidates[0].content and response.candidates[0].content.parts:
-            # messages.append(response.candidates[0].content)
-            messages.append({
-                "role": "function_call",
-                "content": repr(response.candidates[0].content),
-            })
+        for candidate in response.candidates:
+            if candidate.content and candidate.content.parts:
+                # messages.append(response.candidates[0].content)
+                messages.append({
+                    "role": "function_call",
+                    "content": repr(candidate.content),
+                })
 
         # Invoke the function calls if any and attach the response to the messages
         if response.function_calls:
