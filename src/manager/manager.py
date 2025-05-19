@@ -282,13 +282,13 @@ class GeminiManager:
             for chunk in response_stream:
                 if chunk.text:
                     full_text += chunk.text
-                    yield messages + [{
-                        "role": "assistant",
-                        "content": chunk.text
-                    }]
+                    if chunk.text.strip() != "":
+                        yield messages + [{
+                            "role": "assistant",
+                            "content": full_text
+                        }]
                 for candidate in chunk.candidates:
                     if candidate.content and candidate.content.parts:
-                        # messages.append(response.candidates[0].content)
                         function_call_requests.append({
                             "role": "function_call",
                             "content": repr(candidate.content),
