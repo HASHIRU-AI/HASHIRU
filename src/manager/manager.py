@@ -18,6 +18,7 @@ from src.tools.default_tools.memory_manager import MemoryManager
 from pathlib import Path
 from google.genai.errors import APIError
 import backoff
+import mimetypes
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -179,10 +180,11 @@ class GeminiManager:
                             path = message["content"][0]
                             try:
                                 image_bytes = open(path, "rb").read()
+                                mime_type, _ = mimetypes.guess_type(path)
                                 parts = [
                                     types.Part.from_bytes(
                                         data=image_bytes,
-                                        mime_type="image/png",
+                                        mime_type=mime_type
                                     ),
                                 ]
                             except Exception as e:
