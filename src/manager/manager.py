@@ -37,7 +37,54 @@ class Mode(Enum):
     ENABLE_ECONOMY_BUDGET = auto()
     ENABLE_MEMORY = auto()
 
-
+def format_tool_response(response, indent=0):
+    """
+    Format a tool response for display with proper handling of newlines in string values.
+    This preserves the dictionary structure while making string values with newlines display properly.
+    """
+    indent_str = "  " * indent
+    result = []
+    
+    if isinstance(response, dict):
+        result.append("{")
+        items = list(response.items())
+        for i, (key, value) in enumerate(items):
+            end_comma = "" if i == len(items) - 1 else ","
+            formatted_value = format_tool_response(value, indent + 1)
+            result.append(f"{indent_str}  \"{key}\": {formatted_value}{end_comma}")
+        result.append(f"{indent_str}}}")
+        return "\n".join(result)
+    
+    elif isinstance(response, list):
+        result.append("[")
+        for i, item in enumerate(response):
+            end_comma = "" if i == len(response) - 1 else ","
+            formatted_item = format_tool_response(item, indent + 1)
+            result.append(f"{indent_str}  {formatted_item}{end_comma}")
+        result.append(f"{indent_str}]")
+        return "\n".join(result)
+    
+    elif isinstance(response, str):
+        # Handle multiline strings by using triple quotes and preserving newlines
+        if "\n" in response:
+            # Replace newlines with actual newlines and proper indentation
+            lines = response.split("\n")
+            indented_lines = [f"{indent_str}    {line}" for line in lines]
+            joined_lines = "\n".join(indented_lines)
+            return f"'''\n{joined_lines}\n{indent_str}  '''"
+        else:
+            # Regular string
+            return f"\"{response}\""
+    
+    elif response is None:
+        return "null"
+    
+    elif isinstance(response, (int, float, bool)):
+        return str(response).lower() if isinstance(response, bool) else str(response)
+    
+    else:
+        # Fallback for other types
+        return f"\"{str(response)}\""
 class GeminiManager:
     def __init__(self, system_prompt_file="./src/models/system4.prompt",
                  gemini_model="gemini-2.5-pro-exp-03-25",
@@ -106,7 +153,7 @@ class GeminiManager:
             toolResponse = None
             logger.info(
                 f"Function Name: {function_call.name}, Arguments: {function_call.args}")
-            title = f"Invoking `{function_call.name}` with `{function_call.args}`\n"
+            title = f"Invoking `{function_call.name}` with \n```json\n{format_tool_response(function_call.args)}\n```\n"
             yield {
                 "role": "assistant",
                 "content": thinking,
@@ -126,9 +173,8 @@ class GeminiManager:
                     "message": f"Tool `{function_call.name}` failed to run.",
                     "output": str(e),
                 }
-            pretty_json = json.dumps(toolResponse, indent=4)
-            logger.debug(f"Tool Response: {pretty_json}")
-            thinking += f"Tool responded with \n```\n{pretty_json}\n```\n"
+            logger.debug(f"Tool Response: {toolResponse}")
+            thinking += f"Tool responded with \n```json\n{format_tool_response(toolResponse)}\n```\n"
             yield {
                 "role": "assistant",
                 "content": thinking,
@@ -267,7 +313,7 @@ class GeminiManager:
                     })
                     messages.append({
                         "role": "assistant",
-                        "content": f"Memories: \n```\n{json.dumps(memories, indent=4)}\n```\n",
+                        "content": f"Memories: \n```json\n{format_tool_response(memories)}\n```\n",
                         "metadata": {"title": "Memories"}
                     })
                     yield messages
