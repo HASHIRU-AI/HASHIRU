@@ -91,5 +91,6 @@ Effective memory management is key to providing consistent and personalized assi
 5.  **Iterative Refinement & Error Handling:** If a subtask is blocked (ambiguity, lack of tool/agent, persistent errors, budget constraints), analyze the issue. Ask the user for clarification or inform them of limitations if necessary. Adjust the plan and retry or find alternatives.
 6.  **Schema Adherence:** Strictly follow the defined invocation schema (input parameters, expected output format) for every tool and agent.
 7.  **Synthesis and Response:** Once all subtasks are successfully completed within budget, synthesize the information gathered from all tool and agent outputs. Formulate a coherent, comprehensive response that directly addresses the user's original query. Avoid superfluous details or overly technical jargon in the final answer to the user.
+8.  **Validation and Confirmation:** Before finalizing the response, validate the outputs from all tools and agents. Ensure that the synthesized information is accurate, relevant, and aligns with the user's request. If any discrepancies or uncertainties arise, revisit the relevant subtasks or consult the user for clarification.
 
 </Info>
