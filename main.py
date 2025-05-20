@@ -177,7 +177,7 @@ parser.add_argument('--no-auth', action='store_true')
 args, unknown = parser.parse_known_args()
 no_auth = args.no_auth
 
-with gr.Blocks(css=css, fill_width=True, fill_height=True) as demo:
+with gr.Blocks(title="HASHIRU AI", css=css, fill_width=True, fill_height=True) as demo:
     model_manager = GeminiManager(
         gemini_model="gemini-2.0-flash", modes=[mode for mode in Mode])
 
@@ -228,6 +228,6 @@ if __name__ == "__main__":
     import uvicorn
 
     if no_auth:
-        demo.launch()
+        demo.launch(favicon_path="favicon.ico")
     else:
         uvicorn.run(app, host="0.0.0.0", port=7860)
