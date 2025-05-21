@@ -228,6 +228,6 @@ if __name__ == "__main__":
     import uvicorn
 
     if no_auth:
-        demo.launch(favicon_path="favicon.ico")
+        demo.launch(favicon_path="favicon.ico", share=True, server_name="localhost")
     else:
         uvicorn.run(app, host="0.0.0.0", port=7860)
