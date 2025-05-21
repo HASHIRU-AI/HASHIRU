@@ -176,7 +176,8 @@ class GeminiManager:
         formatted_history = []
         for message in messages:
             # Skip thinking messages (messages with metadata)
-            if not (message.get("role") == "assistant" and "metadata" in message):
+            if not ((message.get("role") == "assistant" and "metadata" in message
+                     and message["metadata"] is not None)):
                 role = "model"
                 match message.get("role"):
                     case "user":
