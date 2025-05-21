@@ -164,7 +164,8 @@ def run_model(message, history):
             })
     yield "", history
     for messages in model_manager.run(history):
-        yield "", messages
+        if messages[-1]["role"] == "assistant":
+            yield messages[-1], messages
 
 
 with gr.Blocks() as login:
@@ -191,7 +192,7 @@ with gr.Blocks(title="HASHIRU AI", css=css, fill_width=True, fill_height=True) a
             with gr.Column(scale=0):
                 gr.Markdown(_header_html)
                 gr.Button("Logout", link="/logout")
-            
+
             with gr.Column(scale=1):
                 model_dropdown = gr.Dropdown(
                     choices=[mode.name for mode in Mode],
@@ -228,6 +229,7 @@ if __name__ == "__main__":
     import uvicorn
 
     if no_auth:
-        demo.launch(favicon_path="favicon.ico", share=True, server_name="localhost")
+        demo.launch(favicon_path="favicon.ico",
+                    share=True, server_name="localhost")
     else:
         uvicorn.run(app, host="0.0.0.0", port=7860)
