@@ -128,7 +128,7 @@ class GetWebsite():
             if css_selector:
                 # Extract text from the selected elements
                 elements = soup.select(css_selector)
-                text = '\n'.join([element.get_text() for element in elements])
+                text = ('\n'.join([element.get_text() for element in elements])).encode('utf-8', 'ignore').decode('utf-8')
             else:
                 # Extract text from the parsed HTML
                 text = soup.get_text()
