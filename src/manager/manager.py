@@ -148,12 +148,14 @@ class GeminiManager:
                 if function_call.name == "ToolCreator" or function_call.name == "ToolDeletor":
                     self.toolsLoader.load_tools()
             except Exception as e:
-                logger.info(f"Error loading tools: {e}. Deleting the tool.")
+                logger.info(f"Error loading tools: {str(e)}. Deleting the tool.")
                 yield {
                     "role": "assistant",
-                    "content": f"Error loading tools: {e}. Deleting the tool.\n",
+                    "content": f"Error loading tools: {str(e)}. Deleting the tool.\n",
                     "metadata": {
                         "title": "Trying to load the newly created tool",
+                        "id": i,
+                        "status": "done",
                     }
                 }
                 # delete the created tool
