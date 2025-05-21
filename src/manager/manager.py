@@ -43,7 +43,7 @@ def format_tool_response(response, indent=2):
 
 
 class GeminiManager:
-    def __init__(self, system_prompt_file="./src/models/system4.prompt",
+    def __init__(self, system_prompt_file="./src/models/system5.prompt",
                  gemini_model="gemini-2.5-pro-exp-03-25",
                  modes: List[Mode] = []):
         load_dotenv()
@@ -148,7 +148,8 @@ class GeminiManager:
                 if function_call.name == "ToolCreator" or function_call.name == "ToolDeletor":
                     self.toolsLoader.load_tools()
             except Exception as e:
-                logger.info(f"Error loading tools: {str(e)}. Deleting the tool.")
+                logger.info(
+                    f"Error loading tools: {str(e)}. Deleting the tool.")
                 yield {
                     "role": "assistant",
                     "content": f"Error loading tools: {str(e)}. Deleting the tool.\n",
@@ -289,8 +290,7 @@ class GeminiManager:
         chat_history = self.format_chat_history(messages)
         logger.debug(f"Chat history: {chat_history}")
         try:
-            response_stream = suppress_output(
-                self.generate_response)(chat_history)
+            response_stream = self.generate_response(chat_history)
             full_text = ""  # Accumulate the text from the stream
             function_calls = []
             function_call_requests = []
@@ -331,7 +331,11 @@ class GeminiManager:
             messages.append({
                 "role": "assistant",
                 "content": f"Error generating response: {str(e)}",
-                "metadata": {"title": "Error generating response"}
+                "metadata": {
+                            "title": "Error generating response",
+                            "id": 0,
+                            "status": "done"
+                            }
             })
             logger.error(f"Error generating response{e}")
             yield messages

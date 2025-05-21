@@ -221,7 +221,8 @@ with gr.Blocks(title="HASHIRU AI", css=css, fill_width=True, fill_height=True) a
                              additional_outputs=[chatbot],
                              save_history=True,
                              editable=True,
-                             multimodal=True,)
+                             multimodal=True,
+                             show_progress="full")
 
 app = gr.mount_gradio_app(app, demo, path="/hashiru", auth_dependency=get_user)
 
@@ -229,7 +230,6 @@ if __name__ == "__main__":
     import uvicorn
 
     if no_auth:
-        demo.launch(favicon_path="favicon.ico",
-                    share=True, server_name="localhost")
+        demo.launch(favicon_path="favicon.ico", server_name="localhost")
     else:
         uvicorn.run(app, host="0.0.0.0", port=7860)
