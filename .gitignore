@@ -5,6 +5,8 @@ __pycache__/
 .gradio
 results/
 
+.DS_Store
+
 # pdf with latex intermediate files
 *.aux
 *.bbl
