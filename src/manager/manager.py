@@ -20,6 +20,7 @@ from google.genai.errors import APIError
 import backoff
 import mimetypes
 import json
+import traceback
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -326,6 +327,7 @@ class GeminiManager:
                 messages = messages + function_call_requests
             yield messages
         except Exception as e:
+            traceback.print_exc(file=sys.stdout)
             print(messages)
             print(chat_history)
             messages.append({

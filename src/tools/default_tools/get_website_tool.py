@@ -21,9 +21,9 @@ class GetWebsite():
                 },
                 "output_type": {
                     "type": "string",
-                    "enum": ["summary", "full_text"],
-                    "description": "The type of output to return. 'summary' returns a summary of the text, 'full_text' returns the full text content.",
-                    "default": "full_text"
+                    "enum": ["summary", "full_text", "html"],
+                    "description": "The type of output to return. 'summary' returns a summary of the text, 'full_text' returns the full text content, and 'html' returns the raw HTML content.",
+                    "default": "summary"
                 },
                 "css_selector": {
                     "type": "string",
@@ -121,17 +121,26 @@ class GetWebsite():
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
             response.encoding = response.apparent_encoding  # Handle encoding
+            if output_type == "html":
+                # Return the raw HTML content
+                return {
+                    "status": "success",
+                    "message": "Search completed successfully",
+                    "output": response.text,
+                }
 
             # Parse the content using BeautifulSoup
-            soup = BeautifulSoup(response.content, 'html.parser')
+            soup = BeautifulSoup(response.text, 'html.parser')
 
             if css_selector:
                 # Extract text from the selected elements
                 elements = soup.select(css_selector)
-                text = ('\n'.join([element.get_text() for element in elements])).encode('utf-8', 'ignore').decode('utf-8')
+                text = ('\n'.join([element.get_text() for element in elements]))
+                text = text.encode('utf-8', 'ignore').decode('utf-8')
             else:
                 # Extract text from the parsed HTML
                 text = soup.get_text()
+                text = text.encode('utf-8', 'ignore').decode('utf-8')
 
             if output_type == "summary":
                 # Summarize the text
