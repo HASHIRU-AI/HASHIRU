@@ -91,10 +91,7 @@ class GeminiManager:
                           max_tries=3,
                           jitter=None)
     def generate_response(self, messages):
-        if self.check_mode(Mode.ENABLE_TOOL_INVOCATION):
-            tools = self.toolsLoader.getTools()
-        else:
-            tools = []
+        tools = self.toolsLoader.getTools()
         return self.client.models.generate_content_stream(
             model=self.model_name,
             contents=messages,
