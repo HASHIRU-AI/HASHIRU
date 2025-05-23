@@ -46,8 +46,11 @@ class AgentCreator():
         description = kwargs.get("description")
         model_costs = AgentCostManager().get_costs()
         if base_model not in model_costs:
-            print(f"[WARN] Auto-selected model '{base_model}' not in schema. Falling back to gemini-2.0-flash")
-            base_model = "gemini-2.0-flash"
+            return {
+                "status": "error",
+                "message": f"Model {base_model} not found in the cost manager.",
+                "output": None
+            }
         create_resource_cost = model_costs[base_model].get("create_resource_cost", 0)
         invoke_resource_cost = model_costs[base_model].get("invoke_resource_cost", 0)
         create_expense_cost = model_costs[base_model].get("create_expense_cost", 0)
