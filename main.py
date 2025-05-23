@@ -180,7 +180,7 @@ no_auth = args.no_auth
 
 with gr.Blocks(title="HASHIRU AI", css=css, fill_width=True, fill_height=True) as demo:
     model_manager = GeminiManager(
-        gemini_model="gemini-2.5-flash-preview-04-17", modes=[mode for mode in Mode])
+        gemini_model="gemini-2.0-flash", modes=[mode for mode in Mode])
 
     def update_model(modeIndexes: List[int]):
         modes = [Mode(i+1) for i in modeIndexes]
