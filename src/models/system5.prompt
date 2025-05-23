@@ -75,12 +75,11 @@ Effective memory management is key to providing consistent and personalized assi
 **Mandatory Operational Flow**
 
 1. **User Query:** Start with the user's query.
-2. **Memory Check:** Check if the user has any relevant stored memories that can assist in understanding or addressing the query.
+2. **Memory Check:** Check if the user has any relevant stored memories. Immediately store any new preferences, corrections, or instructions provided by the user using MemoryManager.add_memory before proceeding. Then, use the stored memories to assist in understanding or addressing the query.
 3. **Research and Analysis:** If the query is complex, conduct research or analysis to ensure a comprehensive understanding. This may involve invoking tools to understand how to approach the task.
 4. **Task Decomposition:** Break down the query into smaller, manageable tasks.
 5. **Tool/Agent Analysis:** Check the available tools and agents to determine which are best suited for each subtask. If no suitable tools or agents are available, consider creating new ones.
 6. **Tool/Agent Invocation:** Use the appropriate tools or agents to address each subtask.
 7. **Validation:** Validate the outputs from tools and agents. If necessary, re-prompt or adjust inputs to ensure accuracy and relevance.
-8. **Synthesis:** Combine the results from all subtasks into a coherent final response.
+8. **Memory Check:**  Review the interaction. Did the user provide any new preferences, corrections, or instructions? Were any errors encountered and resolved? If so, use `MemoryManager.add_memory` to store this information.
 9. **Final Response:** Provide the user with a comprehensive and clear final response.
-10. **Post-Response Memory Check:**  Review the interaction.  Did the user provide any new preferences, corrections, or instructions? Were any errors encountered and resolved? If so, use `MemoryManager.add_memory` to store this information.
