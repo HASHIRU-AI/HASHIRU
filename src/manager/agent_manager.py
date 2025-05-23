@@ -111,6 +111,7 @@ class GeminiAgent(Agent):
 
         # Initialize the Gemini API
         self.client = genai.Client(api_key=self.api_key)
+        self.chat = self.client.chats.create(model=base_model)
 
         # Call parent constructor after API setup
         super().__init__(agent_name,
@@ -125,9 +126,8 @@ class GeminiAgent(Agent):
         self.messages = []
 
     def ask_agent(self, prompt):
-        response = self.client.models.generate_content(
-            model=self.base_model,
-            contents=prompt,
+        response = self.chat.send_message(
+            message=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
             )
@@ -369,7 +369,7 @@ class AgentManager():
         if not self.is_cloud_invocation_enabled and agent.get_type() == "cloud":
             raise ValueError("Cloud invocation mode is disabled.")
 
-        n_tokens = len(prompt.split())/1000
+        n_tokens = len(prompt.split())/1000000
 
         self.validate_budget(agent.invoke_resource_cost,
                              agent.invoke_expense_cost*n_tokens)

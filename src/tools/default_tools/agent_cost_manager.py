@@ -32,43 +32,43 @@ class AgentCostManager():
         },
         "gemini-2.5-flash-preview-04-17": {
             "description": "Adaptive thinking, cost efficiency",
-            "create_expense_cost": 0.005,
-            "invoke_expense_cost": 0.00017
+            "create_expense_cost": 0,
+            "invoke_expense_cost": 0.15,
         },
-        "gemini-2.5-pro-preview-03-25": {
+        "gemini-2.5-pro-preview-05-06": {
             "description": "Enhanced thinking and reasoning, multimodal understanding, advanced coding, and more",
-            "create_expense_cost": 0.005,
-            "invoke_expense_cost": 0.0001275
+            "create_expense_cost": 0,
+            "invoke_expense_cost": 1.25,
         },
         "gemini-2.0-flash": {
-            "description": "Next generation features, speed, thinking, realtime streaming, and multimodal generation",
-            "create_expense_cost": 0.005,
-            "invoke_expense_cost": 0.00017
+            "description": "Next generation features, speed.",
+            "create_expense_cost": 0,
+            "invoke_expense_cost": 0.10,
         },
         "gemini-2.0-flash-lite": {
             "description": "Cost efficiency and low latency",
-            "create_expense_cost": 0.005,
-            "invoke_expense_cost": 0.00017
+            "create_expense_cost": 0,
+            "invoke_expense_cost": 0.075
         },
         "gemini-1.5-flash": {
             "description": "Fast and versatile performance across a diverse variety of tasks",
-            "create_expense_cost": 0.005,
-            "invoke_expense_cost": 0.00017
+            "create_expense_cost": 0,
+            "invoke_expense_cost": 0.075,
         },
         "gemini-1.5-flash-8b": {
             "description": "High volume and lower intelligence tasks",
-            "create_expense_cost": 0.005,
-            "invoke_expense_cost": 0.00017
+            "create_expense_cost": 0,
+            "invoke_expense_cost": 0.0375,
         },
         "gemini-1.5-pro": {
             "description": "Complex reasoning tasks requiring more intelligence",
-            "create_expense_cost": 0.005,
-            "invoke_expense_cost": 0.0001275
+            "create_expense_cost": 0,
+            "invoke_expense_cost": 1.25,
         },
         "gemini-2.0-flash-live-001": {
             "description": "Low-latency bidirectional voice and video interactions",
-            "create_expense_cost": 0.005,
-            "invoke_expense_cost": 0.000635
+            "create_expense_cost": 0,
+            "invoke_expense_cost": 0.50,
         }
     }
 
