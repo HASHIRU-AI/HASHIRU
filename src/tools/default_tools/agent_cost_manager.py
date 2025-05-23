@@ -16,17 +16,17 @@ class AgentCostManager():
 
     costs = {
         "llama3.2": {
-            "description": "3 Billion parameter model",
+            "description": "The Llama 3.2 instruction-tuned text only models are optimized for multilingual dialogue use cases, including agentic retrieval and summarization tasks. They outperform many of the available open source and closed chat models on common industry benchmarks.",
             "create_resource_cost": 50,
             "invoke_resource_cost": 30,
         },
         "mistral": {
-            "description": "7 Billion parameter model",
+            "description": "One of the most powerful open source models for its size. It is vastly superior in code and reasoning benchmarks.",
             "create_resource_cost": 75,
             "invoke_resource_cost": 40,
         },
         "deepseek-r1": {
-            "description": "7 Billion reasoning model",
+            "description": "DeepSeek's first-generation reasoning models, achieving performance comparable to OpenAI-o1 across math, code, and reasoning tasks.",
             "create_resource_cost": 28,
             "invoke_resource_cost": 35,
         },
