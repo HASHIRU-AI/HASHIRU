@@ -26,6 +26,13 @@ NAME = re.compile(r"[a-z0-9_]{1,32}")
 RESERVED = {USER, "ceo"}  # an agent named "user" would get the human's token and speak to the CEO as them
 MAX_REDIRECTS = 5
 MAX_PAGE_BYTES = 2_000_000
+CREATE_TOOL = (
+    "Create a new tool that every manager can call from its next turn on. code is a Python module that "
+    "defines a top-level function named exactly `name`, with a type hint on every parameter, a docstring "
+    "(it becomes the tool's description) and a JSON-serializable return value. dependencies lists the PyPI "
+    "packages the code imports, e.g. ['requests==2.32.3']. The tool runs in its own process with its own "
+    "packages and cannot see this conversation; keep the docstring under 1000 characters. If the code does not "
+    "load, nothing is created and the error says why, so fix the code and try again.")
 
 
 def load_memory(data_dir: Path) -> dict[str, str]:
@@ -78,6 +85,9 @@ class Tools:
         for tool in (self.fire_agent, self.check_usage, self.get_website, self.read_file, self.memory,
                      self.deliver_to_user):
             mcp.tool()(tool)
+        if self.hub.settings.tool_creation:
+            mcp.tool(description=CREATE_TOOL)(self.create_tool)
+            mcp.tool()(self.delete_tool)
 
     def who(self, ctx: Context) -> tuple[Session, AgentRecord]:
         """The live session and agent behind the request's token. The auth gate has already rejected strangers;
@@ -189,3 +199,13 @@ class Tools:
         """Show text directly to the user."""
         self.who(ctx)
         return {"delivered": True}
+
+    async def create_tool(self, ctx: Context, name: str, code: str,
+                          dependencies: list[str] | None = None) -> dict[str, Any]:
+        session, me = self.who(ctx)
+        return await self.hub.toolsmith.create(name, code, list(dependencies or []), creator=f"{session.id}/{me.name}")
+
+    async def delete_tool(self, ctx: Context, name: str) -> dict[str, Any]:
+        """Delete a tool your session made with create_tool."""
+        session, _ = self.who(ctx)
+        return await self.hub.toolsmith.delete(name, session)

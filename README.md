@@ -36,6 +36,18 @@ uv run --env-file .env hashiru ask "..." budget_usd=1.0   # key=value overrides 
 uv run pytest -q                                # no API keys or Ollama needed
 ```
 
+**Tool creation** (off by default). With `tool_creation=true`, managers can write new tools with
+`create_tool`. Each tool runs as its own MCP server process under `uv run --with <its dependencies>`, without
+HASHIRU's environment variables, and is offered to every agent from the next turn on. Created tools are shared
+by all sessions on the hub, saved in `tools_dir`, and restart with the hub. This keeps a tool's packages away
+from HASHIRU, but **it is not a sandbox**: the code runs as you, so it can read and write your files and inspect
+your other processes. Only enable it when every session belongs to you and you trust the agents.
+
+```bash
+uv run hashiru ask "Create a tool that counts the days between two ISO dates, then use it for 2026-01-01 and 2026-10-29." \
+  ceo_model=ollama_chat/gemma4:12b 'models=["ollama_chat/gemma4:12b"]' tool_creation=true
+```
+
 ## Project Overview
 
 This project provides a framework for creating and managing AI agents and tools. It includes features for managing resource and expense budgets, loading tools and agents, and interacting with various language models.

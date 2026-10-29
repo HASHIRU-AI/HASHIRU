@@ -27,7 +27,8 @@ from hashiru.ollama import Ollama
 from hashiru.runtime import CEO_PROMPT, Executor
 from hashiru.session import USER, Session
 from hashiru.tools import Tools, load_memory
-from hashiru.trace import Trace
+from hashiru.toolsmith import Toolsmith
+from hashiru.trace import SOURCES, UNTRUSTED, Trace
 
 __all__ = ["Hub"]
 
@@ -50,6 +51,7 @@ class Hub:
         self.mcp = MCPServer("hashiru")
         self.tools = Tools(self)
         self.tools.register(self.mcp)
+        self.toolsmith = Toolsmith(self)
         self.app = self.mcp.streamable_http_app(host=settings.host)
         self.asgi = AuthGate(self.app, self)
 
@@ -142,6 +144,10 @@ class Hub:
     def _path(session: Session, name: str) -> str:
         return f"/s/{session.id}/agents/{name}"
 
+    def sources(self) -> dict[str, list[str]]:
+        """Labels each tool's results carry. Agent-created tools may fetch anything, so they are untrusted."""
+        return SOURCES | {name: [UNTRUSTED] for name in self.toolsmith.names()}
+
     # ---- local models ----
 
     def in_use(self, model: str) -> bool:
@@ -180,7 +186,10 @@ class Hub:
                 raise RuntimeError("server stopped during startup")
             await asyncio.sleep(0.05)
         try:
+            if self.settings.tool_creation:
+                await self.toolsmith.start()
             yield
         finally:
+            await self.toolsmith.stop()
             srv.should_exit = True
             await task

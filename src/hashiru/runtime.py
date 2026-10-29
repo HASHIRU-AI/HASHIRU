@@ -5,6 +5,7 @@ the trace and moves labels.
 """
 import asyncio
 import json
+from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -60,10 +61,11 @@ def system_prompt(rec: AgentRecord) -> str:
 def to_openai(tool: Any) -> dict[str, Any]:
     """MCP tool -> OpenAI-style tool for LiteLLM."""
     schema = tool.input_schema
+    parameters = {"type": "object", "properties": schema.get("properties", {}), "required": schema.get("required", [])}
+    if "$defs" in schema:  # nested types in a created tool's schema refer to these
+        parameters["$defs"] = schema["$defs"]
     return {"type": "function", "function": {
-        "name": tool.name, "description": tool.description or "",
-        "parameters": {"type": "object", "properties": schema.get("properties", {}),
-                       "required": schema.get("required", [])}}}
+        "name": tool.name, "description": tool.description or "", "parameters": parameters}}
 
 
 def unpack(result: Any) -> dict[str, Any]:
@@ -125,11 +127,13 @@ async def ask_agent(hub: "Hub", session: Session, me: str, name: str, text: str)
 
 
 async def call_tool(session: Session, mcp: Any, me: str, name: str, args: dict[str, Any],
-                    turn: int | None = None) -> dict[str, Any]:
+                    turn: int | None = None, sources: Mapping[str, list[str]] = SOURCES,
+                    created: Collection[str] = ()) -> dict[str, Any]:
     """Run one MCP tool for agent `me`, tracing it and applying label rules 1-3.
 
     `turn` is the seq of the LLM turn that issued the call: calls from one turn run concurrently,
-    so completion order alone cannot say what the LLM had seen when it decided.
+    so completion order alone cannot say what the LLM had seen when it decided. Results of `created` (agent-made)
+    tools carry their labels even when they are errors, because the tool wrote the error text.
     """
     trace, task = session.trace, session.id
     arg_labels = trace.outgoing(me, task, json.dumps(args))
@@ -137,7 +141,7 @@ async def call_tool(session: Session, mcp: Any, me: str, name: str, args: dict[s
         result = unpack(await mcp.call_tool(name, args))
     except (MCPError, httpx2.HTTPError) as exc:  # e.g. a revoked token (401) or an oversized request (413)
         result = {"error": f"{name} failed: {exc}"}
-    got = [] if "error" in result else SOURCES.get(name, [])
+    got = sources.get(name, []) if "error" not in result or name in created else []
     trace.emit("tool", task=task, agent=me, tier=session.ledger.agents[me].tier, name=name, turn=turn,
                args=args, arg_labels=arg_labels, result=result, labels=got)
     trace.receive(me, task, got)
@@ -157,7 +161,7 @@ async def dispatch(hub: "Hub", session: Session, mcp: Any, me: str, call: Any,
         return {"error": "tool arguments must be a JSON object"}
     if call.function.name == "ask_agent":
         return {"reply": await ask_agent(hub, session, me, str(args.get("name", "")), str(args.get("text", "")))}
-    return await call_tool(session, mcp, me, call.function.name, args, turn)
+    return await call_tool(session, mcp, me, call.function.name, args, turn, hub.sources(), hub.toolsmith.names())
 
 
 async def think(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]],
@@ -191,10 +195,11 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
                 streamable_http_client(f"{hub.settings.internal_url}/mcp", http_client=http) as (read, write, *_),
                 ClientSession(read, write) as mcp):
         await mcp.initialize()
-        tools = [to_openai(t) for t in (await mcp.list_tools()).tools] + [ASK_TOOL]
         for _ in range(hub.settings.max_turns):
             if not still_on(hub, session, rec):
                 return "failed"
+            # Re-read every turn: a tool created (or deleted) on the last turn is visible on this one.
+            tools = [to_openai(t) for t in (await mcp.list_tools()).tools] + [ASK_TOOL]
             msg, calls, turn = await think(hub, session, rec, messages, tools)
             if not calls:
                 return msg.content or ""

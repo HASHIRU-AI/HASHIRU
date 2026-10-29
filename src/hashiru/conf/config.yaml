@@ -14,3 +14,9 @@ port: ${oc.decode:${oc.env:PORT,'9100'}}
 data_dir: data          # read_file is limited to this directory; memory.json seeds the memory tool
 trace_dir: traces       # one JSONL trace per session
 prices_file: ${oc.env:HASHIRU_PRICES,''}  # LiteLLM price entries for cloud models its map lacks
+# Tool creation: managers may write new tools (Python code that runs on this machine in its own uv
+# environment, without API keys but with access to the user's files). Off unless you trust the agents.
+tool_creation: ${oc.decode:${oc.env:HASHIRU_TOOL_CREATION,'false'}}
+tools_dir: user_tools      # created tools and their manifest; reloaded when the hub starts
+tool_start_timeout: 180    # seconds to install a new tool's dependencies and start it
+tool_call_timeout: 60      # seconds one call to a created tool may take

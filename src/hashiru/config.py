@@ -25,6 +25,10 @@ class Settings:
     data_dir: str = "data"
     trace_dir: str = "traces"
     prices_file: str = ""
+    tool_creation: bool = False
+    tools_dir: str = "user_tools"
+    tool_start_timeout: float = 180.0
+    tool_call_timeout: float = 60.0
 
     @property
     def internal_url(self) -> str:
@@ -49,7 +53,10 @@ def load_settings(overrides: list[str] | None = None) -> Settings:
     if unknown:
         raise ValueError(f"unknown settings: {unknown}")
     values: dict[str, Any] = {}
-    for key, value in raw.items():
-        kind = known[str(key)]
-        values[str(key)] = _models(value) if key == "models" else kind(value) if kind in (int, float, str) else value
+    for raw_key, value in raw.items():
+        key = str(raw_key)
+        kind = known[key]
+        if kind is bool and not isinstance(value, bool):  # "no" or "off" must not turn a switch on
+            raise ValueError(f"{key} must be true or false, got {value!r}")
+        values[key] = _models(value) if key == "models" else kind(value) if kind in (int, float, str) else value
     return Settings(**values)
