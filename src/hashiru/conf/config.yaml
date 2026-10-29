@@ -9,6 +9,9 @@ max_depth: 2                                          # levels of agents below t
 max_turns: 12                                         # LLM turns per manager run before it replies "failed"
 task_timeout: 1800                                    # seconds for one user request, across every agent it reaches
 ollama_url: ${oc.env:OLLAMA_URL,'http://127.0.0.1:11434'}
+ollama_num_ctx: ${oc.decode:${oc.env:OLLAMA_NUM_CTX,'16384'}}  # local models' context window, in tokens. Ollama's
+                                      # default (4096) fills up after a few tool results, leaving no room to answer;
+                                      # larger windows take more memory (qwen3.5:4b: 3.0 GB at 4096, 3.5 GB at 16384)
 host: 127.0.0.1
 port: ${oc.decode:${oc.env:PORT,'9200'}}  # 9100 is HASHIRU-lite's
 data_dir: data          # read_file is limited to this directory; memory.json seeds the memory tool
@@ -39,3 +42,10 @@ allow_cloud_agents: true      # cloud models and remote A2A peers
 #   name: {url: https://example.com/agent/, headers: {Authorization: Bearer ...}, price_usd_per_message: 0.01}
 a2a_peers: {}
 turn_reserve_usd: 0.01        # with enforce_budget, a cloud manager keeps this much for its own turns when it hires
+# Serving (`hashiru serve`): a chat page at /, an OpenAI-compatible API at /v1, the CEO as an A2A agent
+# (/.well-known/agent-card.json) and HASHIRU as an MCP server (/public/mcp), all on one port.
+api_key: ${oc.env:HASHIRU_API_KEY,''}        # clients send it as a bearer token; required unless host is loopback
+public_url: ${oc.env:HASHIRU_PUBLIC_URL,''}  # where others reach this hub (the Agent Card names it)
+max_sessions: 16              # open conversations; when full, the least recently used idle one is closed
+session_ttl: 3600             # seconds an idle conversation (and everyone it hired) stays open
+frame_ancestors: ${oc.env:HASHIRU_FRAME_ANCESTORS,"'none'"}  # who may embed the chat page in a frame

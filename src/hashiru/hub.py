@@ -1,5 +1,6 @@
 """One process hosts every session: MCP tools at /mcp, and one A2A endpoint per hired agent at
-/s/{session}/agents/{name}/, all behind a bearer-token gate."""
+/s/{session}/agents/{name}/, all behind a bearer-token gate. The same port serves the public routes
+(chat page, OpenAI-compatible API, public A2A agent and MCP server; see hashiru.interop)."""
 import asyncio
 import contextlib
 import logging
@@ -24,6 +25,7 @@ from starlette.routing import Mount
 from hashiru.auth import AuthGate, token_of
 from hashiru.config import A2APeer, Settings
 from hashiru.gateway import Gateway
+from hashiru.interop import Conversations, mount
 from hashiru.ledger import AgentRecord
 from hashiru.llm import LLM, Wallet, check_priced, is_local, register_prices
 from hashiru.memory import MemoryStore, open_memory, words
@@ -48,8 +50,8 @@ class Hub:
         check_priced([*settings.models, settings.ceo_model])
         self.settings = settings
         self.wallet = Wallet(settings.max_usd)
-        self.llm = llm or LLM(settings.ollama_url, self.wallet)
-        self.ollama = ollama or Ollama(settings.ollama_url, settings.models)
+        self.llm = llm or LLM(settings.ollama_url, self.wallet, settings.ollama_num_ctx)
+        self.ollama = ollama or Ollama(settings.ollama_url, settings.models, settings.ollama_num_ctx)
         self.sessions: dict[str, Session] = {}
         self._tokens: dict[str, tuple[str, str]] = {}  # token -> (session id, caller name)
         self._model_locks: dict[str, asyncio.Lock] = {}
@@ -58,6 +60,7 @@ class Hub:
         self.memory_lock = asyncio.Lock()  # local hires check free memory, reserve and load one at a time
         self.peer_cards: dict[tuple[str, str], AgentCard] = {}  # a hired peer's card, fetched once and pinned
         self._background: set[asyncio.Task[None]] = set()
+        self._server: asyncio.Task[None] | None = None
         self.mcp = MCPServer("hashiru")
         self.tools = Tools(self)
         self.tools.register(self.mcp)
@@ -66,6 +69,8 @@ class Hub:
         self.memory: MemoryStore | None = (  # shared by all sessions when persistent
             open_memory(settings.memory_db, Path(settings.data_dir)) if settings.memory_db else None)
         self.app = self.mcp.streamable_http_app(host=settings.host)
+        self.conversations = Conversations(self)
+        self.public_mcp = mount(self)
         self.asgi = AuthGate(self.app, self)
 
     # ---- sessions ----
@@ -260,6 +265,8 @@ class Hub:
     @contextlib.asynccontextmanager
     async def serving(self) -> AsyncIterator[None]:
         """Serve the hub inside the current event loop."""
+        if not self.settings.loopback and not self.settings.api_key:
+            raise RuntimeError(f"listening on {self.settings.host} needs an api_key (set HASHIRU_API_KEY)")
         # uvicorn exits the whole process (SystemExit inside its task) when it cannot bind, so check first.
         with socket.socket() as probe:
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -270,19 +277,29 @@ class Hub:
                                    "pass port=<another>") from None
         srv = uvicorn.Server(uvicorn.Config(self.asgi, host=self.settings.host, port=self.settings.port,
                                             log_level="warning", timeout_graceful_shutdown=5))
-        task = asyncio.create_task(srv.serve())
-        while not srv.started:
-            if task.done():
-                await task  # surfaces a startup failure
-                raise RuntimeError("server stopped during startup")
-            await asyncio.sleep(0.05)
-        try:
-            await self.gateway.start()
-            if self.settings.tool_creation:
-                await self.toolsmith.start()
-            yield
-        finally:
-            await self.toolsmith.stop()
-            await self.gateway.stop()
-            srv.should_exit = True
-            await task
+        async with self.public_mcp.server.session_manager.run():
+            task = asyncio.create_task(srv.serve())
+            self._server = task
+            while not srv.started:
+                if task.done():
+                    await task  # surfaces a startup failure
+                    raise RuntimeError("server stopped during startup")
+                await asyncio.sleep(0.05)
+            sweeper = asyncio.create_task(self.conversations.sweeper())  # idle conversations expire on time
+            try:
+                await self.gateway.start()
+                if self.settings.tool_creation:
+                    await self.toolsmith.start()
+                yield
+            finally:
+                sweeper.cancel()
+                await self.conversations.close_all()
+                await self.toolsmith.stop()
+                await self.gateway.stop()
+                srv.should_exit = True
+                await task
+
+    async def until_stopped(self) -> None:
+        """Wait (inside serving()) until the server stops, e.g. on Ctrl-C."""
+        if self._server is not None:
+            await asyncio.shield(self._server)

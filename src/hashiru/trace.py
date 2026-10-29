@@ -4,6 +4,7 @@ Labels are recorded but not enforced yet; enforcement comes with the policy laye
 """
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ class Trace:
     def __init__(self, path: Path | None, **start: Any) -> None:
         self.events: list[dict[str, Any]] = []
         self._labels: dict[tuple[str, str], set[str]] = {}
+        self._listeners: list[Callable[[dict[str, Any]], None]] = []
         self.path = path
         if path:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -28,13 +30,20 @@ class Trace:
         self.emit("start", **start)
 
     def emit(self, kind: str, **fields: Any) -> dict[str, Any]:
-        """Append one event. seq is the total order of everything that happened."""
+        """Append one event and hand it to every listener. seq is the total order of everything that happened."""
         event = {"seq": len(self.events), "ts": round(time.time(), 3), "kind": kind, **fields}
         self.events.append(event)
         if self.path:
             with self.path.open("a") as f:
                 f.write(json.dumps(event, default=str) + "\n")
+        for listener in list(self._listeners):
+            listener(event)
         return event
+
+    def listen(self, listener: Callable[[dict[str, Any]], None]) -> Callable[[], None]:
+        """Call `listener` with every event from now on (it must not block). Returns a function that stops it."""
+        self._listeners.append(listener)
+        return lambda: self._listeners.remove(listener) if listener in self._listeners else None
 
     def labels(self, agent: str, task: str) -> set[str]:
         """Rule 2: everything the agent received this task. Sticky until the task ends."""

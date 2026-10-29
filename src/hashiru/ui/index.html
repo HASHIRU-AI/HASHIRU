@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HASHIRU</title>
+<link rel="icon" href="/ui/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/app.css">
+<script src="/ui/markdown.js" defer></script>
+<script src="/ui/app.js" defer></script>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" id="side" aria-label="Conversations">
+    <div class="side-head">
+      <a class="brand" href="/" aria-label="HASHIRU home">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><use href="/ui/icon.svg#tree"/></svg>
+        <span>HASHIRU</span>
+      </a>
+      <button class="icon-btn only-narrow" id="close-side" type="button" aria-label="Close sidebar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <button class="new-chat" id="new-chat" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      New chat
+    </button>
+    <p class="side-label">Recent</p>
+    <nav class="chats" id="chats" aria-label="Recent chats"></nav>
+    <div class="side-foot">
+      <button class="side-link" id="open-settings" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        Settings
+      </button>
+      <button class="side-link" id="theme" type="button" aria-label="Switch theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <span id="theme-label">Theme: auto</span>
+      </button>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <main class="main" id="main">
+    <header class="top">
+      <button class="icon-btn only-narrow" id="open-side" type="button" aria-label="Open sidebar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      </button>
+      <div class="model">
+        <span class="model-name">HASHIRU</span>
+        <span class="model-sub" id="model-sub"></span>
+      </div>
+      <button class="agents-toggle" id="toggle-agents" type="button" aria-expanded="false" aria-controls="agents">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><use href="/ui/icon.svg#tree"/></svg>
+        <span>Agents</span>
+        <span class="count" id="agent-count" hidden></span>
+      </button>
+    </header>
+
+    <section class="thread" id="thread" aria-live="polite">
+      <div class="empty" id="empty">
+        <h1 class="greet">What should the team work on?</h1>
+        <p class="lede">The CEO breaks your request into subtasks and hires agents on local and cloud models to
+          do them. Each hire gets a share of the budget.</p>
+        <div class="examples" id="examples"></div>
+      </div>
+      <div class="log" id="log"></div>
+    </section>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <div class="field">
+        <label class="sr-only" for="input">Message HASHIRU</label>
+        <textarea id="input" rows="1" placeholder="Message HASHIRU" enterkeyhint="send"></textarea>
+        <button class="send" id="send" type="submit" aria-label="Send" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+        <button class="send stop" id="stop" type="button" aria-label="Stop" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+        </button>
+      </div>
+      <p class="fine" id="fine">Agents can make mistakes, and cloud models spend real money. Check the agents panel.</p>
+    </form>
+  </main>
+
+  <aside class="agents" id="agents" aria-label="Agents" hidden>
+    <div class="agents-head">
+      <h2>Agents</h2>
+      <button class="icon-btn" id="close-agents" type="button" aria-label="Close agents panel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <dl class="totals" id="totals"></dl>
+    <ol class="tree" id="tree"></ol>
+    <h3 class="sub">This turn</h3>
+    <ol class="events" id="events"></ol>
+  </aside>
+</div>
+
+<dialog class="dialog" id="settings">
+  <form method="dialog" class="dialog-body" id="settings-form">
+    <h2>Settings</h2>
+    <label for="api-key">API key</label>
+    <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="Only needed if the hub sets one">
+    <p class="hint">Kept in this browser only and sent to this hub as a bearer token.</p>
+    <div class="dialog-actions">
+      <button type="submit" value="cancel" class="btn">Cancel</button>
+      <button type="submit" value="save" class="btn primary" id="save-settings">Save</button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>

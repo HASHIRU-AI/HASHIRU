@@ -60,9 +60,10 @@ def check_priced(models: list[str]) -> None:
 class LLM:
     """Chat completions at temperature 0, with cost from LiteLLM's price map (local calls cost $0)."""
 
-    def __init__(self, ollama_url: str, wallet: Wallet) -> None:
+    def __init__(self, ollama_url: str, wallet: Wallet, num_ctx: int = 16384) -> None:
         self.ollama_url = ollama_url
         self.wallet = wallet
+        self.num_ctx = num_ctx  # Ollama's own default (4096) leaves a thinking model no room to answer
 
     async def chat(self, model: str, messages: list[dict[str, Any]],
                    tools: list[dict[str, Any]] | None = None) -> tuple[Any, float]:
@@ -72,7 +73,7 @@ class LLM:
         traced, and every later call by any agent in any session is refused.
         """
         self.wallet.check()
-        extra = {"api_base": self.ollama_url} if is_local(model) else {}
+        extra = {"api_base": self.ollama_url, "num_ctx": self.num_ctx} if is_local(model) else {}
         resp = await litellm.acompletion(model=model, messages=messages, tools=tools or None,
                                          temperature=0, num_retries=2, **extra)  # ride out a 429/503
         cost = 0.0 if is_local(model) else float(litellm.completion_cost(completion_response=resp))

@@ -45,12 +45,24 @@ CEO_PROMPT = ("You are the CEO of HASHIRU. Break the user's request into subtask
               "(managers use tools and can hire their own workers; workers answer once and have no tools), "
               "delegate with ask_agent, fire agents you no longer need, and answer the user.")
 
+# Sent once when a model ends its turn with nothing (seen with local thinking models whose whole answer went into
+# their hidden reasoning): without it the caller gets an empty reply after all the agents' work.
+EMPTY_REPLY = ("Your last reply was empty. Reply now with your answer to the message above, using what your tools "
+               "and agents told you.")
+NUDGE = [{"role": "assistant", "content": ""}, {"role": "user", "content": EMPTY_REPLY}]
+
 ASK_TOOL = {"type": "function", "function": {
     "name": "ask_agent",
     "description": "Send a message to an agent you hired and wait for its reply.",
     "parameters": {"type": "object",
                    "properties": {"name": {"type": "string"}, "text": {"type": "string"}},
                    "required": ["name", "text"]}}}
+
+
+def empty(rec: AgentRecord) -> str:
+    """What an agent's caller gets when it answered with nothing twice: a failure, not an empty reply."""
+    hint = " (a local model may have filled its context window: raise ollama_num_ctx)" if rec.tier == "local" else ""
+    return f"failed: {rec.name} gave an empty answer{hint}"
 
 
 def system_prompt(rec: AgentRecord) -> str:
@@ -221,15 +233,22 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt(rec)},
                                       {"role": "user", "content": text}]
     if rec.role == "worker":
-        if refused := spent_out(hub, session, rec):
-            return refused
-        msg, _, _ = await think(hub, session, rec, messages, None)
-        return msg.content or ""
+        for attempt in range(2):
+            if refused := spent_out(hub, session, rec):
+                return refused
+            msg, _, _ = await think(hub, session, rec, messages, None)
+            if (msg.content or "").strip() or not still_on(hub, session, rec):
+                return msg.content or ""
+            if attempt:
+                return empty(rec)
+            messages += NUDGE
+        return empty(rec)
     timeout = httpx2.Timeout(30, read=hub.settings.task_timeout)
     async with (httpx2.AsyncClient(headers=bearer(session, name), timeout=timeout) as http,
                 streamable_http_client(f"{hub.settings.internal_url}/mcp", http_client=http) as (read, write, *_),
                 ClientSession(read, write) as mcp):
         await mcp.initialize()
+        nudged = False
         for _ in range(hub.settings.max_turns):
             if not still_on(hub, session, rec):
                 return "failed"
@@ -240,7 +259,13 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
             tools += [ASK_TOOL] if allowed(rec, "ask_agent") else []
             msg, calls, turn = await think(hub, session, rec, messages, tools)
             if not calls:
-                return msg.content or ""
+                if (msg.content or "").strip():
+                    return msg.content or ""
+                if nudged:
+                    return empty(rec)
+                nudged = True
+                messages += NUDGE
+                continue
             messages.append({"role": "assistant", "content": msg.content or "", "tool_calls": [
                 {"id": c.id, "type": "function",
                  "function": {"name": c.function.name, "arguments": c.function.arguments}}

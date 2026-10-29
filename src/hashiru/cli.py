@@ -2,12 +2,14 @@
 
   hashiru ask "Summarize ..." [key=value ...]   one request to a fresh session's CEO
   hashiru chat [key=value ...]                  talk to the CEO turn by turn (Ctrl-D, Ctrl-C or /quit ends)
+  hashiru serve [key=value ...]                 the chat page, OpenAI-compatible API, A2A agent and MCP server
 
 key=value pairs are Hydra overrides of hashiru/conf/config.yaml, e.g. budget_usd=1.0.
 Keys for cloud models come from the environment: run with `uv run --env-file .env hashiru ...`.
 """
 import argparse
 import asyncio
+import contextlib
 import logging
 import signal
 import sys
@@ -17,8 +19,9 @@ from hydra.errors import HydraException
 
 from hashiru.config import Settings, load_settings
 from hashiru.hub import Hub
+from hashiru.interop.conversations import with_history
 from hashiru.runtime import ask_agent
-from hashiru.session import USER, Session
+from hashiru.session import USER
 
 __all__ = ["main"]
 
@@ -27,16 +30,6 @@ def deliveries(events: list[dict[str, Any]]) -> list[str]:
     """deliver_to_user goes straight to the user, not through the CEO's reply."""
     return [f"[{e['agent']} -> you] {e['args'].get('text', '')}" for e in events
             if e["kind"] == "tool" and e["name"] == "deliver_to_user"]
-
-
-def with_history(session: Session, history: list[tuple[str, str]], text: str) -> str:
-    """The CEO keeps no memory between messages, so each one carries the chat so far and who is still hired."""
-    if not history:
-        return text
-    past = "\n".join(f"User: {said}\nYou: {reply}" for said, reply in history)
-    live = [f"{a.name} ({a.role}, {a.tier} {a.model})" for a in session.live_hires("ceo")]
-    return (f"Our conversation so far:\n{past}\nAgents you hired that are still live: {', '.join(live) or 'none'}."
-            f"\n\nThe user's new message: {text}")
 
 
 async def ask(settings: Settings, text: str) -> None:
@@ -88,6 +81,30 @@ async def chat(settings: Settings) -> None:
     print(f"trace: {session.trace.path}")
 
 
+async def serve(settings: Settings) -> None:
+    """Serve until Ctrl-C or SIGTERM, then close every conversation (firing agents, unloading models)."""
+    hub = Hub(settings)
+    async with hub.serving():
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):  # replaces uvicorn's handlers, which would re-raise ^C on exit
+            with contextlib.suppress(NotImplementedError):  # Windows: uvicorn's handlers stay
+                loop.add_signal_handler(sig, stop.set)
+        url = settings.base_url
+        print(f"HASHIRU is serving (Ctrl-C stops it). CEO: {settings.ceo_model}, ${settings.budget_usd} per chat.\n"
+              f"  chat page       {url}/\n"
+              f"  OpenAI API      {url}/v1   (model \"hashiru\")\n"
+              f"  A2A agent       {url}/.well-known/agent-card.json\n"
+              f"  MCP server      {url}/public/mcp\n"
+              + ("  clients send the api_key as a bearer token" if settings.api_key
+                 else "  no api_key: only this machine can connect"), flush=True)
+        stopped = asyncio.ensure_future(stop.wait())
+        await asyncio.wait([stopped, asyncio.ensure_future(hub.until_stopped())],
+                           return_when=asyncio.FIRST_COMPLETED)
+        stopped.cancel()
+        print("stopping: closing conversations", flush=True)
+
+
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.WARNING, force=True)
     # Known-benign SDK noise: MCP's OpenTelemetry spans end in a different task context than they began
@@ -104,12 +121,17 @@ def main(argv: list[str] | None = None) -> None:
     chat_cmd = sub.add_parser("chat", help="talk to the CEO turn by turn")
     chat_cmd.add_argument("overrides", nargs="*", help="Hydra overrides, e.g. budget_usd=1.0")
     chat_cmd.add_argument("--config", help="YAML config file (default: $HASHIRU_CONFIG)")
+    serve_cmd = sub.add_parser("serve", help="serve the chat page and the public APIs")
+    serve_cmd.add_argument("overrides", nargs="*", help="Hydra overrides, e.g. port=9300")
+    serve_cmd.add_argument("--config", help="YAML config file (default: $HASHIRU_CONFIG)")
     args = parser.parse_args(argv)
     try:
         settings = load_settings(args.overrides, args.config)
     except (ValueError, OSError, HydraException) as exc:  # a bad override or config file: one line, no traceback
         sys.exit(f"hashiru: {str(exc).splitlines()[0] if str(exc) else type(exc).__name__}")
     try:
-        asyncio.run(ask(settings, args.text) if args.command == "ask" else chat(settings))
+        commands = {"ask": lambda: ask(settings, args.text), "chat": lambda: chat(settings),
+                    "serve": lambda: serve(settings)}
+        asyncio.run(commands[args.command]())
     except (ValueError, RuntimeError) as exc:
         sys.exit(f"hashiru: {exc}")

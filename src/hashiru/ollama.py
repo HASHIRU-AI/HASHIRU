@@ -14,9 +14,10 @@ def tag(model: str) -> str:
 
 
 class Ollama:
-    def __init__(self, url: str, models: tuple[str, ...]) -> None:
+    def __init__(self, url: str, models: tuple[str, ...], num_ctx: int = 16384) -> None:
         self.url = url
         self.local = {tag(m) for m in models if is_local(m)}
+        self.num_ctx = num_ctx  # load with the context window agents' calls use, or Ollama reloads the model
 
     async def request(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         """GET (no body) or POST to the Ollama HTTP API."""
@@ -27,9 +28,13 @@ class Ollama:
             return result
 
     async def load(self, model: str) -> int:
-        """Load a local model now so its memory is really in use. Returns its size in MB."""
-        await self.request("/api/generate", {"model": tag(model), "keep_alive": "30m", "stream": False})
-        return (await self.sizes()).get(tag(model), 0)
+        """Load a local model now so its memory is really in use. Returns the MB it takes loaded (weights plus its
+        context window), or its file size if Ollama does not report it."""
+        await self.request("/api/generate", {"model": tag(model), "keep_alive": "30m", "stream": False,
+                                             "options": {"num_ctx": self.num_ctx}})
+        running = (await self.request("/api/ps")).get("models", [])
+        loaded = next((m["size"] for m in running if m.get("name") == tag(model) and m.get("size")), 0)
+        return loaded // 2**20 if loaded else (await self.sizes()).get(tag(model), 0)
 
     async def unload(self, model: str) -> None:
         await self.request("/api/generate", {"model": tag(model), "keep_alive": 0, "stream": False})

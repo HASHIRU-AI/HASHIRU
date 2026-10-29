@@ -27,7 +27,7 @@ dependencies = [
 hashiru = "hashiru.cli:main"
 
 [dependency-groups]
-dev = ["pytest", "ruff", "mypy"]
+dev = ["pytest", "ruff", "mypy", "openai"]  # openai: the API compatibility tests use the official client
 
 [build-system]
 requires = ["hatchling"]
