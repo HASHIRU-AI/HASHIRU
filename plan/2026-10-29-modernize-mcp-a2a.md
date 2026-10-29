@@ -1,6 +1,6 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5 done on `develop`; Phase 6 waits for HASHIRU-lite (after 2026-12-03); Phase 7 next.
+Status: Phases 0–5 done on `develop`; Phase 6 waits for HASHIRU-lite (after 2026-12-03); Phase 7 (docs) next.
 Date: 2026-10-29
 
 ## 0. Decisions so far
@@ -12,6 +12,7 @@ Date: 2026-10-29
 | 3 | Tool-creation sandbox | **`uv` subprocess now**, optional container backend later |
 | 4 | Paper continuity | **This is v2.** No need to reproduce v1 HASHIRUBench numbers; v1 stays reproducible at a tag |
 | 5 | UI (decided at Phase 5) | **OpenAI style instead of Gradio:** an OpenAI-compatible API (so Open WebUI, LibreChat and the SDKs work) and a built-in ChatGPT-style page on that API |
+| 6 | Benchmarking (decided after Phase 5) | **No benchmark runs for v2.** Phase 7 is docs only |
 
 ## 1. Requirements restatement
 
@@ -256,9 +257,8 @@ Known limitations: one API key is one trust domain (key holders can reach each o
 - [ ] Port lite's labels (`private`, `untrusted`), R1–R5 checks, `check.py`, and `--enforce` once lite's course Phase 2 is final.
 - [ ] Generalize: policies loaded from config so users can add their own.
 
-### Phase 7: Evaluation and docs (2 days + run time)
+### Phase 7: Docs (1–2 days)
 
-- [ ] New HASHIRUBench v2 runs (no comparison to v1 required), using traces for cost and behavior analysis.
 - [ ] README, architecture diagram, `CITATION.cff` (v2), examples for MCP servers and remote A2A agents.
 
 ## 6. Risks
@@ -285,7 +285,7 @@ Known limitations: one API key is one trust domain (key holders can reach each o
 | 4 A2A extras + modes | 3–4 days |
 | 5 UI + interop | 3 days |
 | 6 Policy layer (optional) | 2–3 days |
-| 7 Eval + docs | 2 days + bench time |
+| 7 Docs (no benchmarking) | 1–2 days |
 | **Total** | **~3–4 weeks** |
 
 Phases 2, 3 and 4 depend only on Phase 1 and can run in parallel.
