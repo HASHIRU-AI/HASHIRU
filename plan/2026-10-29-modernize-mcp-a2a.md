@@ -1,6 +1,6 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: DRAFT v2, awaiting confirmation. No code changed yet.
+Status: Phases 0–5 done on `develop`; Phase 6 waits for HASHIRU-lite (after 2026-12-03); Phase 7 next.
 Date: 2026-10-29
 
 ## 0. Decisions so far
@@ -11,6 +11,7 @@ Date: 2026-10-29
 | 2 | What employees look like | **Managers or workers**, following [HASHIRU-lite](https://github.com/kunpai/com-sci-239-multi-agent-class-project) |
 | 3 | Tool-creation sandbox | **`uv` subprocess now**, optional container backend later |
 | 4 | Paper continuity | **This is v2.** No need to reproduce v1 HASHIRUBench numbers; v1 stays reproducible at a tag |
+| 5 | UI (decided at Phase 5) | **OpenAI style instead of Gradio:** an OpenAI-compatible API (so Open WebUI, LibreChat and the SDKs work) and a built-in ChatGPT-style page on that API |
 
 ## 1. Requirements restatement
 
@@ -19,7 +20,7 @@ HASHIRU v2 is a CEO → manager → worker hierarchy where:
 - **Every agent is an A2A service** with its own Agent Card. Agents talk only over A2A.
 - **Every tool is an MCP tool.** Managers (and the CEO) run a tool loop over MCP; workers answer once with no tools.
 - **Budgets follow the hiring tree.** Each agent has a dollar pool reserved from its hirer. Local agents also hold real memory (MB of the loaded model). Firing returns unspent dollars and frees memory.
-- **v1 features that HASHIRU-lite left out come back:** autonomous tool creation, persistent memory with retrieval, the Gradio UI, the `Mode` toggles, multi-session use.
+- **v1 features that HASHIRU-lite left out come back:** autonomous tool creation, persistent memory with retrieval, a web UI (v1's was Gradio; v2's is OpenAI-style, see decision 5), the `Mode` toggles, multi-session use.
 - **Engineering baseline:** Python 3.13, uv, typed package, pytest, ruff, mypy, CI, no secrets in source.
 
 ## 2. Starting point: HASHIRU-lite
@@ -47,7 +48,7 @@ Gaps in lite that matter once HASHIRU is hosted:
 ## 3. Target architecture
 
 ```
-   Gradio UI · external A2A clients · MCP hosts (Claude Code, Cursor, ...)
+   Chat page / OpenAI-style apps · external A2A clients · MCP hosts (Claude Code, Cursor, ...)
                 │ (public, authenticated)
                 ▼
    ┌───────────────────────── Session (one per user/chat) ─────────────────────────┐
@@ -109,13 +110,13 @@ src/hashiru/
   tools/memory.py    persistent memory + retrieval
   tools/web.py       get_website (+ search via 3rd-party MCP)
   toolsmith/         ToolCreator, user-tools server, loader, rollback
-  ui/                Gradio app + trace panel
-  interop/           CEO as public A2A agent; HASHIRU as MCP server
+  ui/                chat page (static HTML/JS/CSS) + agents panel
+  interop/           OpenAI-compatible API, CEO as public A2A agent, HASHIRU as MCP server
 conf/                models, budget, modes, mcp_servers, a2a_peers
 tests/               ported lite tests + new ones
 ```
 
-v1 code (`src/manager`, `src/tools`, `app.py`, `start.py`, `deleteAgents.py`) is deleted on the v2 branch once Phase 5 replaces the UI. v1 lives on at tag `v1.0-paper`.
+v1 code (`src/manager`, `src/tools`, `src/models`, `app.py`, `start.py`, `deleteAgents.py`, `requirements.txt`) was deleted in Phase 5, once the new UI replaced it. v1 lives on at tag `v1.0-paper`.
 
 ## 5. Implementation phases
 
@@ -162,7 +163,7 @@ Known limitations carried forward:
 - [x] **Memory:** the `memory` tool searches, adds, deletes and lists. With `memory_db` (the CLI default) memory is one SQLite file shared by all sessions and persistent across runs, ranked with FTS5 bm25. This replaces v1's per-query SentenceTransformer, so v2 has no torch dependency. With `memory_db=''` each session gets its own copy of `memory.json` (reproducible benchmarks). `memory_autoinject` adds the best matches to the user's message (v1 behavior), records a `recall` event and labels the CEO `private`.
 - [x] **Web:** `get_website` moved to `web.py`; new built-in `arxiv_search` (arXiv Atom API, public-address checks, labeled `untrusted`). General web search comes from a configured MCP server.
 - [x] **Tool scoping:** `hire_agent(..., tools=[...])` limits a manager to a subset of its hirer's tools (ask_agent included); the runtime offers only those and refuses the rest.
-- [ ] Removing v1's `python_sandbox_tool` and `weather_tool` happens with the rest of the v1 code in Phase 5.
+- [x] v1's `python_sandbox_tool` and `weather_tool` were removed with the rest of the v1 code in Phase 5.
 - [x] Tests: 31 in `tests/test_phase2.py` (180 total), including a stdio test server and an in-process HTTP MCP server.
 
 Code review (independent reviewer), all fixed with regression tests; three fixes mutation-checked:
@@ -223,13 +224,32 @@ Code review (independent reviewer with a hostile stand-in peer), all fixed with 
 
 Known limitations carried forward: the wallet cap can still be exceeded by one call per agent running at the same moment in different sessions; a peer's real cost is only as honest as its report (capped by the pool).
 
-### Phase 5: UI and interop (3 days)
+### Phase 5: UI and interop (3 days) — DONE 2026-10-29 on `feature/ui-interop`
 
-- [ ] Gradio chat as a thin client of a session; a side panel shows the live agent tree, pools, and trace events (pattern from lite's `chat.html`/`viewer.html`).
-- [ ] Auth0 login kept as optional; `SESSION_SECRET_KEY` required when auth is on.
-- [ ] Publish the CEO as a public A2A agent (`/.well-known/agent-card.json`) and HASHIRU as an MCP server (`hashiru.ask`, budget resource) for Claude Code, Cursor, etc.
-- [ ] Single-process, single-port mode for Hugging Face Spaces, with internal routes protected (Phase 1 auth).
-- [ ] Delete v1 code on `develop`.
+Changed at the start of the phase (decision 5): no Gradio. HASHIRU speaks the OpenAI Chat Completions API, and its
+own chat page is a client of that API.
+
+- [x] **Conversations** (`interop/conversations.py`): every front end talks to one registry. A conversation is a hub session plus its chat; OpenAI-style clients resend the whole chat, so a request continues a conversation only when its earlier messages match that conversation's history (ignoring whitespace and reasoning blocks that chat apps fold into replies); an edited or regenerated chat gets a new session that is shown the chat so far. One turn at a time per conversation (409 otherwise); at most `max_sessions` open (the least recently used idle one is closed, 429 when all are busy); idle ones close after `session_ttl`. A client that stops listening stops the turn and closes the conversation, firing its agents.
+- [x] **OpenAI-compatible API** (`/v1/models`, `/v1/chat/completions`, streaming and not): model `hashiru`. The agents' work streams as `reasoning_content` (shown as thinking by Open WebUI, LibreChat, ...); `deliver_to_user` text and the CEO's reply stream as `content`; a `hashiru` object carries the session, each trace event (without arguments or results) and the cost. `/v1/hashiru/info` and `/v1/hashiru/sessions/{id}` (GET pools, DELETE to close) serve the agents panel.
+- [x] **Chat page** (`ui/`, served at `/`): ChatGPT-style layout (chat list in localStorage, centered thread, composer, stop button), each answer with a collapsible "Worked for Ns · k hires" list of what the agents did, and an Agents panel with the live hiring tree, pools and this turn's events. Static files with no build step and no external requests; strict CSP (`default-src 'self'`), and model output is rendered by a small Markdown renderer that builds DOM nodes and never parses HTML. Light and dark themes; phone layout with drawers.
+- [x] **Public A2A agent:** the CEO's card at `/.well-known/agent-card.json` (streaming, cost extension, bearer security scheme when a key is set), JSON-RPC at `/a2a`; one conversation per A2A context; progress as `working` status updates; the caller's `hashiru_deadline` can shorten the turn's deadline. A2A streaming (deferred from Phase 4) is done here.
+- [x] **MCP server** at `/public/mcp` for Claude Code, Cursor, ...: tools `ask` (progress notifications per agent step; `session` continues a conversation) and `end_session`; resource `hashiru://sessions/{session}`.
+- [x] **Access:** `api_key` (bearer) guards `/v1`, `/a2a` and `/public/mcp`; listening beyond loopback requires one. Without a key, those routes answer only loopback `Host` names and loopback or absent `Origin`s, so a web page cannot reach them by DNS rebinding or a cross-site request (JSON-only bodies also force a CORS preflight). Internal routes keep per-session tokens.
+- [x] **Single-port Hugging Face Spaces mode:** `hashiru serve` (graceful on SIGINT/SIGTERM: conversations closed, models unloaded) and a `Dockerfile` for a Docker Space (port 7860, uid 1000, `public_url` from `SPACE_HOST`, page framable by huggingface.co). README front matter switched from `sdk: gradio` to `sdk: docker`.
+- [ ] Auth0 login: dropped for now. A key holder is one trust domain; per-user accounts can come from the chat app in front (Open WebUI has its own) or a later OAuth layer.
+- [x] **v1 code deleted** on `develop` (it lives at tag `v1.0-paper`).
+- [x] Tests: 41 new (266 total, plus 2 opt-in browser tests) in `tests/test_interop_unit.py`, `tests/test_interop.py` and `tests/test_interop_review.py`, using the official `openai` client, an A2A client and an MCP client against a served hub. One found a real bug: two conversations with the same history shared a fingerprint, and the first to move on unregistered the other.
+- [x] **Empty final replies** (found in the chat page's first real two-worker run): `qwen3.5:4b`'s CEO hired and asked both workers, then answered "(empty)". Cause: Ollama's default context window (4096 tokens) was full: the prompt with both workers' replies was 3,839 tokens, the model's hidden reasoning used the remaining 257 and stopped (`finish_reason: length`) before any answer. Fixes: local models now run with `ollama_num_ctx` (default 16384) for loading and for every call, and the ledger records a loaded model's measured size from `/api/ps` (qwen3.5:4b: 3,537 MB at 16384, versus the 3,232 MB file size used before); an agent whose reply is empty is asked once more, and if it is empty again its caller gets "failed: <name> gave an empty answer" with a hint to raise `ollama_num_ctx`. Not yet confirmed with a real run after the context fix (the repeat with only the re-ask still answered "(empty)"). The bug dated from Phase 1, where the CLI printed a blank line.
+- [x] Real runs, local `qwen3.5:4b`, $0: the chat page in headless Chrome (empty state, a live turn, agents panel, dark mode, 390 px phone layout with no horizontal scroll) and a streamed `curl` turn showing hire → ask → reply → fire as reasoning, then the answer; `hashiru serve host=0.0.0.0` with a key (401 without it, 200 with it, card names the public URL). The Docker image itself was not built here (no Docker daemon running).
+
+Code review (independent reviewer, hub runs on test ports): no HIGH findings, no gate bypass (path tricks, HEAD/OPTIONS, Host and Origin forms all fail closed) and no XSS path. All findings fixed with regression tests (`tests/test_interop_review.py`, 13 tests; every fix mutation-checked), plus opt-in browser tests (`tests/test_ui_browser.py`):
+- MED: normalizing a resent chat used a regex that was quadratic on unclosed `<think>` tags (one 154 KB request stalled the whole hub for 20 s; 2 MB would take minutes) → a linear scan (2 MB in under 0.1 s).
+- MED: a non-streaming request kept running after its client left (Starlette only notices for streams), and the OpenAI client's retries would each open another conversation with its own budget → the handler watches for the disconnect and stops the turn.
+- MED: deeply nested quotes or lists in a reply overflowed the page's stack, and the chat stayed broken in localStorage → nesting and line-length caps (deeper or longer text renders plain) and a plain-text fallback around the renderer. Testing this found that Markdown tables never rendered (a chained `append`); fixed.
+- LOW: a sweep could close a conversation that a client had just claimed; concurrent opens could exceed `max_sessions`; requests during shutdown opened conversations that were never closed, and shutdown closed them one by one (past Docker's 10 s); `/public/mcp` refused a proxy's Host header with a key set (421); without a key, a page on another localhost port passed the Origin check; closed conversations left fingerprint entries behind; a consumer that failed mid-turn left its conversation busy until garbage collection; a pasted key with a trailing newline locked everyone out; the public card declared a price of $0 (a peer hub would treat it as free); idle conversations expired only when a new one opened (now swept every minute).
+- Documented: with tool creation on and no key, agent-written tools could open conversations through the local API (each with a fresh budget; `max_usd` still caps them).
+
+Known limitations: one API key is one trust domain (key holders can reach each other's conversations by id, and clients that send identical chats without the session header continue whichever conversation last had that history); Auth0 login is not ported; the Dockerfile was not built here (no Docker daemon), and whether a browser sends `Origin: null` for the page's own POSTs under `Referrer-Policy: no-referrer` was checked in Chrome only (the page works there without a key).
 
 ### Phase 6 (optional): Policy layer from lite (2–3 days, after 2026-12-03)
 
