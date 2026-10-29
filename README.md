@@ -182,6 +182,13 @@ If you use this project in your research or applications, please cite the paper 
 }
 ```
 
+## License
+
+HASHIRU is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE), copyright 2026
+HashiruAI. You may use, change and share it for any noncommercial purpose, including research, study and personal
+projects, and any use by educational, charitable, public research or government organizations. These terms do not
+license commercial use.
+
 ## Contributing
 
 Contributions are welcome! Please submit pull requests with bug fixes, new features, or improvements to the documentation.

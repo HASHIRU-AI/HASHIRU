@@ -11,7 +11,7 @@ ENV HOME=/home/user PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy U
     HASHIRU_FRAME_ANCESTORS="https://huggingface.co"
 WORKDIR /home/user/app
 
-COPY --chown=user pyproject.toml uv.lock README.md ./
+COPY --chown=user pyproject.toml uv.lock README.md LICENSE ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY --chown=user src ./src
 RUN uv sync --locked --no-dev

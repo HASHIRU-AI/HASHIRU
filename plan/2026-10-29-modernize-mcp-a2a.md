@@ -278,8 +278,9 @@ Known limitations: one API key is one trust domain (key holders can reach each o
   took 30 s), 3 MED (inexact answers from float literals and float display, wrong two-hub pricing in the docs, no
   cap on message length), 9 LOW (trailing-slash peer URL, tzdata, price validation, test gaps, stale docstrings,
   cost-extension doc errors); all fixed. Not fixed: the example agent's task store is unbounded (documented; it
-  binds to loopback). `CITATION.cff` names no license: the repository has no LICENSE file and v1 never had one,
-  though `pyproject.toml` (Phase 1) says MIT. The authors need to choose.
+  binds to loopback). Licensing: v1 never had a license, and Phase 1 had put MIT in `pyproject.toml` without
+  a LICENSE file. The authors chose the PolyForm Noncommercial License 1.0.0 (copyright HashiruAI): `LICENSE`, the
+  `pyproject.toml` license expression, `CITATION.cff`, the README and the Docker image now all carry it.
 - Note for a later phase: a hub's public card declares its whole `budget_usd` as the per-message price, and the
   cost extension treats a declared price as a floor, so a hub hired by another hub is charged its full budget for
   every message even when it spends nothing (e.g. on local models). A "maximum per message" param, charged at the
