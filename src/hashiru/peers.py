@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     from hashiru.hub import Hub
 
 __all__ = ["COST_EXTENSION", "COST_KEY", "DEADLINE_KEY", "PEER_PREFIX", "BoundedTaskStore", "PeerExecutor", "Price",
-           "cost_extension", "fetch_card", "finish", "model_price", "pin", "price_of", "reply_of", "send",
-           "serve_request", "usd"]
+           "begin", "cost_extension", "deadline_of", "fetch_card", "finish", "model_price", "pin", "price_of",
+           "reply_of", "send", "serve_request", "usd"]
 
 COST_EXTENSION = "https://github.com/HASHIRU-AI/HASHIRU/blob/main/docs/a2a-cost-extension.md"
 COST_KEY = "hashiru_cost_usd"        # reply metadata: what the request cost, in USD
@@ -166,17 +166,23 @@ async def send(url: str, headers: dict[str, str], text: str, context_id: str, ti
     return answer
 
 
-async def finish(context: RequestContext, event_queue: EventQueue, text: str, metadata: dict[str, Any]) -> None:
+async def begin(context: RequestContext, event_queue: EventQueue) -> TaskUpdater:
+    """Open the request's task (if the client did not continue one), for status updates and the final reply."""
+    if context.current_task is None:  # built directly: the SDK's helper refuses a message with empty text
+        history = [context.message] if context.message is not None else []
+        await event_queue.enqueue_event(Task(id=context.task_id or "", context_id=context.context_id or "",
+                                             status=TaskStatus(state=TaskState.TASK_STATE_SUBMITTED), history=history))
+    return TaskUpdater(event_queue, context.task_id or "", context.context_id or "")
+
+
+async def finish(context: RequestContext, event_queue: EventQueue, text: str, metadata: dict[str, Any],
+                 updater: TaskUpdater | None = None) -> None:
     """Answer a request in A2A task mode: the reply is the task's final (completed) status message.
 
     A bare Message reply ("message mode") never reaches a final task state, so the SDK keeps its two worker tasks
     for that request waiting forever: one pair leaked per message.
     """
-    if context.current_task is None:  # built directly: the SDK's helper refuses a message with empty text
-        history = [context.message] if context.message is not None else []
-        await event_queue.enqueue_event(Task(id=context.task_id or "", context_id=context.context_id or "",
-                                             status=TaskStatus(state=TaskState.TASK_STATE_SUBMITTED), history=history))
-    updater = TaskUpdater(event_queue, context.task_id or "", context.context_id or "")
+    updater = updater or await begin(context, event_queue)
     await updater.complete(updater.new_agent_message([new_text_part(text or "(empty)")], metadata=metadata))
 
 

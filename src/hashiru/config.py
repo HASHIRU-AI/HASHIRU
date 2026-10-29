@@ -3,7 +3,7 @@
 import math
 import os
 import re
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -16,7 +16,9 @@ __all__ = ["A2APeer", "McpServer", "Settings", "load_settings"]
 SERVER_NAME = re.compile(r"[a-z][a-z0-9_]{0,23}")
 SERVER_KEYS = {"command", "args", "env", "url", "headers", "labels"}
 PEER_KEYS = {"url", "headers", "price_usd_per_message", "labels"}
-POSITIVE = ("task_timeout", "tool_start_timeout", "tool_call_timeout", "mcp_start_timeout")
+POSITIVE = ("task_timeout", "tool_start_timeout", "tool_call_timeout", "mcp_start_timeout", "session_ttl",
+            "max_sessions", "ollama_num_ctx")
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 NON_NEGATIVE = ("budget_usd", "max_usd", "turn_reserve_usd")
 LABELS = {"private", "untrusted"}
 
@@ -58,6 +60,7 @@ class Settings:
     max_turns: int = 12
     task_timeout: float = 1800.0  # seconds for one user request, across every agent it reaches
     ollama_url: str = "http://127.0.0.1:11434"
+    ollama_num_ctx: int = 16384  # context window for local models (Ollama's default, 4096, is too small)
     host: str = "127.0.0.1"
     port: int = 9200
     data_dir: str = "data"
@@ -77,11 +80,28 @@ class Settings:
     allow_hiring: bool = True
     allow_local_agents: bool = True
     allow_cloud_agents: bool = True
+    api_key: str = field(default="", repr=False)  # bearer key for the public routes; required beyond loopback
+    public_url: str = ""  # where others reach this hub, for the Agent Card; default http://<host>:<port>
+    max_sessions: int = 16  # open conversations from the chat page, the OpenAI API, A2A and MCP clients
+    session_ttl: float = 3600.0  # seconds an idle conversation stays open with its hires
+    frame_ancestors: str = "'none'"  # CSP frame-ancestors for the chat page
 
     @property
     def internal_url(self) -> str:
         """Where agents reach the hub. Always loopback, even when the hub listens on every interface."""
         return f"http://127.0.0.1:{self.port}"
+
+    @property
+    def base_url(self) -> str:
+        """Where clients reach the hub: public_url, or this machine's address."""
+        if self.public_url:
+            return self.public_url.rstrip("/")
+        host = "127.0.0.1" if self.host in ("0.0.0.0", "::") else self.host
+        return f"http://{f'[{host}]' if ':' in host else host}:{self.port}"
+
+    @property
+    def loopback(self) -> bool:
+        return self.host in LOOPBACK
 
 
 def _models(value: Any) -> tuple[str, ...]:
@@ -210,4 +230,14 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
         value = values.get(key)
         if value is not None and (not math.isfinite(value) or value < 0 or (key in POSITIVE and value == 0)):
             raise ValueError(f"{key} must be a finite number {'> 0' if key in POSITIVE else '>= 0'}, got {value}")
-    return Settings(**values)
+    if "api_key" in values:  # pasted secrets often carry a newline; clients' tokens are stripped too
+        key = values["api_key"].strip()
+        if values["api_key"] and not key:
+            raise ValueError("api_key is blank")
+        values["api_key"] = key
+    settings = Settings(**values)
+    if not settings.loopback and not settings.api_key:
+        raise ValueError(f"listening on {settings.host} needs an api_key (set HASHIRU_API_KEY)")
+    if settings.public_url and urlsplit(settings.public_url).scheme not in ("http", "https"):
+        raise ValueError("public_url must be an http(s) URL")
+    return settings

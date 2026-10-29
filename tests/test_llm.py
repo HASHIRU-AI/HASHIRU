@@ -68,3 +68,28 @@ def test_wallet_cap_stops_all_further_calls(monkeypatch):
         with pytest.raises(llm.WalletExceeded):
             asyncio.run(model.chat("ollama_chat/qwen3.5:4b", []))
     assert len(seen) == 2
+
+
+def test_local_models_get_a_context_window_big_enough_to_answer(monkeypatch):
+    seen = fake_litellm(monkeypatch)
+    model = llm.LLM("http://ollama", llm.Wallet(2.0), num_ctx=32768)
+    asyncio.run(model.chat("ollama_chat/qwen3.5:4b", []))
+    asyncio.run(model.chat("gpt-4.1-mini", []))
+    assert seen[0]["num_ctx"] == 32768 and "num_ctx" not in seen[1]  # cloud providers would reject it
+
+
+def test_loading_uses_the_same_context_window_and_reports_the_loaded_size(monkeypatch):
+    from hashiru.ollama import Ollama
+
+    calls: list[tuple[str, object]] = []
+    loaded = {"models": [{"name": "qwen3.5:4b", "size": 3537 * 2**20}]}
+
+    async def request(path, body=None):
+        calls.append((path, body))
+        return loaded if path == "/api/ps" else {"models": [{"name": "qwen3.5:4b", "size": 3232 * 2**20}]}
+    ollama = Ollama("http://ollama", ("ollama_chat/qwen3.5:4b",), num_ctx=16384)
+    monkeypatch.setattr(ollama, "request", request)
+    assert asyncio.run(ollama.load("ollama_chat/qwen3.5:4b")) == 3537   # weights plus context, not the file size
+    assert calls[0][1]["options"] == {"num_ctx": 16384}
+    loaded["models"] = []  # Ollama did not report it: fall back to the file size
+    assert asyncio.run(ollama.load("ollama_chat/qwen3.5:4b")) == 3232
