@@ -109,6 +109,7 @@ TOOL SCHEMA (Adhere for creation of tools):
 EXAMPLE: For Weather API
 
 import importlib
+import os
 
 __all__ = ['WeatherApi']
 
@@ -142,7 +143,8 @@ class WeatherApi():
         requests = importlib.import_module("requests")
 
         response = requests.get(
-            f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid=ea50e63a3bea67adaf50fbecbe5b3c1e")
+            "http://api.openweathermap.org/data/2.5/weather",
+            params={"q": location, "appid": os.environ["OPENWEATHER_API_KEY"]})
         if response.status_code == 200:
             return {
                 "status": "success",
