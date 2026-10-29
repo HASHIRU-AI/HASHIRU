@@ -16,8 +16,8 @@ def clean_env(monkeypatch):
 def test_defaults_need_no_keys():
     s = load_settings()
     assert s.ceo_model == "ollama_chat/qwen3.5:4b" and s.models == ("ollama_chat/qwen3.5:4b",)
-    assert (s.budget_usd, s.max_usd, s.max_depth, s.port) == (0.5, 2.0, 2, 9100)
-    assert s.internal_url == "http://127.0.0.1:9100"
+    assert (s.budget_usd, s.max_usd, s.max_depth, s.port) == (0.5, 2.0, 2, 9200)
+    assert s.internal_url == "http://127.0.0.1:9200"
 
 
 def test_environment_variables(monkeypatch):

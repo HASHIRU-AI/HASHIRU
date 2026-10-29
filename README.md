@@ -47,6 +47,22 @@ uv run hashiru chat --config examples/hashiru.yaml      # adds the official fetc
 
 A manager can be hired with only some tools: `hire_agent(..., tools=["memory", "ask_agent"])`.
 
+**Budgets, modes and deadlines.** Budgets are enforced in code: a hire cannot reserve more than its hirer has
+left, a local model must fit in free memory, and an agent whose pool is spent stops making cloud calls
+(`enforce_budget=false` only records overspending, for policy experiments). `allow_hiring`,
+`allow_local_agents` and `allow_cloud_agents` are v1's mode switches. Each user request has one deadline
+(`task_timeout`) that every agent it reaches must meet; firing an agent or closing a session stops its work.
+
+**Remote agents over A2A.** List other A2A agents under `a2a_peers` and managers can hire them as workers
+(`a2a/<name>`), paid from their pools. A peer's price comes from its Agent Card through the
+[HASHIRU cost extension](docs/a2a-cost-extension.md) or from your config; every agent HASHIRU hosts publishes
+that extension too.
+
+```yaml
+a2a_peers:
+  helper: {url: https://example.com/agent/, headers: {Authorization: "Bearer ${oc.env:HELPER_TOKEN}"}}
+```
+
 **Tool creation** (off by default). With `tool_creation=true`, managers can write new tools with
 `create_tool`. Each tool runs as its own MCP server process under `uv run --with <its dependencies>`, without
 HASHIRU's environment variables, and is offered to every agent from the next turn on. Created tools are shared

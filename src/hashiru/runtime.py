@@ -5,29 +5,31 @@ the trace and moves labels.
 """
 import asyncio
 import json
+import time
 from collections.abc import Collection, Mapping
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import httpx2
-from a2a.client import ClientConfig, create_client
-from a2a.helpers import get_message_text, new_text_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
-from a2a.types import Role, SendMessageRequest
 from a2a.utils.errors import A2AError
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
 
 from hashiru.ledger import AgentRecord
+from hashiru.peers import DEADLINE_KEY, send, serve_request
 from hashiru.session import USER, Session
 from hashiru.trace import SOURCES
 
 if TYPE_CHECKING:
     from hashiru.hub import Hub
 
-__all__ = ["CEO_PROMPT", "Executor", "ask_agent", "run_agent", "system_prompt"]
+__all__ = ["CEO_PROMPT", "DEADLINE", "Executor", "ask_agent", "run_agent", "system_prompt"]
+
+DEADLINE: ContextVar[float | None] = ContextVar("hashiru_deadline", default=None)  # Unix time, per agent run
 
 RULES = "\n".join([
     "Rules you must follow:",
@@ -77,29 +79,27 @@ def unpack(result: Any) -> dict[str, Any]:
     return out
 
 
-def hop_timeout(hub: "Hub", session: Session, name: str) -> float:
-    """Deeper hops get shorter timeouts. This does not bound a whole subtree: an agent may ask several times in
-    sequence, and a callee that times out keeps running until it finishes, is fired, or its session closes."""
-    rec = session.ledger.get(name)
-    depth = rec.depth if rec else 0
-    return hub.settings.a2a_timeout * (hub.settings.max_depth + 1 - depth)
-
-
 def bearer(session: Session, me: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {session.tokens[me]}"}
 
 
+def deadline_for(hub: "Hub") -> float:
+    """The Unix time the current request must finish by: inherited inside an agent's run, fresh for the user."""
+    return DEADLINE.get() or time.time() + hub.settings.task_timeout
+
+
 async def a2a_send(hub: "Hub", session: Session, me: str, name: str, text: str) -> str:
-    """One A2A request/response to the agent's endpoint, authenticated as `me`."""
-    async with httpx.AsyncClient(timeout=hop_timeout(hub, session, name), headers=bearer(session, me)) as http:
-        client = await create_client(hub.agent_url(session, name),
-                                     client_config=ClientConfig(streaming=False, httpx_client=http))
-        reply = ""
-        request = SendMessageRequest(message=new_text_message(text, context_id=session.id, role=Role.ROLE_USER))
-        async for event in client.send_message(request):
-            if event.HasField("message"):
-                reply = get_message_text(event.message)
-        await client.close()
+    """One A2A request/response to the agent's endpoint, authenticated as `me`, carrying the request's deadline.
+
+    The callee's run is bounded by the same deadline (Executor), so nobody keeps working after the reply that
+    asked for it can no longer be used.
+    """
+    deadline = deadline_for(hub)
+    remaining = deadline - time.time()
+    if remaining <= 1:
+        raise TimeoutError("the request's deadline has passed")
+    reply, _, _ = await send(hub.agent_url(session, name), bearer(session, me), text, session.id,
+                             remaining + 5, {DEADLINE_KEY: deadline})  # +5 s: the callee replies "out of time" first
     return reply
 
 
@@ -108,6 +108,8 @@ async def ask_agent(hub: "Hub", session: Session, me: str, name: str, text: str)
     target = session.ledger.get(name)
     if target is None or not session.may_ask(me, name):
         return f"error: {name!r} is not a live agent you hired"
+    if not text.strip():
+        return "error: the message is empty"
     trace, task = session.trace, session.id
     me_rec = session.ledger.get(me)
     my_tier = me_rec.tier if me_rec else USER
@@ -117,7 +119,7 @@ async def ask_agent(hub: "Hub", session: Session, me: str, name: str, text: str)
     trace.receive(name, task, sent)
     try:
         reply = await a2a_send(hub, session, me, name, text)
-    except (A2AError, httpx.HTTPError) as exc:
+    except (A2AError, httpx.HTTPError, TimeoutError) as exc:
         return f"error: {name} failed: {exc}"
     back = trace.outgoing(name, task, reply)
     trace.emit("msg", task=task, agent=name, tier=target.tier, to=me, to_tier=my_tier,
@@ -171,12 +173,27 @@ async def dispatch(hub: "Hub", session: Session, mcp: Any, me: str, call: Any,
 async def think(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]],
                 tools: list[dict[str, Any]] | None) -> tuple[Any, list[Any], int]:
     """One LLM call: charge its cost to the agent and trace the thought. Returns (msg, calls, seq)."""
-    msg, cost = await hub.llm.chat(rec.model, messages, tools)
+    call = asyncio.ensure_future(hub.llm.chat(rec.model, messages, tools))
+    try:
+        msg, cost = await asyncio.shield(call)
+    except asyncio.CancelledError:
+        # The provider bills a request it has received: when the call returns, charge and trace it anyway.
+        call.add_done_callback(lambda done: charge(session, rec, done.result(), late=True)
+                               if not done.cancelled() and done.exception() is None else None)
+        raise
+    return msg, msg.tool_calls or [], charge(session, rec, (msg, cost))
+
+
+def charge(session: Session, rec: AgentRecord, answer: tuple[Any, float], late: bool = False) -> int:
+    """Charge one LLM call to the agent and trace it. Returns the trace seq of the thought."""
+    msg, cost = answer
     rec.spent += cost
     calls = msg.tool_calls or []
     event = session.trace.emit("llm", task=session.id, agent=rec.name, tier=rec.tier, model=rec.model,
-                               text=msg.content or "", tool_calls=[c.function.name for c in calls], cost_usd=cost)
-    return msg, calls, event["seq"]
+                               text=msg.content or "", tool_calls=[c.function.name for c in calls], cost_usd=cost,
+                               **({"after_stop": True} if late else {}))
+    seq: int = event["seq"]
+    return seq
 
 
 def allowed(rec: AgentRecord, tool: str) -> bool:
@@ -189,6 +206,13 @@ def still_on(hub: "Hub", session: Session, rec: AgentRecord) -> bool:
     return rec.live and hub.sessions.get(session.id) is session
 
 
+def spent_out(hub: "Hub", session: Session, rec: AgentRecord) -> str | None:
+    """Why the agent may not make another LLM call, under enforce_budget: a cloud agent needs money left."""
+    if hub.settings.enforce_budget and rec.tier != "local" and session.ledger.left()[rec.name] <= 0:
+        return f"failed: {rec.name}'s pool is spent"
+    return None
+
+
 async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
     """Workers answer with one LLM call. The CEO and managers loop over tools until they reply."""
     rec = session.ledger.agents[name]
@@ -197,9 +221,11 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt(rec)},
                                       {"role": "user", "content": text}]
     if rec.role == "worker":
+        if refused := spent_out(hub, session, rec):
+            return refused
         msg, _, _ = await think(hub, session, rec, messages, None)
         return msg.content or ""
-    timeout = httpx2.Timeout(30, read=hub.settings.a2a_timeout)
+    timeout = httpx2.Timeout(30, read=hub.settings.task_timeout)
     async with (httpx2.AsyncClient(headers=bearer(session, name), timeout=timeout) as http,
                 streamable_http_client(f"{hub.settings.internal_url}/mcp", http_client=http) as (read, write, *_),
                 ClientSession(read, write) as mcp):
@@ -207,6 +233,8 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
         for _ in range(hub.settings.max_turns):
             if not still_on(hub, session, rec):
                 return "failed"
+            if refused := spent_out(hub, session, rec):
+                return refused
             # Re-read every turn: a tool created (or deleted) on the last turn is visible on this one.
             tools = [to_openai(t) for t in (await mcp.list_tools()).tools if allowed(rec, t.name)]
             tools += [ASK_TOOL] if allowed(rec, "ask_agent") else []
@@ -225,7 +253,7 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
 
 
 class Executor(AgentExecutor):
-    """A2A entry point. Every hired agent is served by one of these."""
+    """A2A entry point. Every hired agent is served by one of these (through peers.serve_request)."""
 
     def __init__(self, hub: "Hub", session: Session, name: str) -> None:
         self.hub = hub
@@ -233,18 +261,13 @@ class Executor(AgentExecutor):
         self.name = name
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        text = get_message_text(context.message) if context.message else ""
-        try:
-            reply = await run_agent(self.hub, self.session, self.name, text)
-        except Exception as exc:  # record any failure in the trace, then let A2A report it
-            cause: BaseException = exc
-            while isinstance(cause, BaseExceptionGroup) and len(cause.exceptions) == 1:
-                cause = cause.exceptions[0]  # MCP's task group wraps the real error (e.g. WalletExceeded)
-            self.session.trace.emit("error", task=self.session.id, agent=self.name,
-                                    error=f"{type(cause).__name__}: {cause}")
-            raise cause from None
-        await event_queue.enqueue_event(
-            new_text_message(reply, context_id=context.context_id, role=Role.ROLE_AGENT))
+        async def work(text: str, deadline: float) -> str:
+            token = DEADLINE.set(deadline)  # asks this run makes carry the same deadline
+            try:
+                return await run_agent(self.hub, self.session, self.name, text)
+            finally:
+                DEADLINE.reset(token)
+        await serve_request(self.hub, self.session, self.name, context, event_queue, work)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         raise NotImplementedError("cancel is not supported")

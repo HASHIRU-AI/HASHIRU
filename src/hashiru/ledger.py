@@ -31,6 +31,7 @@ class AgentRecord:
     gpu_mb: int = 0
     live: bool = True
     tools: tuple[str, ...] | None = None  # None: every tool; else only these (managers)
+    price_usd: float = 0.0  # per message, for a remote A2A peer
 
 
 @dataclass
