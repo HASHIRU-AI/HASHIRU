@@ -19,3 +19,11 @@ mcp_servers:
   # search:                                 # a hosted server over streamable HTTP
   #   url: https://example.com/mcp
   #   headers: {Authorization: "Bearer ${oc.env:SEARCH_API_KEY}"}
+
+# Remote A2A agents managers may hire as workers named a2a/<name>. The price comes from the agent's card
+# (HASHIRU cost extension) or price_usd_per_message here; an agent with neither cannot be hired.
+# a2a_peers:
+#   helper:
+#     url: https://example.com/agent/
+#     headers: {Authorization: "Bearer ${oc.env:HELPER_TOKEN}"}
+#     price_usd_per_message: 0.01
