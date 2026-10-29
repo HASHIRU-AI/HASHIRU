@@ -285,7 +285,8 @@ def test_the_chat_page_is_self_contained(tmp_path):
     async def body(hub, base):
         async with httpx.AsyncClient(base_url=base, timeout=10) as http:
             page = await http.get("/")
-            files = {p: (await http.get(p)) for p in ("/ui/app.js", "/ui/markdown.js", "/ui/app.css", "/ui/icon.svg")}
+            files = {p: (await http.get(p)) for p in ("/ui/app.js", "/ui/markdown.js", "/ui/app.css", "/ui/icon.svg",
+                                                      "/ui/logo.svg", "/ui/figure.svg")}
             escape = await http.get("/ui/../interop/page.py")
         return page, files, escape
 
@@ -294,4 +295,7 @@ def test_the_chat_page_is_self_contained(tmp_path):
     assert "default-src 'self'" in csp and "frame-ancestors https://huggingface.co" in csp
     assert all(r.status_code == 200 and "content-security-policy" in r.headers for r in files.values())
     assert "http" not in page.text.replace("http://www.w3.org", "")  # nothing loaded from other sites
+    for logo in ("/ui/logo.svg", "/ui/figure.svg"):  # the logo is embedded, not fetched
+        assert files[logo].headers["content-type"].startswith("image/svg+xml")
+        assert "http" not in files[logo].text.replace("http://www.w3.org", "")
     assert escape.status_code == 404

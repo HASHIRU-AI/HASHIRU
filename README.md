@@ -8,6 +8,8 @@ app_port: 7860
 pinned: false
 ---
 
+<p align="center"><img src="HASHIRU_LOGO.png" alt="HASHIRU" width="120"></p>
+
 # HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization
 
 ```mermaid

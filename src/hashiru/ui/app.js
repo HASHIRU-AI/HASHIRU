@@ -37,15 +37,6 @@
     if (text !== undefined) node.textContent = text;
     return node;
   }
-  function icon(id) {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 32 32");
-    svg.setAttribute("aria-hidden", "true");
-    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-    use.setAttribute("href", `/ui/icon.svg#${id}`);
-    svg.append(use);
-    return svg;
-  }
   const usd = (n) => {
     if (n === undefined || n === null) return "–";
     const v = Number(n);
@@ -130,9 +121,11 @@
     const c = chat();
     const log = $("log");
     log.replaceChildren();
-    $("empty").hidden = Boolean(c && c.messages.length);
+    const empty = !(c && c.messages.length);
+    $("empty").hidden = !empty;
     if (c) c.messages.forEach((m) => log.append(messageView(m, false)));
-    scrollDown(true);
+    if (empty) $("thread").scrollTop = 0;  // the greeting starts at the top, even when the examples overflow
+    else scrollDown(true);
   }
 
   function workKind(event) {
@@ -151,7 +144,10 @@
     }
     const node = el("div", "msg ceo");
     const avatar = el("div", "avatar");
-    avatar.append(icon("tree"));
+    const face = el("img");
+    face.src = "/ui/logo.svg";
+    face.alt = "";
+    avatar.append(face);
     node.append(avatar);
     const work = m.work || [];
     if (work.length || live) {

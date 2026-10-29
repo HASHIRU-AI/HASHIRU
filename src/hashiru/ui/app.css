@@ -51,7 +51,7 @@ svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; s
 .side { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 12px 10px; background: var(--side); border-right: 1px solid var(--line); }
 .side-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 8px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font: 600 17px/1 var(--f-display); letter-spacing: 0.14em; }
-.brand .mark { width: 26px; height: 26px; color: var(--accent); stroke: none; }
+.brand .mark { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); }
 .new-chat { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-weight: 600; font-size: 14.5px; }
 .new-chat:hover { border-color: var(--accent); }
 .new-chat svg { width: 18px; height: 18px; color: var(--accent); }
@@ -81,6 +81,7 @@ svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; s
 
 .thread { overflow-y: auto; min-height: 0; scroll-behavior: smooth; }
 .empty { max-width: var(--col); margin: 0 auto; padding: max(8vh, 40px) 20px 24px; display: grid; gap: 14px; animation: rise 0.5s ease-out both; }
+.figure { width: 56px; height: auto; margin-bottom: -2px; }
 .greet { margin: 0; font: 500 clamp(30px, 4.6vw, 44px)/1.08 var(--f-display); letter-spacing: -0.01em; }
 .lede { margin: 0; color: var(--muted); max-width: 36rem; }
 .examples { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 14px; }
@@ -97,8 +98,8 @@ svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; s
 .msg.you { justify-items: end; }
 .msg.you .body { max-width: 85%; padding: 10px 16px; border-radius: 20px; background: var(--you); white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.ceo { grid-template-columns: 30px minmax(0, 1fr); column-gap: 14px; }
-.msg.ceo > .avatar { grid-row: span 3; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
-.msg.ceo > .avatar svg { width: 20px; height: 20px; stroke: none; }
+.msg.ceo > .avatar { grid-row: span 3; width: 30px; height: 30px; border-radius: 50%; overflow: hidden; background: var(--accent-soft); }
+.msg.ceo > .avatar img { display: block; width: 100%; height: 100%; }
 .msg .error { padding: 10px 14px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-size: 14.5px; }
 .msg .meta { font: 12px/1.4 var(--f-mono); color: var(--faint); }
 
