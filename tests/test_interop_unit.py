@@ -125,7 +125,7 @@ def test_with_a_key_the_public_api_needs_it(tmp_path, ollama):
 
 
 def test_route_classes():
-    assert all(map(is_open, ["/", "/ui/app.js", "/.well-known/agent-card.json"]))
+    assert all(map(is_open, ["/", "/ui/app.js", "/.well-known/agent-card.json", "/a2a/.well-known/agent-card.json"]))
     assert all(map(is_public, ["/v1/models", "/v1/chat/completions", "/a2a", "/public/mcp"]))
     assert not any(map(is_public, ["/mcp", "/s/x/agents/ceo/", "/v1", "/a2ab", "/public/mcpx"]))
     assert not is_open("/ui")

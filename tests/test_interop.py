@@ -265,14 +265,17 @@ def test_with_an_api_key_every_public_api_needs_it_but_the_page_and_card_do_not(
         async with httpx.AsyncClient(base_url=base, timeout=10) as http:
             out = {path: (await http.request(method, path, json={})).status_code for method, path in [
                 ("GET", "/v1/models"), ("POST", "/v1/chat/completions"), ("POST", "/a2a"), ("POST", "/public/mcp"),
-                ("GET", "/"), ("GET", "/ui/app.js"), ("GET", "/.well-known/agent-card.json")]}
+                ("GET", "/"), ("GET", "/ui/app.js"), ("GET", "/.well-known/agent-card.json"),
+                ("GET", "/a2a/.well-known/agent-card.json")]}
+            out["POST card"] = (await http.post("/a2a/.well-known/agent-card.json", json={})).status_code
             ok = (await http.get("/v1/models", headers={"Authorization": "Bearer k3y"})).status_code
             card = await fetch_card(base, {}, 10)
         return out, ok, card
 
     out, ok, card = serve(tmp_path, body, api_key="k3y", public_url="https://me.example")
     assert out == {"/v1/models": 401, "/v1/chat/completions": 401, "/a2a": 401, "/public/mcp": 401,
-                   "/": 200, "/ui/app.js": 200, "/.well-known/agent-card.json": 200}
+                   "/": 200, "/ui/app.js": 200, "/.well-known/agent-card.json": 200,
+                   "/a2a/.well-known/agent-card.json": 200, "POST card": 405}  # the open path serves only the card
     assert ok == 200
     assert card.supported_interfaces[0].url == "https://me.example/a2a"
     assert card.security_schemes["bearer"].http_auth_security_scheme.scheme == "Bearer"

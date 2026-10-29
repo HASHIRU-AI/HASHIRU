@@ -1,6 +1,6 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5 done on `develop`; Phase 6 waits for HASHIRU-lite (after 2026-12-03); Phase 7 (docs) next.
+Status: Phases 0–5 and 7 done on `develop`; Phase 6 waits for HASHIRU-lite (after 2026-12-03).
 Date: 2026-10-29
 
 ## 0. Decisions so far
@@ -259,7 +259,31 @@ Known limitations: one API key is one trust domain (key holders can reach each o
 
 ### Phase 7: Docs (1–2 days)
 
-- [ ] README, architecture diagram, `CITATION.cff` (v2), examples for MCP servers and remote A2A agents.
+- [x] `docs/architecture.md`: components, protocols, one request end to end (Mermaid), budget arithmetic with a
+  worked example, trust boundaries. The README's v1 paper figure is replaced by a small v2 diagram.
+- [x] `CITATION.cff` for v2 (`2.0.0.dev0`, MIT), with the arXiv paper as `preferred-citation`; checked against
+  the CFF 1.2.0 schema.
+- [x] Examples: `examples/clock_mcp_server.py` (an MCP server; `ToolError` for failures the agent should read),
+  `examples/calc_a2a_agent.py` (a priced A2A agent: exact rational arithmetic that restates the expression it
+  read; whole-number powers only, capped by the base's numerator and denominator size; literals parsed from their
+  text; dates and words like ISO-8601 skipped; only the last 4,000 characters read), both standalone `uv run`
+  scripts with exact pins; `examples/hashiru.yaml` wires them; `examples/README.md`. `tests/test_examples.py` runs
+  both through a hub and checks the pins against the locked versions; ruff and mypy now cover `examples/`.
+- [x] Found while writing the two-hub example: a hub could not hire another hub, because peers read the card from
+  `<url>/.well-known/agent-card.json` and the public card was only at the root while the endpoint is `/a2a`. The
+  card is now also served (open, like the root one) at `/a2a/.well-known/agent-card.json`, so
+  `a2a_peers: {team_b: {url: <base_url>/a2a}}` works; tested end to end with two hubs. JSON-RPC also answers at
+  `/a2a/`, since A2A clients do not follow Starlette's slash redirect.
+- [x] Code review (independent reviewer): 1 HIGH (a base near 1 slipped past calc's power guard: `(1+1/10**20)**10**6`
+  took 30 s), 3 MED (inexact answers from float literals and float display, wrong two-hub pricing in the docs, no
+  cap on message length), 9 LOW (trailing-slash peer URL, tzdata, price validation, test gaps, stale docstrings,
+  cost-extension doc errors); all fixed. Not fixed: the example agent's task store is unbounded (documented; it
+  binds to loopback). `CITATION.cff` names no license: the repository has no LICENSE file and v1 never had one,
+  though `pyproject.toml` (Phase 1) says MIT. The authors need to choose.
+- Note for a later phase: a hub's public card declares its whole `budget_usd` as the per-message price, and the
+  cost extension treats a declared price as a floor, so a hub hired by another hub is charged its full budget for
+  every message even when it spends nothing (e.g. on local models). A "maximum per message" param, charged at the
+  reported cost, would fit hubs better.
 
 ## 6. Risks
 

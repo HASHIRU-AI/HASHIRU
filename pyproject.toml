@@ -45,13 +45,13 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 120
 target-version = "py313"
-include = ["src/hashiru/**/*.py", "tests/**/*.py"]
+include = ["src/hashiru/**/*.py", "tests/**/*.py", "examples/**/*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.mypy]
 python_version = "3.13"
-files = ["src/hashiru"]
+files = ["src/hashiru", "examples"]
 ignore_missing_imports = true
 check_untyped_defs = true

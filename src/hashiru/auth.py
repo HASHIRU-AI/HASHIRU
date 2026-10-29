@@ -6,7 +6,8 @@ Internal routes, with tokens the hub issues per session:
 - /s/{session}/agents/{name}/...: only the agent's hirer (or the user, for the CEO), in that session.
 
 Public routes (hashiru.interop):
-- /, /ui/..., /.well-known/agent-card.json: open (static files and the CEO's card).
+- /, /ui/..., /.well-known/agent-card.json, /a2a/.well-known/agent-card.json: open (static files and the CEO's
+  card).
 - /v1/..., /a2a, /public/mcp: the api_key setting as a bearer token. Without an api_key the hub listens only on
   loopback, and these answer only requests addressed to a loopback name from this hub's own page (or no page), so a
   website open in the user's browser, or a page served on another local port, cannot reach them by DNS rebinding or
@@ -50,7 +51,7 @@ def is_mcp(path: str) -> bool:
 
 def is_open(path: str) -> bool:
     """The chat page's files and the public agent card: no credentials needed."""
-    return path in ("/", "/.well-known/agent-card.json") or path.startswith("/ui/")
+    return path in ("/", "/.well-known/agent-card.json", "/a2a/.well-known/agent-card.json") or path.startswith("/ui/")
 
 
 def is_public(path: str) -> bool:

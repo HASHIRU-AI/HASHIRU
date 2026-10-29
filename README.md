@@ -10,7 +10,15 @@ pinned: false
 
 # HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization
 
-![HASHIRU_ARCH](HASHIRU_ARCH.png)
+```mermaid
+flowchart LR
+  you["You: the chat page, OpenAI-style apps,<br/>MCP hosts, A2A clients"] --> ceo["CEO<br/>$0.50"]
+  ceo -->|"hires (A2A)"| m1["manager<br/>$0.20"]
+  ceo -->|"hires (A2A)"| w1["worker, local model<br/>$0.10 + 3.5 GB"]
+  ceo -->|"hires (A2A)"| peer["remote A2A agent<br/>$0.001 a message"]
+  m1 -->|"hires (A2A)"| w2["worker, cloud model<br/>$0.05"]
+  ceo & m1 -->|MCP| tools["tools: built-in,<br/>MCP servers, created"]
+```
 
 HASHIRU is a budget-aware multi-agent system. A CEO agent splits your request into subtasks and hires
 **managers** (which use tools and may hire) and **workers** (which answer once) on local and cloud models. Each
@@ -21,7 +29,8 @@ v2 (in development on `develop`) rebuilds HASHIRU on open protocols. Every agent
 every tool is served over **MCP**, and HASHIRU itself is reachable as an OpenAI-compatible model, an A2A agent and
 an MCP server. Every LLM call, tool call and message is written to a JSONL trace. The v1 code from the paper is
 preserved at tag [`v1.0-paper`](https://github.com/HASHIRU-AI/HASHIRU/tree/v1.0-paper); the v2 roadmap is in
-[`plan/2026-10-29-modernize-mcp-a2a.md`](plan/2026-10-29-modernize-mcp-a2a.md). Benchmarks of v1 are in
+[`plan/2026-10-29-modernize-mcp-a2a.md`](plan/2026-10-29-modernize-mcp-a2a.md), and how the parts fit is in
+[`docs/architecture.md`](docs/architecture.md). Benchmarks of v1 are in
 [HASHIRUBench](https://github.com/HASHIRU-AI/HASHIRUBench).
 
 ## Quickstart
@@ -83,10 +92,12 @@ an idle one closes after `session_ttl` seconds, firing its agents.
 Built in: hiring and firing, `check_usage`, `get_website`, `arxiv_search`, `read_file` (under `data_dir`),
 `memory` (persistent, searchable, shared by sessions; set `memory_db=''` for a per-session copy) and
 `deliver_to_user`. Any MCP server can add more: list it under `mcp_servers` in a config file and its tools appear
-to agents as `<server>__<tool>`. See [`examples/hashiru.yaml`](examples/hashiru.yaml):
+to agents as `<server>__<tool>`. See [`examples/hashiru.yaml`](examples/hashiru.yaml) and
+[`examples/`](examples/README.md), which has a small MCP server and a priced A2A agent to start from:
 
 ```bash
-uv run hashiru serve --config examples/hashiru.yaml      # adds the official fetch server via uvx
+uv run examples/calc_a2a_agent.py --port 9300            # a remote agent the config lists as a2a/calc
+uv run hashiru serve --config examples/hashiru.yaml      # adds the fetch and clock MCP servers and calc
 ```
 
 A manager can be hired with only some tools: `hire_agent(..., tools=["memory", "ask_agent"])`.
@@ -108,7 +119,12 @@ or from your config; every agent HASHIRU hosts publishes that extension too.
 ```yaml
 a2a_peers:
   helper: {url: https://example.com/agent/, headers: {Authorization: "Bearer ${oc.env:HELPER_TOKEN}"}}
+  team_b: {url: http://127.0.0.1:9201/a2a}   # another HASHIRU hub: its CEO and its hires, as one worker
 ```
+
+The hub reads a peer's card from `<url>/.well-known/agent-card.json` and sends messages only to `<url>`. Since a
+hub is itself an A2A agent at `/a2a`, one hub can hire another; [`examples/README.md`](examples/README.md#two-hubs)
+shows how.
 
 ## Tool creation (off by default)
 
@@ -144,13 +160,16 @@ src/hashiru/
   interop/               the chat page's API: OpenAI-compatible /v1, public A2A agent, public MCP server
   ui/                    the chat page (static files, no build step)
   conf/config.yaml       every setting, with comments
+docs/                    architecture, the A2A cost extension
+examples/                a config file, an MCP server and an A2A agent (tested in tests/test_examples.py)
 ```
 
 ## Acknowledgements
 We would like to thank Hugging Face, Groq and Lambda Labs for sponsoring this project and providing the necessary resources for development.
 
 ## Citation
-If you use this project in your research or applications, please cite it as follows:
+If you use this project in your research or applications, please cite the paper (also in
+[`CITATION.cff`](CITATION.cff), which GitHub's "Cite this repository" reads):
 ```bibtex
 @misc{hashiruai,
       title={HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization}, 

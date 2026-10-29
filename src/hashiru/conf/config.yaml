@@ -42,8 +42,9 @@ allow_cloud_agents: true      # cloud models and remote A2A peers
 #   name: {url: https://example.com/agent/, headers: {Authorization: Bearer ...}, price_usd_per_message: 0.01}
 a2a_peers: {}
 turn_reserve_usd: 0.01        # with enforce_budget, a cloud manager keeps this much for its own turns when it hires
-# Serving (`hashiru serve`): a chat page at /, an OpenAI-compatible API at /v1, the CEO as an A2A agent
-# (/.well-known/agent-card.json) and HASHIRU as an MCP server (/public/mcp), all on one port.
+# Serving (`hashiru serve`): a chat page at /, an OpenAI-compatible API at /v1, the CEO as an A2A agent at /a2a
+# (card at /.well-known/agent-card.json and /a2a/.well-known/agent-card.json) and HASHIRU as an MCP server
+# (/public/mcp), all on one port.
 api_key: ${oc.env:HASHIRU_API_KEY,''}        # clients send it as a bearer token; required unless host is loopback
 public_url: ${oc.env:HASHIRU_PUBLIC_URL,''}  # where others reach this hub (the Agent Card names it)
 max_sessions: 16              # open conversations; when full, the least recently used idle one is closed

@@ -2,7 +2,8 @@
 
 - /                              the chat page
 - /v1                            an OpenAI-compatible Chat Completions API (model "hashiru")
-- /.well-known/agent-card.json   the CEO as an A2A agent, served at /a2a
+- /.well-known/agent-card.json   the CEO as an A2A agent, served at /a2a (its card is also at
+                                 /a2a/.well-known/agent-card.json, so other hubs can hire it by that URL)
 - /public/mcp                    HASHIRU as an MCP server (tools `ask` and `end_session`)
 
 Every one of them talks to the hub's Conversations. The auth gate guards them with the api_key setting.
