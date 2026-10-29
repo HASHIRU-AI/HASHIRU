@@ -25,3 +25,4 @@ traces/
 .ruff_cache/
 .pytest_cache/
 .coverage
+user_tools/
