@@ -31,7 +31,8 @@ Add the extension to `capabilities.extensions`:
 | `per_message_usd` | A flat price per request. |
 | `per_input_token_usd`, `per_output_token_usd` | Token prices, for agents whose cost depends on length. |
 
-Missing params mean 0. Negative values are treated as 0.
+Missing params mean 0. A negative, infinite or non-numeric value makes the whole declaration invalid: the client
+treats the agent as declaring no price.
 
 ## Reporting cost (reply metadata)
 
@@ -57,5 +58,6 @@ that it ran out of time:
   request's deadline.
 - **As a client.** When a manager hires a remote agent (`a2a/<peer>`), the hub reads the peer's Agent Card and
   uses the larger of the declared `per_message_usd` and a `price_usd_per_message` set in the hub's config. A peer
-  with neither cannot be hired. Before each message the hirer's pool must cover that price. Afterwards the larger
-  of the price and the reported `hashiru_cost_usd` is charged.
+  with neither cannot be hired. Before each message, the hire's own pool (what its hirer reserved for it) must
+  cover that price. Afterwards the larger of the price and the reported `hashiru_cost_usd` is charged, but never
+  more than the pool held: the declared price is a floor, not an estimate.
