@@ -1,4 +1,5 @@
-"""The CEO as a public A2A agent: its card at /.well-known/agent-card.json, JSON-RPC at /a2a.
+"""The CEO as a public A2A agent: JSON-RPC at /a2a (or /a2a/), its card at /.well-known/agent-card.json and again
+under the endpoint, at /a2a/.well-known/agent-card.json.
 
 Each A2A context is one conversation, so hires last between messages in a context. Progress arrives as `working`
 status updates (one per activity line, the event in the message metadata); the reply completes the task and reports
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
 __all__ = ["A2A_PATH", "PublicExecutor", "a2a_routes", "public_card"]
 
 A2A_PATH = "/a2a"
+CARD_UNDER_ENDPOINT = f"{A2A_PATH}/.well-known/agent-card.json"
 try:
     VERSION = version("hashiru")
 except PackageNotFoundError:  # running from a source tree that was never installed
@@ -100,4 +102,8 @@ def a2a_routes(hub: "Hub") -> list[Route]:
     card = public_card(hub)
     handler = DefaultRequestHandler(agent_executor=PublicExecutor(hub), task_store=BoundedTaskStore(64),
                                     agent_card=card)
-    return create_agent_card_routes(card) + create_jsonrpc_routes(handler, A2A_PATH)
+    # The card also sits under the endpoint, where a client given only the endpoint URL looks for it (as a2a_peers
+    # do), so another hub can hire this one with url: <base_url>/a2a. The endpoint answers with a trailing slash too:
+    # A2A clients do not follow redirects, so Starlette's /a2a/ -> /a2a redirect would fail every message.
+    return (create_agent_card_routes(card) + create_agent_card_routes(card, card_url=CARD_UNDER_ENDPOINT)
+            + create_jsonrpc_routes(handler, A2A_PATH) + create_jsonrpc_routes(handler, f"{A2A_PATH}/"))
