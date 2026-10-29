@@ -1,4 +1,5 @@
 import importlib
+import os
 
 __all__ = ['WeatherApi']
 
@@ -27,10 +28,20 @@ class WeatherApi():
         location = kwargs.get("location")
         print(f"Location: {location}")
 
+        api_key = os.getenv("OPENWEATHER_API_KEY")
+        if not api_key:
+            return {
+                "status": "error",
+                "message": "Weather API test tool failed",
+                "error": "OPENWEATHER_API_KEY environment variable is not set",
+                "output": None
+            }
+
         requests = importlib.import_module("requests")
 
         response = requests.get(
-            f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid=ea50e63a3bea67adaf50fbecbe5b3c1e")
+            "http://api.openweathermap.org/data/2.5/weather",
+            params={"q": location, "appid": api_key})
         if response.status_code == 200:
             return {
                 "status": "success",
