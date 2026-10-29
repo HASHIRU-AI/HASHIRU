@@ -1,0 +1,39 @@
+"""Hydra config loading."""
+import pytest
+
+from hashiru.config import load_settings
+
+ENV = ("CEO_MODEL", "MODELS", "BUDGET_USD", "MAX_USD", "OLLAMA_URL", "PORT", "HASHIRU_PRICES")
+
+
+@pytest.fixture(autouse=True)
+def clean_env(monkeypatch):
+    for var in ENV:
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_defaults_need_no_keys():
+    s = load_settings()
+    assert s.ceo_model == "ollama_chat/qwen3.5:4b" and s.models == ("ollama_chat/qwen3.5:4b",)
+    assert (s.budget_usd, s.max_usd, s.max_depth, s.port) == (0.5, 2.0, 2, 9100)
+    assert s.internal_url == "http://127.0.0.1:9100"
+
+
+def test_environment_variables(monkeypatch):
+    monkeypatch.setenv("MODELS", "ollama_chat/a, gpt-4.1-mini ,")
+    monkeypatch.setenv("BUDGET_USD", "1")
+    monkeypatch.setenv("PORT", "9200")
+    s = load_settings()
+    assert s.models == ("ollama_chat/a", "gpt-4.1-mini")
+    assert s.budget_usd == 1.0 and isinstance(s.budget_usd, float) and s.port == 9200
+
+
+def test_command_line_overrides_win(monkeypatch):
+    monkeypatch.setenv("BUDGET_USD", "1")
+    s = load_settings(["budget_usd=0.25", "max_depth=3", 'models=["ollama_chat/a","gpt-4.1-mini"]'])
+    assert (s.budget_usd, s.max_depth, s.models) == (0.25, 3, ("ollama_chat/a", "gpt-4.1-mini"))
+
+
+def test_unknown_settings_are_rejected():
+    with pytest.raises(ValueError, match="unknown settings"):
+        load_settings(["+colour=blue"])
