@@ -19,3 +19,11 @@ results/
 *.synctex.gz
 secret_word.json
 src/data/
+# v2
+traces/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+user_tools/
+data/*.sqlite3

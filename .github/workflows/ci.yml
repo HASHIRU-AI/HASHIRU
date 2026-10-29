@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install (Python version from .python-version, packages from uv.lock)
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check
+      - name: Type check
+        run: uv run mypy
+      - name: Test (no API keys or Ollama needed)
+        run: uv run pytest -q

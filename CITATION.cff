@@ -1,5 +1,14 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, please cite the paper below."
+type: software
+title: "HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization"
+version: 2.0.0.dev0
+abstract: >-
+  HASHIRU is a budget-aware multi-agent system. A CEO agent splits a request into subtasks and hires manager and
+  worker agents on local and cloud models, each with a dollar pool carved from its hirer's. Version 2 rebuilds it on
+  open protocols: every agent is an A2A service, every tool is served over MCP, and HASHIRU itself is reachable as
+  an OpenAI-compatible model, an A2A agent and an MCP server. Version 1, described in the paper, is preserved at the
+  tag v1.0-paper.
 authors:
   - family-names: "Pai"
     given-names: "Kunal"
@@ -8,9 +17,27 @@ authors:
     given-names: "Parth"
   - family-names: "Patel"
     given-names: "Harshil"
-title: "HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization"
-version: 1.0
-doi: 10.48550/arXiv.2506.04255
-date-released: 2025-06-06
-url: "https://arxiv.org/abs/2506.04255"
+license: PolyForm-Noncommercial-1.0.0
 repository-code: "https://github.com/HASHIRU-AI/HASHIRU"
+url: "https://github.com/HASHIRU-AI/HASHIRU"
+keywords:
+  - multi-agent systems
+  - large language models
+  - budget-aware agents
+  - Model Context Protocol
+  - Agent2Agent
+preferred-citation:
+  type: article
+  title: "HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization"
+  authors:
+    - family-names: "Pai"
+      given-names: "Kunal"
+      orcid: "https://orcid.org/0009-0003-0675-7135"
+    - family-names: "Shah"
+      given-names: "Parth"
+    - family-names: "Patel"
+      given-names: "Harshil"
+  journal: "arXiv preprint arXiv:2506.04255"
+  year: 2025
+  doi: 10.48550/arXiv.2506.04255
+  url: "https://arxiv.org/abs/2506.04255"

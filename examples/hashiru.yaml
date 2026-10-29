@@ -1,0 +1,41 @@
+# Example user config. Use it with:  uv run hashiru chat --config examples/hashiru.yaml
+# (or set HASHIRU_CONFIG=examples/hashiru.yaml). Keys are the same as src/hashiru/conf/config.yaml,
+# and command-line key=value overrides still win.
+
+ceo_model: ollama_chat/gemma4:12b
+models: [ollama_chat/qwen3.5:4b, ollama_chat/gemma4:12b]
+memory_autoinject: true
+
+# Third-party MCP servers. Their tools appear to agents as <server>__<tool>. A local server gets MCP's
+# minimal environment plus only the env you list; results are labeled untrusted unless you say otherwise.
+mcp_servers:
+  fetch:                                    # the official fetch server: web pages as markdown
+    command: uvx
+    args: [mcp-server-fetch]
+  clock:                                    # examples/clock_mcp_server.py: the date and time (run from the repo root)
+    command: uv
+    args: [run, examples/clock_mcp_server.py]
+    labels: []                              # computed locally, not read from outside: nothing to label
+  # files:                                  # read-only access to one folder, labeled private
+  #   command: npx
+  #   args: [-y, "@modelcontextprotocol/server-filesystem", /path/to/notes]
+  #   labels: [private]
+  # search:                                 # a hosted server over streamable HTTP
+  #   url: https://example.com/mcp
+  #   headers: {Authorization: "Bearer ${oc.env:SEARCH_API_KEY}"}
+
+# Remote A2A agents managers may hire as workers named a2a/<name>. The price comes from the agent's card
+# (HASHIRU cost extension) or price_usd_per_message here; an agent with neither cannot be hired. The hub reads a
+# peer's card from <url>/.well-known/agent-card.json and sends its messages to <url>, nowhere else.
+a2a_peers:
+  calc:                                     # examples/calc_a2a_agent.py; start it first:
+    url: http://127.0.0.1:9300/             #   uv run examples/calc_a2a_agent.py --port 9300
+  # team_b:                                 # another HASHIRU hub: its CEO, and the agents it hires, as one worker:
+  #   url: http://127.0.0.1:9201/a2a        #   uv run hashiru serve port=9201 budget_usd=0.10 \
+  #                                         #     memory_db=data/team_b.sqlite3
+  #                                         # Every message to it costs its whole budget_usd (here $0.10), so a hire
+  #                                         # needs that much per message. See examples/README.md#two-hubs.
+  # helper:                                 # a hosted agent that needs a key, priced here
+  #   url: https://example.com/agent/
+  #   headers: {Authorization: "Bearer ${oc.env:HELPER_TOKEN}"}
+  #   price_usd_per_message: 0.01
