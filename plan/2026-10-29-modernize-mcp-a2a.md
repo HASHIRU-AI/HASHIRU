@@ -163,14 +163,31 @@ Known limitations carried forward:
 - [ ] Drop `python_sandbox_tool` (not a sandbox) and `weather_tool` (third-party MCP servers cover these).
 - [ ] Optional per-hire tool scoping: `hire_agent(..., tools=[...])` gives a manager a subset of tools.
 
-### Phase 3: Autonomous tool creation (3–4 days)
+### Phase 3: Autonomous tool creation (3–4 days) — DONE 2026-10-29 on `feature/tool-creation`
 
-- [ ] `create_tool(name, code, dependencies)` for managers, gated by `modes.tool_creation`. The name is validated (`[a-z0-9_]{1,32}`), and the code must define a FastMCP tool.
-- [ ] **user-tools server:** a separate process started with `uv run --with <deps>`. It imports new modules, checks their schemas, hot-reloads, and sends `notifications/tools/list_changed`; the runtime refreshes its tool list.
-- [ ] Rollback on import or schema failure, returned to the manager as an error observation (keeps v1 behavior).
-- [ ] `delete_tool(name)`.
-- [ ] Created tools are traced (`tool_created`, `tool_deleted` events) with code hash.
-- [ ] Interface left open for a container backend later.
+- [x] `create_tool(name, code, dependencies)` and `delete_tool(name)` for managers, registered only when `tool_creation=true` (off by default). The code is a plain Python function named `name` with type hints and a docstring; no MCP imports needed.
+- [x] Cheap checks before anything runs: name `[a-z][a-z0-9_]{0,31}`, not taken by any hub tool, code parses (`ast`, never executed in the hub) and defines the function, at most 10 PyPI-only requirements, 100 KB cap.
+- [x] **One process per tool** instead of one shared user-tools server: `uv run --no-project --with mcp==<hub's> --with <deps> python -I -u child.py`. Tools cannot conflict over packages, a crash takes down one tool, and nothing needs restarting when a tool is added. The child gets MCP's minimal environment (no API keys) and a scratch working directory.
+- [x] The hub holds a stdio MCP session to each child and re-exports its tool on `/mcp` through a proxy whose signature is synthesized from the child's schema, so created tools go through the same auth gate, caller check and trace chokepoint as built-in tools. Results are labeled `untrusted`.
+- [x] The runtime re-reads its tool list every turn (instead of `list_changed` notifications), so a tool is callable on the turn after it is created.
+- [x] Rollback on any failure (load error, missing docstring, wrong tool name, timeout, cancellation): process stopped, code file removed, error and the end of the child's stderr returned to the agent. Exceptions inside a tool come back with their message so the agent can fix its code.
+- [x] Persistence: `tools_dir/<name>.py` + `manifest.json` (dependencies, sha256, creator, time). Tools restart when the hub starts; a file whose hash does not match is skipped.
+- [x] Tracing: `create_tool` is a normal traced tool call; its args hold the code and its result the sha256.
+- [x] Tests: 47 new (request checks, proxy schema, real `uv` processes, restart, tamper, crash, timeouts, end-to-end smoke through HTTP); 149 in total.
+- [x] Real run, local `gemma4:12b`, $0: the CEO's first two attempts failed to parse, it fixed the code from the error, created `calculate_days_between_dates`, called it next turn and answered 301 (correct). Repeated after the review fixes with the same result.
+- [ ] Container backend: `Toolsmith.command()` is the single place that builds the launch command.
+
+Code review (independent reviewer, real `uv` processes), all fixed with regression tests; four fixes were also mutation-checked (tests fail with the fix undone):
+- HIGH: the off switch failed open (`HASHIRU_TOOL_CREATION=no` turned it on) → boolean settings accept only true/false.
+- HIGH: nothing bounded what a tool sends the hub (a 5 MB docstring reached every manager's prompt every turn; 80 MB results) → docstring ≤ 1,000 chars, schema ≤ 10 KB / 32 parameters, results cut to 20,000 chars for the agent and refused above 1 MB inside the tool.
+- HIGH: one bad saved tool (bad manifest, non-UTF-8 stderr, wrong types) crashed hub startup → each saved tool loads under its own catch-all and is re-checked like a new request.
+- MED: dead tool processes stayed registered → noticed on a failed call or by an idle ping and unregistered; stderr read through a pipe into a 64 KB ring buffer (was an unbounded temp file); fd 1 redirected at import; created-tool errors keep `untrusted`; delete only by the creating session (or anyone once it has ended); saved tools cannot shadow built-ins or use URL dependencies and run from a hashed copy of their bytes; the child's exact schema (enums, `$defs`) is published; explicit `None` arguments are kept; multi-block and bare-dict results are converted fully; the tool description no longer claims the child cannot see API keys.
+- LOW: start timeouts waited 10 s extra and swallowed cancellation; creates could race shutdown; CRLF code was rejected on restart; hostile code could crash the parser check.
+
+Known limitations carried forward:
+- Created tools are shared by every session: their descriptions and outputs (and any state they keep) cross sessions. Fine for one trusted user; multi-user hosting needs per-session tool instances (Phase 6 policy work).
+- The child is not sandboxed: it runs as the user and can read files, other processes' environments (e.g. `ps -E` on macOS) and HASHIRU's own source. A container or OS sandbox backend would fix this.
+- The MCP SDK's stdio reader has no line-length limit, so a deliberately hostile child can still send one huge line before the hub's caps apply. Bounding that needs a hub-owned stdio transport.
 
 ### Phase 4: A2A beyond the local host (3–4 days)
 
