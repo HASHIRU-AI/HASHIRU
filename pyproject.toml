@@ -4,7 +4,8 @@ version = "2.0.0.dev0"
 description = "HASHIRU v2: hierarchical, budget-aware multi-agent system on MCP (tools) and A2A (agents)"
 readme = "README.md"
 requires-python = ">=3.13"
-license = { text = "MIT" }
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Kunal Pai" },
     { name = "Parth Shah" },
