@@ -14,6 +14,28 @@ pinned: false
 
 ![HASHIRU_ARCH](HASHIRU_ARCH.png)
 
+## HASHIRU v2 (in development)
+
+v2 rebuilds HASHIRU on open protocols. The CEO hires **managers** (which use tools and may hire) and
+**workers** (which answer once), and every agent is its own **A2A** service. Every tool is served
+over **MCP**. Each agent gets a dollar pool carved from its hirer's pool, and local Ollama agents also
+count the memory their model really uses. Every LLM call, tool call and message is written to a JSONL
+trace. The v1 code described below is preserved at tag
+[`v1.0-paper`](https://github.com/HASHIRU-AI/HASHIRU/tree/v1.0-paper). The roadmap is in
+[`plan/2026-10-29-modernize-mcp-a2a.md`](plan/2026-10-29-modernize-mcp-a2a.md).
+
+Requires Python 3.13 and [uv](https://docs.astral.sh/uv/). Local models need [Ollama](https://ollama.com).
+
+```bash
+uv sync
+ollama pull qwen3.5:4b                          # the default CEO and agent model; no API keys needed
+uv run hashiru ask "Hire one worker on a local model and ask it to say hello."
+uv run hashiru chat                             # talk to the CEO turn by turn
+cp .env.example .env                            # for cloud models: set CEO_MODEL, MODELS and a provider key
+uv run --env-file .env hashiru ask "..." budget_usd=1.0   # key=value overrides src/hashiru/conf/config.yaml
+uv run pytest -q                                # no API keys or Ollama needed
+```
+
 ## Project Overview
 
 This project provides a framework for creating and managing AI agents and tools. It includes features for managing resource and expense budgets, loading tools and agents, and interacting with various language models.

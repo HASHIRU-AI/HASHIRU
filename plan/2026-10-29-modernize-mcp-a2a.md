@@ -121,22 +121,39 @@ v1 code (`src/manager`, `src/tools`, `app.py`, `start.py`, `deleteAgents.py`) is
 
 Branching: `develop` as the v2 integration branch off `main`; one `feature/*` branch per phase, merged `--no-ff`; `develop` → `main` at release.
 
-### Phase 0: Preserve v1, stop the leak (½ day)
+### Phase 0: Preserve v1, stop the leak (½ day) — DONE 2026-10-29
 
-- [ ] **Rotate the OpenWeatherMap key** hardcoded at `src/tools/user_tools/weather_tool.py:33` (it is in git history). Nothing else in v1 gets fixed: the code is being replaced.
-- [ ] Tag `main` as `v1.0-paper`; add a release note listing the known v1 bugs (`budget_manager.py:21` toggle, expense charged to resource budget at `tool_manager.py:99,115`, double agent load at `agent_manager.py:578-599`, `eval` history, shared state across users at `app.py:197`).
-- [ ] Create `develop`.
+- [x] Remove the hardcoded OpenWeatherMap key (in `weather_tool.py`, `system.prompt` and `system_.prompt`); read `OPENWEATHER_API_KEY` instead. Hotfix merged to `main`. History not rewritten (decided: revoking the key makes it worthless). **Key revocation is the owner's action.**
+- [x] Tag `v1.0-paper` on `de2b514` (exact paper state); the tag message lists the known v1 bugs.
+- [x] Create `develop`. `main`, `develop` and the tag pushed.
 
-### Phase 1: Port the lite core (3–4 days)
+### Phase 1: Port the lite core (3–4 days) — DONE 2026-10-29 on `feature/v2-core`
 
-- [ ] `pyproject.toml` + `uv.lock`, Python 3.13, lite's pins; `ruff`, `mypy`, `pytest`; GitHub Actions CI.
-- [ ] Port `llm`, `ledger`, `tracelog`, `agent`, `server` into the layout above, with typed dataclasses instead of dicts.
-- [ ] **Sessions:** move module globals into a `Session` object; agents mount under `/s/{session}/agents/{name}/`; each session gets its own CEO, pool tree, and trace file.
-- [ ] **Auth on internal endpoints:** per-session bearer token on `/mcp` and agent A2A routes; `caller` derived from the token, not trusted from arguments. Option to bind internal routes to loopback only.
-- [ ] Config via Hydra compose API: `ceo_model`, `models`, `budget_usd`, `max_usd`, `max_depth`, `max_turns`, `ollama_url`.
-- [ ] Port lite's tests (fake LLM, no keys needed) and make them pass in the new layout.
+- [x] `pyproject.toml` + `uv.lock`, Python 3.13, lite's pins + `hydra-core==1.3.8` (1.3.2 had two advisories; neither reached our code paths); `ruff`, `mypy`, `pytest`; GitHub Actions CI.
+- [x] Port lite into `src/hashiru/`: `llm`, `ledger`, `trace`, `runtime` (was `agent`), `tools` + `hub` + `ollama` (was `server`), typed dataclasses instead of dicts.
+- [x] **Sessions:** a `Hub` hosts many `Session`s; agents mount under `/s/{session}/agents/{name}/`; each session has its own CEO, pool tree, memory copy and trace file.
+- [x] **Auth:** the user, the CEO and each manager get a bearer token (workers never call anything, so they get none). `AuthGate` admits `/mcp` for any issued token and an agent's A2A routes only for its hirer's token in the same session. MCP tools read the caller from `ctx.headers`, so lite's hidden `caller` argument is gone. Closing a session revokes its tokens.
+- [x] Config via Hydra compose API (`src/hashiru/conf/config.yaml`; env vars as defaults, `key=value` overrides on the CLI).
+- [x] Port lite's tests (fake LLM/Ollama, no keys) plus new config, auth, hub and session-isolation tests (102 passing after the review fixes below). The smoke test serves the real hub and checks HTTP 401/403 against it.
+- [x] CLI: `hashiru ask "..."` and `hashiru chat` (from lite's `run.py`).
 
-Exit check: `hello` scenario runs end to end with local models; tests green in CI.
+Departures from the plan above: the Hydra config lives inside the package (`src/hashiru/conf/`) so installed wheels carry it; lite's label propagation came along now (recorded, not enforced) because it is small and tested, and Phase 6 only adds the checks; the CLI quiets two known-benign SDK log messages (OpenTelemetry context detach, A2A dispatcher).
+
+Exit check: a real `hashiru ask` on local `qwen3.5:4b` (no keys) ran check_usage → hire → ask → fire → deliver → reply in 1 min 45 s, $0 spent.
+
+Code review (independent reviewer, probes re-run after the fixes), all fixed with regression tests (102 passing):
+- HIGH: session ids could collide and merge two users' sessions → 48 random bits, uniqueness check, label validation.
+- HIGH: an agent could be hired as `user` and receive the human's token → `user`/`ceo` reserved.
+- HIGH: fired agents kept their token and kept running → tokens revoked on fire/close, tools refuse dead callers, runs stop at their next LLM turn.
+- MED: fire/close during a local model load leaked routes and tokens and broke `replay` → re-check after load, close unmounts every agent, `replay` skips unknown names, per-model load/unload lock.
+- MED: `get_website` could reach loopback/private/link-local addresses (Ollama, cloud metadata) and read unbounded bodies → every redirect hop checked, 2 MB cap.
+- LOW: phantom agents on unexpected load errors; one MCP transport error aborted a whole run (now an error observation; parallel calls in a TaskGroup); unload raced concurrent hires; gate allowed unknown paths and websockets (now deny by default); MCP sessions not bound to their creator (gate now sets `scope["user"]`).
+
+Known limitations carried forward:
+- A fired agent's in-flight LLM call still completes (one call). Cancelling running executors belongs with A2A cancel support in Phase 4, together with passing an absolute deadline down each hop instead of fixed per-hop timeouts.
+- The wallet cap can be exceeded by one call per concurrently running agent (documented on `Wallet`).
+- `get_website` resolves names itself and again in the HTTP client, so DNS rebinding between the two is not covered.
+- Possible simplification: one `Mount("/s")` that looks agents up in the ledger, instead of a route per agent.
 
 ### Phase 2: Tools over MCP (2–3 days)
 
