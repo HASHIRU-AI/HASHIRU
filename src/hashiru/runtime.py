@@ -141,7 +141,9 @@ async def call_tool(session: Session, mcp: Any, me: str, name: str, args: dict[s
         result = unpack(await mcp.call_tool(name, args))
     except (MCPError, httpx2.HTTPError) as exc:  # e.g. a revoked token (401) or an oversized request (413)
         result = {"error": f"{name} failed: {exc}"}
+    extra = result.pop("_labels", [])  # labels a tool attaches to this particular result (e.g. memory)
     got = sources.get(name, []) if "error" not in result or name in created else []
+    got = sorted(set(got) | {str(label) for label in extra}) if isinstance(extra, list) else got
     trace.emit("tool", task=task, agent=me, tier=session.ledger.agents[me].tier, name=name, turn=turn,
                args=args, arg_labels=arg_labels, result=result, labels=got)
     trace.receive(me, task, got)
@@ -159,9 +161,11 @@ async def dispatch(hub: "Hub", session: Session, mcp: Any, me: str, call: Any,
         return {"error": "tool arguments were not valid JSON"}
     if not isinstance(args, dict):
         return {"error": "tool arguments must be a JSON object"}
+    if not allowed(session.ledger.agents[me], call.function.name):
+        return {"error": f"{call.function.name} is not one of your tools"}
     if call.function.name == "ask_agent":
         return {"reply": await ask_agent(hub, session, me, str(args.get("name", "")), str(args.get("text", "")))}
-    return await call_tool(session, mcp, me, call.function.name, args, turn, hub.sources(), hub.toolsmith.names())
+    return await call_tool(session, mcp, me, call.function.name, args, turn, hub.sources(), hub.external())
 
 
 async def think(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]],
@@ -173,6 +177,11 @@ async def think(hub: "Hub", session: Session, rec: AgentRecord, messages: list[d
     event = session.trace.emit("llm", task=session.id, agent=rec.name, tier=rec.tier, model=rec.model,
                                text=msg.content or "", tool_calls=[c.function.name for c in calls], cost_usd=cost)
     return msg, calls, event["seq"]
+
+
+def allowed(rec: AgentRecord, tool: str) -> bool:
+    """A manager hired with a tools list may use only those; everyone else may use every tool."""
+    return rec.tools is None or tool in rec.tools
 
 
 def still_on(hub: "Hub", session: Session, rec: AgentRecord) -> bool:
@@ -199,7 +208,8 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
             if not still_on(hub, session, rec):
                 return "failed"
             # Re-read every turn: a tool created (or deleted) on the last turn is visible on this one.
-            tools = [to_openai(t) for t in (await mcp.list_tools()).tools] + [ASK_TOOL]
+            tools = [to_openai(t) for t in (await mcp.list_tools()).tools if allowed(rec, t.name)]
+            tools += [ASK_TOOL] if allowed(rec, "ask_agent") else []
             msg, calls, turn = await think(hub, session, rec, messages, tools)
             if not calls:
                 return msg.content or ""

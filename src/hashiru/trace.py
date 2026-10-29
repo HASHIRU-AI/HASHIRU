@@ -10,7 +10,8 @@ from typing import Any
 __all__ = ["CLEAN_REPLIES", "PRIVATE", "SOURCES", "UNTRUSTED", "Trace"]
 
 PRIVATE, UNTRUSTED = "private", "untrusted"
-SOURCES = {"read_file": [PRIVATE], "memory": [PRIVATE], "get_website": [UNTRUSTED]}  # rule 1
+SOURCES = {"read_file": [PRIVATE], "memory": [PRIVATE], "get_website": [UNTRUSTED],  # rule 1
+           "arxiv_search": [UNTRUSTED]}
 CLEAN_REPLIES = {"done", "failed"}                                                      # rule 4
 
 

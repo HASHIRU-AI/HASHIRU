@@ -126,15 +126,18 @@ def test_read_file_stays_inside_data(hub, session, tmp_path):
         assert "error" in hub.tools.read_file(c, bad)  # type: ignore[arg-type]
 
 
-def test_memory_is_per_session_and_never_written_back(hub, tmp_path):
+def test_session_memory_is_per_session_and_never_written_back(hub, tmp_path):
     data = tmp_path / "data"
     data.mkdir()
-    (data / "memory.json").write_text('{"a": "1"}')
+    (data / "memory.json").write_text('{"units": "prefers metric units"}')
     s1, s2 = hub.new_session("s1", trace=False), hub.new_session("s2", trace=False)
-    assert hub.tools.memory(ctx(s1, "ceo"), "add", key="k", value="v") == {"saved": "k"}  # type: ignore[arg-type]
-    assert hub.tools.memory(ctx(s1, "ceo"), "get") == {"memories": {"a": "1", "k": "v"}}  # type: ignore[arg-type]
-    assert hub.tools.memory(ctx(s2, "ceo"), "get") == {"memories": {"a": "1"}}  # type: ignore[arg-type]
-    assert json.loads((data / "memory.json").read_text()) == {"a": "1"}
+    mem = hub.tools.memory
+    assert mem(ctx(s1, "ceo"), "add", key="k", text="likes tea") == {"saved": "k"}  # type: ignore[arg-type]
+    assert mem(ctx(s1, "ceo"), "list") == {"keys": ["k", "units"], "total": 2}  # type: ignore[arg-type]
+    assert mem(ctx(s1, "ceo"), "search", query="what units") == {  # type: ignore[arg-type]
+        "memories": [{"key": "units", "text": "prefers metric units"}], "_labels": []}
+    assert mem(ctx(s2, "ceo"), "list") == {"keys": ["units"], "total": 1}  # type: ignore[arg-type]
+    assert json.loads((data / "memory.json").read_text()) == {"units": "prefers metric units"}
 
 
 def test_get_website_rejects_non_http(hub, session):

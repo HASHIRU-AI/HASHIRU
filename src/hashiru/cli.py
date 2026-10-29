@@ -13,6 +13,8 @@ import signal
 import sys
 from typing import Any
 
+from hydra.errors import HydraException
+
 from hashiru.config import Settings, load_settings
 from hashiru.hub import Hub
 from hashiru.runtime import ask_agent
@@ -42,7 +44,7 @@ async def ask(settings: Settings, text: str) -> None:
     async with hub.serving():
         session = hub.new_session("ask")
         try:
-            reply = await ask_agent(hub, session, USER, "ceo", text)
+            reply = await ask_agent(hub, session, USER, "ceo", hub.recall(session, text))
         finally:
             await hub.close_session(session)
     print("\n".join([*deliveries(session.trace.events), f"[ceo -> you] {reply}", f"trace: {session.trace.path}"]))
@@ -70,7 +72,8 @@ async def chat(settings: Settings) -> None:
                 if not text:
                     continue
                 seen = len(session.trace.events)
-                reply = await ask_agent(hub, session, USER, "ceo", with_history(session, history, text))
+                reply = await ask_agent(hub, session, USER, "ceo",
+                                        with_history(session, history, hub.recall(session, text)))
                 turn = session.trace.events[seen:]
                 cost = sum(e.get("cost_usd", 0) for e in turn if e["kind"] == "llm")
                 hires = [e["result"]["hired"] for e in turn
@@ -97,11 +100,16 @@ def main(argv: list[str] | None = None) -> None:
     ask_cmd = sub.add_parser("ask", help="send one request to the CEO")
     ask_cmd.add_argument("text")
     ask_cmd.add_argument("overrides", nargs="*", help="Hydra overrides, e.g. budget_usd=1.0")
+    ask_cmd.add_argument("--config", help="YAML config file (default: $HASHIRU_CONFIG)")
     chat_cmd = sub.add_parser("chat", help="talk to the CEO turn by turn")
     chat_cmd.add_argument("overrides", nargs="*", help="Hydra overrides, e.g. budget_usd=1.0")
+    chat_cmd.add_argument("--config", help="YAML config file (default: $HASHIRU_CONFIG)")
     args = parser.parse_args(argv)
     try:
-        settings = load_settings(args.overrides)
+        settings = load_settings(args.overrides, args.config)
+    except (ValueError, OSError, HydraException) as exc:  # a bad override or config file: one line, no traceback
+        sys.exit(f"hashiru: {str(exc).splitlines()[0] if str(exc) else type(exc).__name__}")
+    try:
         asyncio.run(ask(settings, args.text) if args.command == "ask" else chat(settings))
     except ValueError as exc:
         sys.exit(f"hashiru: {exc}")

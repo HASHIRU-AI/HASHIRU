@@ -14,7 +14,8 @@ def test_start_writes_jsonl(tmp_path):
 
 
 def test_rule1_sources():
-    assert SOURCES == {"read_file": ["private"], "memory": ["private"], "get_website": ["untrusted"]}
+    assert SOURCES == {"read_file": ["private"], "memory": ["private"], "get_website": ["untrusted"],
+                       "arxiv_search": ["untrusted"]}
 
 
 def test_rule2_labels_are_sticky_per_agent_and_task():

@@ -1,22 +1,33 @@
-"""One created tool's process: start it, hold its MCP session, notice if it dies, stop it."""
+"""A long-lived MCP client connection the hub holds to another MCP server: a created tool's process or a
+third-party server (stdio or streamable HTTP). Start it, notice if it dies, stop it."""
 import asyncio
 import contextlib
 import logging
 import os
 import shutil
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from typing import Any
 
+import httpx2
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamable_http_client
+from mcp_types import PaginatedRequestParams
 
-__all__ = ["StderrTail", "ToolError", "ToolProcess"]
+__all__ = ["HttpTarget", "LinkError", "McpLink", "StderrTail"]
 
 log = logging.getLogger(__name__)
 
 
-class ToolError(RuntimeError):
-    """A created tool failed to start or to answer."""
+class LinkError(RuntimeError):
+    """An MCP server failed to start or to answer."""
+
+
+@dataclass(frozen=True)
+class HttpTarget:
+    url: str
+    headers: tuple[tuple[str, str], ...] = ()
 
 
 class StderrTail(asyncio.Protocol):
@@ -62,16 +73,29 @@ class StderrTail(asyncio.Protocol):
             self._reader.close()
 
 
-class ToolProcess:
-    """Owns one tool's process. Its stdio and MCP session contexts are entered and left in one task (_serve)."""
+async def list_all_tools(session: ClientSession, max_pages: int = 10) -> list[Any]:
+    """Every tool a server lists, following pagination (a never-ending cursor stops after max_pages)."""
+    tools: list[Any] = []
+    cursor: str | None = None
+    for _ in range(max_pages):
+        page = await session.list_tools(params=PaginatedRequestParams(cursor=cursor) if cursor else None)
+        tools += page.tools
+        cursor = page.next_cursor
+        if not cursor:
+            break
+    return tools
+
+
+class McpLink:
+    """Owns one connection. Its transport and session contexts are entered and left in one task (_serve)."""
 
     ping_every = 30.0  # seconds between liveness pings while idle
     ping_timeout = 10.0
 
-    def __init__(self, name: str, params: StdioServerParameters, workdir: str,
-                 on_exit: Callable[["ToolProcess"], None]) -> None:
+    def __init__(self, name: str, target: StdioServerParameters | HttpTarget,
+                 on_exit: Callable[["McpLink"], None], workdir: str | None = None) -> None:
         self.name = name
-        self.params = params
+        self.target = target
         self.workdir = workdir
         self.stderr = StderrTail()
         self.session: ClientSession | None = None
@@ -82,7 +106,7 @@ class ToolProcess:
         self._task: asyncio.Task[None] | None = None
 
     async def start(self, timeout: float) -> None:
-        """Start the process and wait until it has listed its tools. On any failure, everything is cleaned up."""
+        """Connect and wait until the server has listed its tools. On any failure, everything is cleaned up."""
         try:
             await self.stderr.start()
             self._task = asyncio.create_task(self._serve())
@@ -91,12 +115,22 @@ class ToolProcess:
             await self.close()
             raise
 
+    @contextlib.asynccontextmanager
+    async def _connect(self) -> AsyncIterator[tuple[Any, Any]]:
+        if isinstance(self.target, StdioServerParameters):
+            async with stdio_client(self.target, errlog=self.stderr.writer) as (read, write):
+                yield read, write
+        else:
+            async with (httpx2.AsyncClient(headers=dict(self.target.headers),
+                                           timeout=httpx2.Timeout(30, read=300)) as http,
+                        streamable_http_client(self.target.url, http_client=http) as (read, write, *_)):
+                yield read, write
+
     async def _serve(self) -> None:
         try:
-            async with (stdio_client(self.params, errlog=self.stderr.writer) as (read, write),
-                        ClientSession(read, write) as session):
+            async with self._connect() as (read, write), ClientSession(read, write) as session:
                 await session.initialize()
-                self.tools = (await session.list_tools()).tools
+                self.tools = await list_all_tools(session)
                 self.session = session
                 self._ready.set_result(None)
                 await self._watch(session)
@@ -104,23 +138,23 @@ class ToolProcess:
             if not self._ready.done():
                 self._ready.set_exception(exc)
             else:
-                log.warning("tool %s stopped: %s", self.name, exc)
+                log.warning("MCP server %s stopped: %s", self.name, exc)
         finally:
             if not self._ready.done():
-                self._ready.set_exception(ToolError("the tool process ended before it was ready"))
+                self._ready.set_exception(LinkError("the server ended before it was ready"))
             if self.session is not None and not self._stop.is_set():
                 self._on_exit(self)  # it was serving and nobody asked it to stop
 
     async def _watch(self, session: ClientSession) -> None:
-        """Wait to be stopped, pinging while idle so a process that dies between calls is noticed."""
+        """Wait to be stopped, pinging while idle so a server that dies between calls is noticed."""
         while not self._stop.is_set():
             try:
                 await asyncio.wait_for(self._stop.wait(), self.ping_every)
             except TimeoutError:
-                await asyncio.wait_for(session.send_ping(), self.ping_timeout)  # raises if the process is gone
+                await asyncio.wait_for(session.send_ping(), self.ping_timeout)  # raises if the server is gone
 
     async def close(self) -> None:
-        """Stop the process and remove its scratch directory. A cancellation of the caller still propagates."""
+        """Disconnect (stopping a local process) and remove its scratch directory. Cancellation still propagates."""
         self._stop.set()
         task = self._task
         try:
@@ -139,4 +173,5 @@ class ToolProcess:
             if self._ready.done() and not self._ready.cancelled():
                 self._ready.exception()  # mark it retrieved: start() may have stopped waiting already
             await self.stderr.close()
-            shutil.rmtree(self.workdir, ignore_errors=True)
+            if self.workdir:
+                shutil.rmtree(self.workdir, ignore_errors=True)
