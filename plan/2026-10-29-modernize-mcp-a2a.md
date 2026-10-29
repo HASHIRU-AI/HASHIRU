@@ -1,0 +1,210 @@
+# Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
+
+Status: DRAFT v2, awaiting confirmation. No code changed yet.
+Date: 2026-10-29
+
+## 0. Decisions so far
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Protocol SDKs directly vs an agent framework (ADK) | **SDKs directly** (`mcp`, `a2a-sdk`); HASHIRU owns the orchestration loop |
+| 2 | What employees look like | **Managers or workers**, following [HASHIRU-lite](https://github.com/kunpai/com-sci-239-multi-agent-class-project) |
+| 3 | Tool-creation sandbox | **`uv` subprocess now**, optional container backend later |
+| 4 | Paper continuity | **This is v2.** No need to reproduce v1 HASHIRUBench numbers; v1 stays reproducible at a tag |
+
+## 1. Requirements restatement
+
+HASHIRU v2 is a CEO → manager → worker hierarchy where:
+
+- **Every agent is an A2A service** with its own Agent Card. Agents talk only over A2A.
+- **Every tool is an MCP tool.** Managers (and the CEO) run a tool loop over MCP; workers answer once with no tools.
+- **Budgets follow the hiring tree.** Each agent has a dollar pool reserved from its hirer. Local agents also hold real memory (MB of the loaded model). Firing returns unspent dollars and frees memory.
+- **v1 features that HASHIRU-lite left out come back:** autonomous tool creation, persistent memory with retrieval, the Gradio UI, the `Mode` toggles, multi-session use.
+- **Engineering baseline:** Python 3.13, uv, typed package, pytest, ruff, mypy, CI, no secrets in source.
+
+## 2. Starting point: HASHIRU-lite
+
+HASHIRU-lite (`~1,100` lines, 90 tests, same author) already implements the v2 core. Reading it:
+
+| Lite piece | What it does | Keep / change for v2 |
+|---|---|---|
+| `server.py` | One Starlette app: MCP tools at `/mcp`; each hired agent mounted as its own A2A app at `/agents/{name}/` with an Agent Card | Keep design. Split into `a2a_host` and `mcp_server` modules; scope by session |
+| `agent.py` | `run_agent`: manager/CEO = tool loop (max 12 turns, parallel tool calls via `asyncio.gather`); worker = one LLM call. `ask_agent` is a runtime built-in A2A client, not an MCP tool, so the trace shows the real sender. `caller` is injected by the runtime and hidden from the LLM | Keep. Add A2A streaming for UI progress; make turn cap configurable |
+| `ledger.py` | Agent registry; `left()` computes each pool as reservation − own spend − children's holdings; `replay()` rebuilds accounts from a trace | Keep math. Replace module-level dict with a per-session object |
+| `llm.py` | All calls through LiteLLM (`acompletion`), real cost via `completion_cost`, `MAX_USD` wallet kill-switch, fail-fast on unpriced cloud models, `prices.json` overrides | Keep. Exact-pinned LiteLLM (lite notes malicious LiteLLM releases reached PyPI in early 2026) |
+| `tracelog.py` | One JSONL trace per run (`start`, `llm`, `tool`, `msg`, `label`, `error`); label propagation (`private`, `untrusted`) | Keep tracing as core. Labels move with the policy layer (Phase 6) |
+| `policy.py`, `check.py` | R1–R5 as past-time checks over traces; online `--enforce` monitor at the chokepoint | Optional Phase 6, after lite's own Phase 2 lands (demo 2026-12-03) |
+| Tier | `ollama_chat/…` or `ollama/…` = local, anything else = cloud | Keep |
+| Depth cap | Max 2 levels below the CEO, enforced in code | Keep, make configurable |
+| SDK pins | Python 3.13, `mcp==2.2.0`, `a2a-sdk[http-server]==1.2.2`, `litellm==1.103.4` | Start from these; re-check advisories at port time |
+
+What lite deliberately left out and v2 must add: `ToolCreator`, Gradio, memory auto-injection, multiple sessions, persistent memory.
+
+Gaps in lite that matter once HASHIRU is hosted:
+- **Global state.** `ledger.AGENTS` and `tracelog.events` are module globals: one run per process.
+- **Unauthenticated endpoints.** `/mcp` and `/agents/*` are open, and `caller` is trusted. Safe on `127.0.0.1`; unsafe on a public Hugging Face Space, where anyone could call an employee or pose as another caller and spend its budget.
+
+## 3. Target architecture
+
+```
+   Gradio UI · external A2A clients · MCP hosts (Claude Code, Cursor, ...)
+                │ (public, authenticated)
+                ▼
+   ┌───────────────────────── Session (one per user/chat) ─────────────────────────┐
+   │  CEO (manager role, depth 0, pool = session budget)                            │
+   │   ├─ Manager (depth 1, tool loop over MCP, may hire)                           │
+   │   │    └─ Worker (depth 2, one LLM call, no tools)                             │
+   │   └─ Worker                                                                    │
+   │  Ledger (pool tree: $ reservations + local MB)   Trace (JSONL chokepoint)      │
+   └───────────────┬───────────────────────────────────────────┬───────────────────┘
+                   │ MCP (internal)                            │ A2A (internal)
+     ┌─────────────┼──────────────────┐            ┌───────────┴──────────────┐
+     ▼             ▼                  ▼            ▼                          ▼
+  core tools   user-tools server   3rd-party    local agent host           remote A2A agents
+  (hire, fire, (uv subprocess,     MCP servers  /s/{session}/agents/{n}/   (Agent Card URL in
+  check_usage, ToolCreator output, (fetch, fs,  one card per hire          config; cloud tier,
+  memory, ...) hot reload)         search ...)                             $-billed only)
+```
+
+### Role and budget model (from lite)
+
+| | CEO | Manager | Worker |
+|---|---|---|---|
+| Depth | 0 | 1 or 2 | 1 or 2 |
+| Tools | all MCP tools + `ask_agent` | all MCP tools + `ask_agent` | none |
+| Can hire | yes | yes, until max depth | no |
+| Loop | tool loop | tool loop | one LLM call |
+| Pool | session budget | reserved from hirer | reserved from hirer |
+
+- `hire_agent(name, role, model, prompt, budget_usd)` moves `budget_usd` from the hirer's pool; a local model is preloaded in Ollama and its size counts against free memory.
+- `fire_agent(name)` fires the subtree, unmounts the A2A apps, unloads unused local models, and returns unspent dollars to the hirer.
+- v1's abstract "resource units" (RAM+VRAM ÷ 16 × 100) and the hand-written cost table are replaced by measured MB and LiteLLM prices.
+
+### v1 → v2 mapping
+
+| v1 | v2 |
+|---|---|
+| `GeminiManager` (Gemini-only CEO loop, `repr`/`eval` history) | `run_agent` tool loop via LiteLLM; any provider as CEO |
+| `AgentCreator` / `AskAgent` / `FireAgent` / `GetAgents` | `hire_agent` (MCP) / `ask_agent` (A2A built-in) / `fire_agent` (MCP) / Agent Card registry |
+| `AgentCostManager` dict | `MODELS` config + LiteLLM price map + `prices.json` |
+| `BudgetManager` singleton (two global budgets) | Per-session pool tree (`ledger`) + `MAX_USD` wallet cap |
+| `ToolManager` (`importlib`, `pip.main`) | MCP client over core, user-tools and third-party servers |
+| `ToolCreator` (in-process exec) | Writes a FastMCP module to the user-tools server (uv subprocess, hot reload, `tools/list_changed`, rollback) |
+| `MemoryManager` + per-query SentenceTransformer | Memory MCP tool, persistent store, cached embedder, optional auto-injection |
+| `Mode` enum | Config flags (Hydra group `modes`) checked at the chokepoint |
+| `deleteAgents.py`, `ollama.create` per agent | Not needed: system prompt sent per call; models loaded/unloaded with `keep_alive` |
+
+## 4. Package layout (target)
+
+```
+src/hashiru/
+  config.py          frozen dataclass configs + Hydra compose API
+  llm.py             LiteLLM wrapper, wallet cap, price check        (from lite llm.py)
+  ledger.py          pool tree, reservations, memory accounting      (from lite ledger.py)
+  trace.py           JSONL events                                    (from lite tracelog.py)
+  session.py         per-session registry, ledger, trace, mount prefix, auth token
+  runtime.py         run_agent, ask_agent, call_tool chokepoint      (from lite agent.py)
+  a2a_host.py        mount/unmount agents, Agent Cards, executor
+  tools/core.py      hire_agent, fire_agent, check_usage, deliver_to_user
+  tools/memory.py    persistent memory + retrieval
+  tools/web.py       get_website (+ search via 3rd-party MCP)
+  toolsmith/         ToolCreator, user-tools server, loader, rollback
+  ui/                Gradio app + trace panel
+  interop/           CEO as public A2A agent; HASHIRU as MCP server
+conf/                models, budget, modes, mcp_servers, a2a_peers
+tests/               ported lite tests + new ones
+```
+
+v1 code (`src/manager`, `src/tools`, `app.py`, `start.py`, `deleteAgents.py`) is deleted on the v2 branch once Phase 5 replaces the UI. v1 lives on at tag `v1.0-paper`.
+
+## 5. Implementation phases
+
+Branching: `develop` as the v2 integration branch off `main`; one `feature/*` branch per phase, merged `--no-ff`; `develop` → `main` at release.
+
+### Phase 0: Preserve v1, stop the leak (½ day)
+
+- [ ] **Rotate the OpenWeatherMap key** hardcoded at `src/tools/user_tools/weather_tool.py:33` (it is in git history). Nothing else in v1 gets fixed: the code is being replaced.
+- [ ] Tag `main` as `v1.0-paper`; add a release note listing the known v1 bugs (`budget_manager.py:21` toggle, expense charged to resource budget at `tool_manager.py:99,115`, double agent load at `agent_manager.py:578-599`, `eval` history, shared state across users at `app.py:197`).
+- [ ] Create `develop`.
+
+### Phase 1: Port the lite core (3–4 days)
+
+- [ ] `pyproject.toml` + `uv.lock`, Python 3.13, lite's pins; `ruff`, `mypy`, `pytest`; GitHub Actions CI.
+- [ ] Port `llm`, `ledger`, `tracelog`, `agent`, `server` into the layout above, with typed dataclasses instead of dicts.
+- [ ] **Sessions:** move module globals into a `Session` object; agents mount under `/s/{session}/agents/{name}/`; each session gets its own CEO, pool tree, and trace file.
+- [ ] **Auth on internal endpoints:** per-session bearer token on `/mcp` and agent A2A routes; `caller` derived from the token, not trusted from arguments. Option to bind internal routes to loopback only.
+- [ ] Config via Hydra compose API: `ceo_model`, `models`, `budget_usd`, `max_usd`, `max_depth`, `max_turns`, `ollama_url`.
+- [ ] Port lite's tests (fake LLM, no keys needed) and make them pass in the new layout.
+
+Exit check: `hello` scenario runs end to end with local models; tests green in CI.
+
+### Phase 2: Tools over MCP (2–3 days)
+
+- [ ] **MCP client hub:** the runtime connects to the core server plus any servers in `conf/mcp_servers` (stdio or streamable HTTP), namespaces tool names, and routes every call through the chokepoint.
+- [ ] **Memory:** persistent store (SQLite) with the embedder loaded once; `memory_search` tool; `modes.memory_autoinject` adds top-k memories to the CEO's first message (v1 behavior).
+- [ ] **Web and files:** keep lite's `get_website` and scoped `read_file`; add search through a third-party MCP server; port `arxiv` as a core tool or use an existing MCP server.
+- [ ] Drop `python_sandbox_tool` (not a sandbox) and `weather_tool` (third-party MCP servers cover these).
+- [ ] Optional per-hire tool scoping: `hire_agent(..., tools=[...])` gives a manager a subset of tools.
+
+### Phase 3: Autonomous tool creation (3–4 days)
+
+- [ ] `create_tool(name, code, dependencies)` for managers, gated by `modes.tool_creation`. The name is validated (`[a-z0-9_]{1,32}`), and the code must define a FastMCP tool.
+- [ ] **user-tools server:** a separate process started with `uv run --with <deps>`. It imports new modules, checks their schemas, hot-reloads, and sends `notifications/tools/list_changed`; the runtime refreshes its tool list.
+- [ ] Rollback on import or schema failure, returned to the manager as an error observation (keeps v1 behavior).
+- [ ] `delete_tool(name)`.
+- [ ] Created tools are traced (`tool_created`, `tool_deleted` events) with code hash.
+- [ ] Interface left open for a container backend later.
+
+### Phase 4: A2A beyond the local host (3–4 days)
+
+- [ ] **A2A streaming:** agents emit `working` status updates; the UI shows them live.
+- [ ] **Remote agents:** `conf/a2a_peers` lists Agent Card URLs. `hire_agent` can hire a remote agent as a worker or manager; it is always cloud tier and dollar-billed; auth follows the card's security schemes.
+- [ ] **HASHIRU cost extension:** an Agent Card extension declaring pricing and reporting per-task usage in task metadata, consumed by the ledger. Our own local agents publish it too. (Candidate research contribution.)
+- [ ] `Mode` toggles from v1 as config flags enforced at the chokepoint: `agent_creation`, `local_agents`, `cloud_agents`, `tool_creation`, `tool_invocation`, `memory`. Budget enforcement replaces the two budget modes.
+
+### Phase 5: UI and interop (3 days)
+
+- [ ] Gradio chat as a thin client of a session; a side panel shows the live agent tree, pools, and trace events (pattern from lite's `chat.html`/`viewer.html`).
+- [ ] Auth0 login kept as optional; `SESSION_SECRET_KEY` required when auth is on.
+- [ ] Publish the CEO as a public A2A agent (`/.well-known/agent-card.json`) and HASHIRU as an MCP server (`hashiru.ask`, budget resource) for Claude Code, Cursor, etc.
+- [ ] Single-process, single-port mode for Hugging Face Spaces, with internal routes protected (Phase 1 auth).
+- [ ] Delete v1 code on `develop`.
+
+### Phase 6 (optional): Policy layer from lite (2–3 days, after 2026-12-03)
+
+- [ ] Port lite's labels (`private`, `untrusted`), R1–R5 checks, `check.py`, and `--enforce` once lite's course Phase 2 is final.
+- [ ] Generalize: policies loaded from config so users can add their own.
+
+### Phase 7: Evaluation and docs (2 days + run time)
+
+- [ ] New HASHIRUBench v2 runs (no comparison to v1 required), using traces for cost and behavior analysis.
+- [ ] README, architecture diagram, `CITATION.cff` (v2), examples for MCP servers and remote A2A agents.
+
+## 6. Risks
+
+| Level | Risk | Mitigation |
+|---|---|---|
+| HIGH | Public deployment exposes internal MCP/A2A routes and trusts `caller` | Phase 1 session tokens; `caller` from token; loopback-only option |
+| HIGH | Tool creation runs LLM-written code | uv subprocess isolates dependencies, not the host. Off by default on public deployments; container backend later |
+| HIGH | LiteLLM supply chain (malicious releases in early 2026) | Exact pin + hashes in `uv.lock`; check advisories before every bump |
+| MED | Small local models are weak at tool calling, so local managers fail | Lite's fallback: cloud managers with local workers; `max_turns` cap returns `failed` |
+| MED | Concurrent sessions contend for one Ollama and machine memory | Ledger memory check is per machine, not per session; global lock around local hires |
+| MED | MCP/A2A SDK churn | Pin; keep protocol calls in `runtime.py` and `a2a_host.py` only |
+| MED | Python 3.13 on Hugging Face Spaces | Verify in Phase 1; fall back to Docker Space |
+| LOW | Diverging from lite while its Phase 2 is still in progress | Port the policy layer only after 2026-12-03 |
+
+## 7. Estimate
+
+| Phase | Estimate |
+|---|---|
+| 0 Preserve v1 | ½ day |
+| 1 Port lite core | 3–4 days |
+| 2 MCP tools | 2–3 days |
+| 3 Tool creation | 3–4 days |
+| 4 A2A extras + modes | 3–4 days |
+| 5 UI + interop | 3 days |
+| 6 Policy layer (optional) | 2–3 days |
+| 7 Eval + docs | 2 days + bench time |
+| **Total** | **~3–4 weeks** |
+
+Phases 2, 3 and 4 depend only on Phase 1 and can run in parallel.
