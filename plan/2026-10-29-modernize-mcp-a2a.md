@@ -155,13 +155,23 @@ Known limitations carried forward:
 - `get_website` resolves names itself and again in the HTTP client, so DNS rebinding between the two is not covered.
 - Possible simplification: one `Mount("/s")` that looks agents up in the ledger, instead of a route per agent.
 
-### Phase 2: Tools over MCP (2–3 days)
+### Phase 2: Tools over MCP (2–3 days) — DONE 2026-10-29 on `feature/mcp-tools`
 
-- [ ] **MCP client hub:** the runtime connects to the core server plus any servers in `conf/mcp_servers` (stdio or streamable HTTP), namespaces tool names, and routes every call through the chokepoint.
-- [ ] **Memory:** persistent store (SQLite) with the embedder loaded once; `memory_search` tool; `modes.memory_autoinject` adds top-k memories to the CEO's first message (v1 behavior).
-- [ ] **Web and files:** keep lite's `get_website` and scoped `read_file`; add search through a third-party MCP server; port `arxiv` as a core tool or use an existing MCP server.
-- [ ] Drop `python_sandbox_tool` (not a sandbox) and `weather_tool` (third-party MCP servers cover these).
-- [ ] Optional per-hire tool scoping: `hire_agent(..., tools=[...])` gives a manager a subset of tools.
+- [x] **Third-party MCP servers, hub-side.** Instead of each agent run connecting to N servers, the hub holds one connection per configured server (`mcp_servers`: a local `command` over stdio or a remote `url` over streamable HTTP) and offers its tools on `/mcp` as `<server>__<tool>` (`gateway.py`, sharing `mcplink.py` with created tools). Agents keep one tool list, and every call keeps the gate, trace and 20k result cap. A stdio server gets MCP's minimal environment plus only the `env` its config lists. Results carry the labels its config gives (`untrusted` by default). A server that fails to start is skipped; one that dies is unregistered.
+- [x] **Config file:** `--config my.yaml` or `HASHIRU_CONFIG`, layered as defaults < file < command line; `examples/hashiru.yaml` shows the official fetch server plus commented filesystem and HTTP examples.
+- [x] **Memory:** the `memory` tool searches, adds, deletes and lists. With `memory_db` (the CLI default) memory is one SQLite file shared by all sessions and persistent across runs, ranked with FTS5 bm25. This replaces v1's per-query SentenceTransformer, so v2 has no torch dependency. With `memory_db=''` each session gets its own copy of `memory.json` (reproducible benchmarks). `memory_autoinject` adds the best matches to the user's message (v1 behavior), records a `recall` event and labels the CEO `private`.
+- [x] **Web:** `get_website` moved to `web.py`; new built-in `arxiv_search` (arXiv Atom API, public-address checks, labeled `untrusted`). General web search comes from a configured MCP server.
+- [x] **Tool scoping:** `hire_agent(..., tools=[...])` limits a manager to a subset of its hirer's tools (ask_agent included); the runtime offers only those and refuses the rest.
+- [ ] Removing v1's `python_sandbox_tool` and `weather_tool` happens with the rest of the v1 code in Phase 5.
+- [x] Tests: 31 in `tests/test_phase2.py` (180 total), including a stdio test server and an in-process HTTP MCP server.
+
+Code review (independent reviewer), all fixed with regression tests; three fixes mutation-checked:
+- HIGH: a limited manager could hire a manager without `tools` and get every tool → an omitted `tools` inherits the hirer's.
+- MED: one schema the hub could not proxy (a `true` subschema, `_x`, `model_config`) dropped the whole server and leaked its connection → tools are offered one at a time; `true` subschemas work; a failed server is fully disconnected.
+- MED: third-party tools had no size limits (a 300-tool server made a 7.2 MB tool list for every manager) → created-tool limits apply, descriptions are cut to 1,000 characters, at most 64 tools per server.
+- MED: shared memory dropped the `untrusted` label across sessions → each memory keeps its writer's labels; reading it (search or recall) applies them.
+- LOW: CLI overrides of keys only in the config file; bad value shapes and YAML errors gave tracebacks; servers connected one after another (now in parallel, `mcp_start_timeout`); recall on messages without words; unbounded memory keys and lists; SQLite connections not closed; created tools could take `<server>__` names; arXiv XML with a DTD; only the first page of a tool list was read; `memory.json` was ignored by the persistent store (now seeds a new one). A recency-ordering bug (timestamp ties) was found by the new tests and fixed.
+- [x] Real checks: `uvx mcp-server-fetch` through the gateway fetched example.com; live `arxiv_search` found the HASHIRU paper; two separate `hashiru ask` processes on local `gemma4:12b` ($0): run 1 saved "research papers → exactly three bullets" to SQLite, run 2 recalled it, hired a researcher, called `arxiv_search`, and answered in three bullets.
 
 ### Phase 3: Autonomous tool creation (3–4 days) — DONE 2026-10-29 on `feature/tool-creation`
 

@@ -30,6 +30,7 @@ class AgentRecord:
     spent: float = 0.0
     gpu_mb: int = 0
     live: bool = True
+    tools: tuple[str, ...] | None = None  # None: every tool; else only these (managers)
 
 
 @dataclass
@@ -90,9 +91,9 @@ class Ledger:
         self.agents: dict[str, AgentRecord] = {}
 
     def add(self, name: str, role: str, tier: str, model: str, prompt: str,
-            parent: str | None, depth: int, reserved: float) -> AgentRecord:
+            parent: str | None, depth: int, reserved: float, tools: tuple[str, ...] | None = None) -> AgentRecord:
         """Register an agent holding a dollar reservation taken from its parent's pool."""
-        self.agents[name] = AgentRecord(name, role, tier, model, prompt, parent, depth, reserved)
+        self.agents[name] = AgentRecord(name, role, tier, model, prompt, parent, depth, reserved, tools=tools)
         return self.agents[name]
 
     def get(self, name: str) -> AgentRecord | None:

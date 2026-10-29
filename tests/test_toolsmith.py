@@ -318,7 +318,7 @@ def test_invalid_bytes_and_floods_on_stderr_come_back_bounded(smith_hub):
 
 
 def test_stderr_tail_keeps_only_the_end():
-    from hashiru.toolsmith.process import StderrTail
+    from hashiru.mcplink import StderrTail
 
     async def body():
         tail = StderrTail(limit=1_000)
@@ -351,7 +351,7 @@ def test_a_tool_that_dies_during_a_call_is_unregistered(smith_hub):
 
 @needs_uv
 def test_a_tool_that_dies_while_idle_is_noticed(smith_hub, monkeypatch):
-    from hashiru.toolsmith.process import ToolProcess
+    from hashiru.mcplink import McpLink as ToolProcess
     monkeypatch.setattr(ToolProcess, "ping_every", 0.2)
     session = smith_hub.new_session("t", trace=False)
     code = ('import os, threading\nthreading.Timer(0.5, os._exit, [0]).start()\n'

@@ -21,14 +21,16 @@ from starlette.routing import Mount
 
 from hashiru.auth import AuthGate, token_of
 from hashiru.config import Settings
+from hashiru.gateway import Gateway
 from hashiru.ledger import AgentRecord
 from hashiru.llm import LLM, Wallet, check_priced, is_local, register_prices
+from hashiru.memory import MemoryStore, open_memory, words
 from hashiru.ollama import Ollama
 from hashiru.runtime import CEO_PROMPT, Executor
 from hashiru.session import USER, Session
-from hashiru.tools import Tools, load_memory
+from hashiru.tools import Tools
 from hashiru.toolsmith import Toolsmith
-from hashiru.trace import SOURCES, UNTRUSTED, Trace
+from hashiru.trace import PRIVATE, SOURCES, UNTRUSTED, Trace
 
 __all__ = ["Hub"]
 
@@ -52,6 +54,9 @@ class Hub:
         self.tools = Tools(self)
         self.tools.register(self.mcp)
         self.toolsmith = Toolsmith(self)
+        self.gateway = Gateway(self)
+        self.memory: MemoryStore | None = (  # shared by all sessions when persistent
+            open_memory(settings.memory_db, Path(settings.data_dir)) if settings.memory_db else None)
         self.app = self.mcp.streamable_http_app(host=settings.host)
         self.asgi = AuthGate(self.app, self)
 
@@ -72,7 +77,7 @@ class Hub:
         path = Path(s.trace_dir) / f"{sid}.jsonl" if trace else None
         session = Session(sid, Trace(path, task=sid, budget_usd=s.budget_usd, models=list(s.models),
                                      agents={"ceo": {"tier": tier, "depth": 0, "model": s.ceo_model}}),
-                          memory=load_memory(Path(s.data_dir)))
+                          memory=self.memory or open_memory("", Path(s.data_dir)))
         self.sessions[sid] = session
         ceo = session.ledger.add("ceo", "manager", tier, s.ceo_model, CEO_PROMPT, None, 0, s.budget_usd)
         self.issue(session, USER)
@@ -145,8 +150,28 @@ class Hub:
         return f"/s/{session.id}/agents/{name}"
 
     def sources(self) -> dict[str, list[str]]:
-        """Labels each tool's results carry. Agent-created tools may fetch anything, so they are untrusted."""
-        return SOURCES | {name: [UNTRUSTED] for name in self.toolsmith.names()}
+        """Labels each tool's results carry. Agent-created tools may fetch anything, so they are untrusted;
+        a configured MCP server's tools carry the labels its config gives (untrusted by default)."""
+        return SOURCES | self.gateway.labels() | {name: [UNTRUSTED] for name in self.toolsmith.names()}
+
+    def recall(self, session: Session, text: str, limit: int = 5) -> str:
+        """`text` plus the saved memories that best match it, when memory_autoinject is on (v1's behavior).
+
+        Clients call this on the user's own words, before adding chat history. The CEO then holds private data,
+        so its label set records that, and a 'recall' event records what was added.
+        """
+        if not self.settings.memory_autoinject or not words(text):  # no words: nothing to match on
+            return text
+        if not (hits := session.memory.search(text, limit)):
+            return text
+        session.trace.emit("recall", task=session.id, agent="ceo", query=text[:200], results=hits)
+        session.trace.receive("ceo", session.id, sorted({PRIVATE} | {lbl for h in hits for lbl in h["labels"]}))
+        lines = "\n".join(f"- {h['key']}: {h['text']}" for h in hits)
+        return f"{text}\n\nSaved memories that may be relevant:\n{lines}"
+
+    def external(self) -> set[str]:
+        """Tools whose error text comes from outside the hub, so their errors keep their labels too."""
+        return self.toolsmith.names() | self.gateway.names()
 
     # ---- local models ----
 
@@ -186,10 +211,12 @@ class Hub:
                 raise RuntimeError("server stopped during startup")
             await asyncio.sleep(0.05)
         try:
+            await self.gateway.start()
             if self.settings.tool_creation:
                 await self.toolsmith.start()
             yield
         finally:
             await self.toolsmith.stop()
+            await self.gateway.stop()
             srv.should_exit = True
             await task

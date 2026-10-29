@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 
 from hashiru.ledger import AgentRecord, Ledger
+from hashiru.memory import MemoryStore, SessionMemory
 from hashiru.trace import Trace
 
 __all__ = ["USER", "Session"]
@@ -16,7 +17,7 @@ class Session:
     id: str
     trace: Trace
     ledger: Ledger = field(default_factory=Ledger)
-    memory: dict[str, str] = field(default_factory=dict)
+    memory: MemoryStore = field(default_factory=SessionMemory)
     tokens: dict[str, str] = field(default_factory=dict)  # caller name -> bearer token
 
     def may_ask(self, me: str, name: str) -> bool:

@@ -29,6 +29,8 @@ def check_request(name: Any, code: Any, dependencies: Any, taken: set[str]) -> s
         return f"name {name!r} must start with a-z and use only a-z, 0-9 and _ (at most 32)"
     if name in taken:
         return f"a tool named {name!r} already exists"
+    if "__" in name:
+        return "names may not contain '__', which marks tools of configured MCP servers"
     if not isinstance(code, str):
         return "code must be text"
     try:
@@ -71,6 +73,10 @@ def check_entry(entry: Any) -> str | None:
 
 def check_published(description: str, schema: dict[str, Any]) -> str | None:
     """Why a tool's self-description is refused: it reaches every manager's prompt, so it must stay small."""
+    properties, required = schema.get("properties", {}), schema.get("required", [])
+    if not isinstance(properties, dict) or not isinstance(required, list) \
+            or not all(isinstance(r, str) for r in required):
+        return "the parameter schema is malformed"
     if len(description) > MAX_DESCRIPTION_CHARS:
         return f"the docstring has {len(description)} characters; keep it under {MAX_DESCRIPTION_CHARS}"
     if len(schema.get("properties", {})) > MAX_PARAMETERS:

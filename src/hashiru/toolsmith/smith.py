@@ -23,9 +23,10 @@ from mcp.server.mcpserver import Context
 from mcp.shared.exceptions import MCPError
 from mcp_types import CONNECTION_CLOSED
 
+from hashiru.mcplink import LinkError as ToolError
+from hashiru.mcplink import McpLink
 from hashiru.toolsmith.checks import check_entry, check_published, check_request, digest, to_result
-from hashiru.toolsmith.process import ToolError, ToolProcess
-from hashiru.toolsmith.proxy import make_proxy
+from hashiru.toolsmith.proxy import register_proxy
 
 if TYPE_CHECKING:
     from hashiru.hub import Hub
@@ -43,7 +44,7 @@ class Toolsmith:
     def __init__(self, hub: "Hub") -> None:
         self.hub = hub
         self.dir = Path(hub.settings.tools_dir)
-        self.procs: dict[str, ToolProcess] = {}
+        self.procs: dict[str, McpLink] = {}
         self._lock = asyncio.Lock()
         self._closing = False
         self._reaping: set[asyncio.Task[None]] = set()
@@ -136,14 +137,14 @@ class Toolsmith:
         args += ["python", "-I", "-u", str(CHILD), str(path), name]  # -u: see child.py
         return StdioServerParameters(command=uv, args=args, cwd=workdir)  # env=None: MCP's minimal default
 
-    async def _start_tool(self, name: str, data: bytes, dependencies: list[str]) -> ToolProcess:
+    async def _start_tool(self, name: str, data: bytes, dependencies: list[str]) -> McpLink:
         """Run `data` (a private copy, so later edits to tools_dir cannot change what was checked), check what it
         serves, and re-export it. Any failure stops the process; the error carries the end of its stderr."""
         workdir = tempfile.mkdtemp(prefix=f"hashiru-tool-{name}-")
         try:
             path = Path(workdir) / f"{name}.py"
             path.write_bytes(data)
-            proc = ToolProcess(name, self.command(path, name, dependencies, workdir), workdir, self._died)
+            proc = McpLink(name, self.command(path, name, dependencies, workdir), self._died, workdir)
         except Exception as exc:
             shutil.rmtree(workdir, ignore_errors=True)
             raise exc if isinstance(exc, ToolError) else ToolError(f"{type(exc).__name__}: {exc}") from exc
@@ -181,29 +182,24 @@ class Toolsmith:
         await self._start_tool(name, data, dependencies)
 
     def _register(self, name: str, description: str, schema: dict[str, Any]) -> None:
-        """Re-export the tool on the hub's MCP server, publishing the child's exact schema (enums, nested types)."""
         try:
-            proxy = make_proxy(name, schema, description, self.call)
+            register_proxy(self.hub.mcp, name, description, schema, self.call)
         except ValueError as exc:
             raise ToolError(str(exc)) from None
-        self.hub.mcp.add_tool(proxy, name=name, description=description)
-        registered = self.hub.mcp._tool_manager.get_tool(name)  # mcp==2.2.0 is pinned; no public setter exists
-        if registered is not None:
-            registered.parameters = schema
 
     async def _retire(self, name: str) -> None:
         proc = self.procs.pop(name)
         self.hub.mcp.remove_tool(name)
         await proc.close()
 
-    def _died(self, proc: ToolProcess) -> None:
+    def _died(self, proc: McpLink) -> None:
         """A serving process ended on its own: unregister it (it comes back when the hub restarts)."""
         if self.procs.get(proc.name) is proc:
             task = asyncio.get_running_loop().create_task(self._reap(proc))
             self._reaping.add(task)
             task.add_done_callback(self._reaping.discard)
 
-    async def _reap(self, proc: ToolProcess) -> None:
+    async def _reap(self, proc: McpLink) -> None:
         async with self._lock:
             if self.procs.get(proc.name) is proc:
                 log.warning("tool %s exited; it is unavailable until the hub restarts", proc.name)

@@ -1,31 +1,28 @@
 """The built-in MCP tools. Each one learns who is calling from the request's bearer token, never from
 an argument, so an agent cannot act as another agent."""
-import asyncio
-import ipaddress
-import json
 import math
 import re
-import socket
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 from mcp.server.mcpserver import Context, MCPServer
 
 from hashiru.ledger import AgentRecord, free_mb
 from hashiru.llm import is_local
+from hashiru.memory import MAX_KEY_CHARS
 from hashiru.session import USER, Session
+from hashiru.web import fetch_page, search_arxiv
 
 if TYPE_CHECKING:
     from hashiru.hub import Hub
 
-__all__ = ["ROLES", "Tools", "load_memory", "non_public"]
+__all__ = ["ROLES", "Tools"]
 
 ROLES = ("manager", "worker")
 NAME = re.compile(r"[a-z0-9_]{1,32}")
 RESERVED = {USER, "ceo"}  # an agent named "user" would get the human's token and speak to the CEO as them
-MAX_REDIRECTS = 5
-MAX_PAGE_BYTES = 2_000_000
+ALWAYS = "ask_agent"      # the runtime's own tool, not served over MCP
 CREATE_TOOL = (
     "Create a new tool that every manager can call from its next turn on. code is a Python module that "
     "defines a top-level function named exactly `name`, with a type hint on every parameter, a docstring "
@@ -35,55 +32,19 @@ CREATE_TOOL = (
     "load, nothing is created and the error says why, so fix the code and try again.")
 
 
-def load_memory(data_dir: Path) -> dict[str, str]:
-    """Each session starts from data/memory.json; 'add' changes only that session's copy."""
-    path = data_dir / "memory.json"
-    return dict(json.loads(path.read_text())) if path.exists() else {}
-
-
-async def non_public(url: str) -> str | None:
-    """Why `url` must not be fetched, or None. Agents read untrusted pages that can name any address, so
-    loopback (Ollama, the hub), private networks and link-local (cloud metadata) are refused.
-
-    The name is resolved here and again by the HTTP client, so DNS rebinding between the two is not covered.
-    """
-    parsed = httpx.URL(url)
-    if parsed.scheme not in ("http", "https") or not parsed.host:
-        return f"refusing {url}: only http(s) URLs with a host"
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    try:
-        infos = await asyncio.get_running_loop().getaddrinfo(parsed.host, port, type=socket.SOCK_STREAM)
-    except OSError as exc:
-        return f"could not resolve {parsed.host}: {exc}"
-    for info in infos:
-        if not ipaddress.ip_address(str(info[4][0]).split("%")[0]).is_global:
-            return f"refusing {url}: {parsed.host} is not a public address"
-    return None
-
-
-async def read_capped(page: httpx.Response, limit: int) -> bytes:
-    """At most `limit` bytes of a streamed body."""
-    chunks, size = [], 0
-    async for chunk in page.aiter_bytes():
-        chunks.append(chunk)
-        size += len(chunk)
-        if size >= limit:
-            break
-    return b"".join(chunks)[:limit]
-
-
 class Tools:
     def __init__(self, hub: "Hub") -> None:
         self.hub = hub
-        self.transport: httpx.AsyncBaseTransport | None = None  # get_website's transport; tests swap in a mock
+        self.transport: httpx.AsyncBaseTransport | None = None  # web tools' transport; tests swap in a mock
 
     def register(self, mcp: MCPServer) -> None:
         models = ", ".join(self.hub.settings.models)
         mcp.tool(description=(
             "Hire an agent. role is 'manager' (uses tools and may hire) or 'worker' (answers once, no tools). "
-            f"model is one of: {models}. Reserves budget_usd from your pool."))(self.hire_agent)
-        for tool in (self.fire_agent, self.check_usage, self.get_website, self.read_file, self.memory,
-                     self.deliver_to_user):
+            f"model is one of: {models}. Reserves budget_usd from your pool. For a manager, tools optionally "
+            "limits which of your tools it may use (by name, including ask_agent)."))(self.hire_agent)
+        for tool in (self.fire_agent, self.check_usage, self.get_website, self.arxiv_search, self.read_file,
+                     self.memory, self.deliver_to_user):
             mcp.tool()(tool)
         if self.hub.settings.tool_creation:
             mcp.tool(description=CREATE_TOOL)(self.create_tool)
@@ -101,11 +62,20 @@ class Tools:
         return found[0], rec
 
     async def hire_agent(self, ctx: Context, name: str, role: str, model: str, prompt: str,
-                         budget_usd: float) -> dict[str, Any]:
+                         budget_usd: float, tools: list[str] | None = None) -> dict[str, Any]:
         session, boss = self.who(ctx)
         settings, depth = self.hub.settings, boss.depth + 1
         if boss.role != "manager":
             return {"error": "only managers can hire"}
+        if tools is None and boss.tools is not None and role == "manager":
+            tools = list(boss.tools)  # a limited manager cannot hire its way out of its limits
+        if tools is not None:
+            if role != "manager":
+                return {"error": "tools can only be limited for a manager; workers have none"}
+            mine = boss.tools if boss.tools is not None else \
+                {t.name for t in await self.hub.mcp.list_tools()} | {ALWAYS}
+            if not_mine := sorted(set(tools) - set(mine)):
+                return {"error": f"you cannot grant tools you do not have: {not_mine}"}
         if not (math.isfinite(budget_usd) and budget_usd >= 0):
             return {"error": "budget_usd must be a finite number >= 0"}
         if model not in settings.models:
@@ -117,7 +87,8 @@ class Tools:
         if not NAME.fullmatch(name) or name in RESERVED or session.ledger.get(name) is not None:
             return {"error": f"name {name!r} must be new, not {sorted(RESERVED)}, and use only a-z, 0-9 and _"}
         tier = "local" if is_local(model) else "cloud"
-        rec = session.ledger.add(name, role, tier, model, prompt, boss.name, depth, budget_usd)  # claim the name
+        rec = session.ledger.add(name, role, tier, model, prompt, boss.name, depth, budget_usd,  # claim the name
+                                 tools=tuple(sorted(set(tools))) if tools is not None else None)
         if tier == "local":
             try:
                 async with self.hub.model_lock(model):
@@ -160,23 +131,12 @@ class Tools:
     async def get_website(self, ctx: Context, url: str) -> dict[str, Any]:
         """Fetch a public web page and return its text."""
         self.who(ctx)
-        if not url.startswith(("http://", "https://")):
-            return {"error": "only http(s) URLs"}
-        try:
-            async with httpx.AsyncClient(timeout=20, follow_redirects=False, transport=self.transport) as http:
-                for _ in range(MAX_REDIRECTS + 1):  # follow redirects by hand so every hop is checked
-                    if refused := await non_public(url):
-                        return {"error": refused}
-                    async with http.stream("GET", url) as page:
-                        if page.is_redirect:
-                            url = str(page.url.join(page.headers.get("location", "")))
-                            continue
-                        body = await read_capped(page, MAX_PAGE_BYTES)
-                        text = body.decode(page.charset_encoding or "utf-8", errors="replace")
-                        return {"status": page.status_code, "text": re.sub(r"<[^>]+>", " ", text)[:20000]}
-        except httpx.HTTPError as exc:
-            return {"error": f"could not fetch {url}: {exc}"}
-        return {"error": f"more than {MAX_REDIRECTS} redirects"}
+        return await fetch_page(url, self.transport)
+
+    async def arxiv_search(self, ctx: Context, query: str, max_results: int = 5) -> dict[str, Any]:
+        """Search arXiv for papers: title, authors, date, abstract and PDF link for each (at most 20)."""
+        self.who(ctx)
+        return await search_arxiv(query, max_results, self.transport)
 
     def read_file(self, ctx: Context, path: str) -> dict[str, Any]:
         """Read a text file under the data directory, for example private/notes.md."""
@@ -187,13 +147,29 @@ class Tools:
             return {"error": f"no file {path} in the data directory"}
         return {"path": path, "text": target.read_text()}
 
-    def memory(self, ctx: Context, action: str, key: str = "", value: str = "") -> dict[str, Any]:
-        """Saved user memories. action 'get' returns all of them; 'add' saves value under key."""
-        session, _ = self.who(ctx)
+    def memory(self, ctx: Context, action: Literal["search", "add", "delete", "list"], query: str = "",
+               key: str = "", text: str = "", limit: int = 5) -> dict[str, Any]:
+        """The user's saved memories (preferences, facts, past solutions). 'search' returns the memories that best
+        match query (the most recent if query is empty); 'add' saves text under key, replacing it; 'delete'
+        removes key; 'list' returns every key."""
+        session, me = self.who(ctx)
+        store = session.memory
+        if len(key) > MAX_KEY_CHARS:
+            return {"error": f"keys are at most {MAX_KEY_CHARS} characters"}
         if action == "add":
-            session.memory[key] = value
+            if not key or not text:
+                return {"error": "add needs key and text"}
+            store.add(key, text, sorted(session.trace.labels(me.name, session.id)))  # the writer's labels stay
             return {"saved": key}
-        return {"memories": dict(session.memory)}
+        if action == "delete":
+            return {"deleted": key} if store.delete(key) else {"error": f"no memory named {key!r}"}
+        if action == "list":
+            keys, total = store.keys()
+            return {"keys": keys, "total": total} | ({"note": f"the {len(keys)} newest"} if total > len(keys) else {})
+        hits = store.search(query, max(1, min(limit, 20)))
+        # _labels is read (and removed) by the runtime: what was written under untrusted stays untrusted.
+        return {"memories": [{"key": h["key"], "text": h["text"]} for h in hits],
+                "_labels": sorted({label for h in hits for label in h["labels"]})}
 
     def deliver_to_user(self, ctx: Context, text: str) -> dict[str, Any]:
         """Show text directly to the user."""

@@ -1,0 +1,21 @@
+# Example user config. Use it with:  uv run hashiru chat --config examples/hashiru.yaml
+# (or set HASHIRU_CONFIG=examples/hashiru.yaml). Keys are the same as src/hashiru/conf/config.yaml,
+# and command-line key=value overrides still win.
+
+ceo_model: ollama_chat/gemma4:12b
+models: [ollama_chat/qwen3.5:4b, ollama_chat/gemma4:12b]
+memory_autoinject: true
+
+# Third-party MCP servers. Their tools appear to agents as <server>__<tool>. A local server gets MCP's
+# minimal environment plus only the env you list; results are labeled untrusted unless you say otherwise.
+mcp_servers:
+  fetch:                                    # the official fetch server: web pages as markdown
+    command: uvx
+    args: [mcp-server-fetch]
+  # files:                                  # read-only access to one folder, labeled private
+  #   command: npx
+  #   args: [-y, "@modelcontextprotocol/server-filesystem", /path/to/notes]
+  #   labels: [private]
+  # search:                                 # a hosted server over streamable HTTP
+  #   url: https://example.com/mcp
+  #   headers: {Authorization: "Bearer ${oc.env:SEARCH_API_KEY}"}
