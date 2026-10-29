@@ -5,27 +5,30 @@ import contextlib
 import logging
 import re
 import secrets
+import socket
 import time
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
+from typing import Any
 
 import httpx
 import uvicorn
+from a2a.server.agent_execution import AgentExecutor
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
-from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill
 from mcp.server.mcpserver import MCPServer
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
 from hashiru.auth import AuthGate, token_of
-from hashiru.config import Settings
+from hashiru.config import A2APeer, Settings
 from hashiru.gateway import Gateway
 from hashiru.ledger import AgentRecord
 from hashiru.llm import LLM, Wallet, check_priced, is_local, register_prices
 from hashiru.memory import MemoryStore, open_memory, words
 from hashiru.ollama import Ollama
+from hashiru.peers import PEER_PREFIX, BoundedTaskStore, PeerExecutor, Price, cost_extension, model_price
 from hashiru.runtime import CEO_PROMPT, Executor
 from hashiru.session import USER, Session
 from hashiru.tools import Tools
@@ -50,6 +53,11 @@ class Hub:
         self.sessions: dict[str, Session] = {}
         self._tokens: dict[str, tuple[str, str]] = {}  # token -> (session id, caller name)
         self._model_locks: dict[str, asyncio.Lock] = {}
+        self._running: dict[tuple[str, str], set[asyncio.Task[Any]]] = {}  # (session, agent) -> its A2A runs
+        self._agent_locks: dict[tuple[str, str], asyncio.Lock] = {}  # one request at a time per agent
+        self.memory_lock = asyncio.Lock()  # local hires check free memory, reserve and load one at a time
+        self.peer_cards: dict[tuple[str, str], AgentCard] = {}  # a hired peer's card, fetched once and pinned
+        self._background: set[asyncio.Task[None]] = set()
         self.mcp = MCPServer("hashiru")
         self.tools = Tools(self)
         self.tools.register(self.mcp)
@@ -87,14 +95,18 @@ class Hub:
     async def close_session(self, session: Session) -> None:
         """Take down every agent, revoke the session's tokens and unload models nobody uses anymore.
 
-        Runs still in flight notice at their next LLM turn (runtime.still_on) and stop.
+        Runs still in flight are cancelled.
         """
         self.sessions.pop(session.id, None)
         for rec in session.ledger.agents.values():
             rec.live = False
             self.unmount(session, rec.name)
+        await self.stop_runs(session, list(session.ledger.agents))  # before revoking: runs still close their MCP
         for name in list(session.tokens):
             self.revoke(session, name)
+        for name in list(session.ledger.agents):
+            self.peer_cards.pop((session.id, name), None)
+            self._agent_locks.pop((session.id, name), None)
         await self.release_models({rec.model for rec in session.ledger.agents.values()})
 
     # ---- identity ----
@@ -129,17 +141,57 @@ class Hub:
         if rec.role == "manager" and rec.name not in session.tokens:
             self.issue(session, rec.name)
         url = self.agent_url(session, rec.name)
+        price = Price(per_message_usd=rec.price_usd) if rec.model.startswith(PEER_PREFIX) else model_price(rec.model)
         card = AgentCard(
             name=rec.name, description=f"{rec.role} on {rec.model}", version="1",
             default_input_modes=["text/plain"], default_output_modes=["text/plain"],
-            capabilities=AgentCapabilities(streaming=False),
+            capabilities=AgentCapabilities(streaming=False, extensions=[cost_extension(price)]),
             supported_interfaces=[AgentInterface(protocol_binding="JSONRPC", url=url, protocol_version="1.0")],
             skills=[AgentSkill(id=rec.role, name=rec.role, description=rec.role,
                                tags=[f"tier:{rec.tier}", f"depth:{rec.depth}"])])
-        handler = DefaultRequestHandler(agent_executor=Executor(self, session, rec.name),
-                                        task_store=InMemoryTaskStore(), agent_card=card)
+        executor: AgentExecutor = (PeerExecutor(self, session, rec.name) if rec.model.startswith(PEER_PREFIX)
+                                   else Executor(self, session, rec.name))
+        handler = DefaultRequestHandler(agent_executor=executor, task_store=BoundedTaskStore(), agent_card=card)
         routes = create_agent_card_routes(card) + create_jsonrpc_routes(handler, "/")
         self.app.router.routes.append(Mount(self._path(session, rec.name), app=Starlette(routes=routes)))
+
+    # ---- running agents ----
+
+    def track(self, session: Session, name: str, task: asyncio.Task[Any] | None) -> None:
+        if task is not None:
+            self._running.setdefault((session.id, name), set()).add(task)
+
+    def untrack(self, session: Session, name: str, task: asyncio.Task[Any] | None) -> None:
+        runs = self._running.get((session.id, name))
+        if runs is not None and task is not None:
+            runs.discard(task)
+            if not runs:
+                del self._running[(session.id, name)]
+
+    async def stop_runs(self, session: Session, names: list[str], wait: float = 5.0) -> None:
+        """Cancel what fired agents (or a closed session's agents) are doing, and give the runs a moment to clean up
+        (close their MCP sessions, answer their callers)."""
+        me = asyncio.current_task()
+        tasks = [t for name in names for t in self._running.get((session.id, name), ()) if t is not me]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.wait(tasks, timeout=wait)
+
+    def agent_lock(self, session: Session, name: str) -> asyncio.Lock:
+        return self._agent_locks.setdefault((session.id, name), asyncio.Lock())
+
+    # ---- models and peers ----
+
+    def peer(self, model: str) -> A2APeer | None:
+        name = model.removeprefix(PEER_PREFIX) if model.startswith(PEER_PREFIX) else None
+        return next((p for p in self.settings.a2a_peers if p.name == name), None)
+
+    def hireable(self) -> list[str]:
+        """Models a manager may hire with, under allow_local_agents / allow_cloud_agents (peers count as cloud)."""
+        s = self.settings
+        models = [m for m in s.models if (s.allow_local_agents if is_local(m) else s.allow_cloud_agents)]
+        return models + ([f"{PEER_PREFIX}{p.name}" for p in s.a2a_peers] if s.allow_cloud_agents else [])
 
     def unmount(self, session: Session, name: str) -> None:
         path = self._path(session, name)
@@ -182,6 +234,12 @@ class Hub:
         """Serializes loading and unloading one local model, so an unload never undoes a concurrent hire."""
         return self._model_locks.setdefault(model, asyncio.Lock())
 
+    def release_soon(self, models: set[str]) -> None:
+        """release_models from a path that cannot await (e.g. a cancelled hire)."""
+        task = asyncio.get_running_loop().create_task(self.release_models(models))
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+
     async def release_models(self, models: set[str]) -> None:
         """Unload each local model that no live agent in any session still uses.
 
@@ -202,12 +260,20 @@ class Hub:
     @contextlib.asynccontextmanager
     async def serving(self) -> AsyncIterator[None]:
         """Serve the hub inside the current event loop."""
+        # uvicorn exits the whole process (SystemExit inside its task) when it cannot bind, so check first.
+        with socket.socket() as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind((self.settings.host, self.settings.port))
+            except OSError as exc:
+                raise RuntimeError(f"cannot listen on {self.settings.host}:{self.settings.port} ({exc.strerror}); "
+                                   "pass port=<another>") from None
         srv = uvicorn.Server(uvicorn.Config(self.asgi, host=self.settings.host, port=self.settings.port,
-                                            log_level="warning"))
+                                            log_level="warning", timeout_graceful_shutdown=5))
         task = asyncio.create_task(srv.serve())
         while not srv.started:
             if task.done():
-                await task  # surfaces a startup failure such as the port already being in use
+                await task  # surfaces a startup failure
                 raise RuntimeError("server stopped during startup")
             await asyncio.sleep(0.05)
         try:

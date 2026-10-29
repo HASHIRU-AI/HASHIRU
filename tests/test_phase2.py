@@ -130,7 +130,7 @@ def hire(hub, session, caller="ceo", **kw):
 
 
 def test_a_manager_can_be_limited_to_some_tools(hub, session):
-    assert "hired" in hire(hub, session, tools=["memory", "ask_agent", "hire_agent"])
+    assert "hired" in hire(hub, session, tools=["memory", "ask_agent", "hire_agent"], budget_usd=0.3)
     assert session.ledger.agents["m1"].tools == ("ask_agent", "hire_agent", "memory")
     assert "cannot grant" in hire(hub, session, caller="m1", name="m2", tools=["read_file"])["error"]
     assert "hired" in hire(hub, session, caller="m1", name="m2", tools=["memory"])
@@ -219,10 +219,10 @@ def test_a_server_that_dies_is_unregistered(tmp_path):
 
 
 def test_a_limited_manager_cannot_hire_its_way_out_of_its_limits(hub, session):
-    hire(hub, session, tools=["memory", "hire_agent", "ask_agent"])
-    assert "hired" in hire(hub, session, caller="m1", name="m2")  # tools omitted
+    hire(hub, session, tools=["memory", "hire_agent", "ask_agent"], budget_usd=0.3)
+    assert "hired" in hire(hub, session, caller="m1", name="m2", budget_usd=0.1)  # tools omitted
     assert session.ledger.agents["m2"].tools == ("ask_agent", "hire_agent", "memory")
-    assert "hired" in hire(hub, session, caller="m1", name="w9", role="worker")  # workers are unaffected
+    assert "hired" in hire(hub, session, caller="m1", name="w9", role="worker", budget_usd=0.1)  # workers unaffected
 
 
 # ---- regressions from the Phase 2 code review ----

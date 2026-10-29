@@ -33,9 +33,9 @@ def test_hire_rejects_structural_errors(hub, session, bad):
 
 
 def test_depth_cap(hub, session):
-    hire(hub, session, name="m1", role="manager")
-    assert hire(hub, session, caller="m1", name="m2", role="manager")["depth"] == 2
-    assert "error" in hire(hub, session, caller="m2", name="w3")
+    hire(hub, session, name="m1", role="manager", budget_usd=0.3)
+    assert hire(hub, session, caller="m1", name="m2", role="manager", budget_usd=0.1)["depth"] == 2
+    assert "error" in hire(hub, session, caller="m2", name="w3", budget_usd=0.01)
 
 
 def test_only_managers_get_tokens_and_hire(hub, session):

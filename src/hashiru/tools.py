@@ -6,11 +6,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
+from a2a.utils.errors import A2AError
 from mcp.server.mcpserver import Context, MCPServer
 
 from hashiru.ledger import AgentRecord, free_mb
 from hashiru.llm import is_local
 from hashiru.memory import MAX_KEY_CHARS
+from hashiru.ollama import tag
+from hashiru.peers import PEER_PREFIX, fetch_card, pin, price_of
 from hashiru.session import USER, Session
 from hashiru.web import fetch_page, search_arxiv
 
@@ -38,13 +41,16 @@ class Tools:
         self.transport: httpx.AsyncBaseTransport | None = None  # web tools' transport; tests swap in a mock
 
     def register(self, mcp: MCPServer) -> None:
-        models = ", ".join(self.hub.settings.models)
-        mcp.tool(description=(
-            "Hire an agent. role is 'manager' (uses tools and may hire) or 'worker' (answers once, no tools). "
-            f"model is one of: {models}. Reserves budget_usd from your pool. For a manager, tools optionally "
-            "limits which of your tools it may use (by name, including ask_agent)."))(self.hire_agent)
-        for tool in (self.fire_agent, self.check_usage, self.get_website, self.arxiv_search, self.read_file,
-                     self.memory, self.deliver_to_user):
+        if self.hub.settings.allow_hiring:  # v1's agent-creation switch: without it, agents work alone
+            models = ", ".join(self.hub.hireable())
+            mcp.tool(description=(
+                "Hire an agent. role is 'manager' (uses tools and may hire) or 'worker' (answers once, no tools). "
+                f"model is one of: {models} ({PEER_PREFIX}... models are remote agents, hired as workers). "
+                "Reserves budget_usd from your pool. For a manager, tools optionally limits which of your tools it "
+                "may use (by name, including ask_agent)."))(self.hire_agent)
+            mcp.tool()(self.fire_agent)
+        for tool in (self.check_usage, self.get_website, self.arxiv_search, self.read_file, self.memory,
+                     self.deliver_to_user):
             mcp.tool()(tool)
         if self.hub.settings.tool_creation:
             mcp.tool(description=CREATE_TOOL)(self.create_tool)
@@ -78,33 +84,82 @@ class Tools:
                 return {"error": f"you cannot grant tools you do not have: {not_mine}"}
         if not (math.isfinite(budget_usd) and budget_usd >= 0):
             return {"error": "budget_usd must be a finite number >= 0"}
-        if model not in settings.models:
-            return {"error": f"unknown model {model!r}; choose from {list(settings.models)}"}
+        if model not in self.hub.hireable():
+            return {"error": f"unknown or disabled model {model!r}; choose from {self.hub.hireable()}"}
         if role not in ROLES:
             return {"error": "role must be 'manager' or 'worker'"}
         if depth > settings.max_depth:
             return {"error": f"agents at depth {boss.depth} cannot hire (max depth {settings.max_depth})"}
         if not NAME.fullmatch(name) or name in RESERVED or session.ledger.get(name) is not None:
             return {"error": f"name {name!r} must be new, not {sorted(RESERVED)}, and use only a-z, 0-9 and _"}
-        tier = "local" if is_local(model) else "cloud"
-        rec = session.ledger.add(name, role, tier, model, prompt, boss.name, depth, budget_usd,  # claim the name
-                                 tools=tuple(sorted(set(tools))) if tools is not None else None)
-        if tier == "local":
-            try:
-                async with self.hub.model_lock(model):
-                    rec.gpu_mb = await self.hub.ollama.load(model)
-            except (httpx.HTTPError, KeyError, ValueError) as exc:  # Ollama down, or an unexpected reply
-                session.ledger.agents.pop(name, None)
-                return {"error": f"could not load {model} in Ollama: {exc}"}
-            except BaseException:
-                session.ledger.agents.pop(name, None)  # never leave a live record that holds money and a model
-                raise
+        peer = self.hub.peer(model)
+        if peer is not None and role != "worker":
+            return {"error": "a remote agent can only be hired as a worker"}
+        price, card = 0.0, None
+        if peer is not None:
+            try:  # fetched once, and pinned: requests go only to the configured URL, whatever the card says
+                card = pin(await fetch_card(peer.url, dict(peer.headers), 30), peer.url)
+            except (A2AError, httpx.HTTPError, ValueError) as exc:
+                return {"error": f"could not reach {peer.name}: {exc}"}
+            declared = price_of(card)
+            if declared is None and peer.price_usd_per_message is None:
+                return {"error": f"{peer.name} declares no price and none is configured, so it cannot be hired"}
+            price = max(declared.per_message_usd if declared else 0.0, peer.price_usd_per_message or 0.0)
+            if settings.enforce_budget and budget_usd + 1e-9 < price:
+                return {"error": f"budget_usd must cover one message to {peer.name}: ${price}"}
+        scope = tuple(sorted(set(tools))) if tools is not None else None
+        if is_local(model):
+            async with self.hub.memory_lock:  # check free memory, reserve and load as one step
+                if settings.enforce_budget and not self.hub.in_use(model):
+                    need, free = (await self.hub.ollama.sizes()).get(tag(model), 0), free_mb()
+                    if need > free:
+                        return {"error": f"{model} needs {need} MB of memory and only {free} MB is free"}
+                rec = self._reserve(session, boss, name, role, "local", model, prompt, budget_usd, scope, price)
+                if isinstance(rec, dict):
+                    return rec
+                try:
+                    async with self.hub.model_lock(model):
+                        rec.gpu_mb = await self.hub.ollama.load(model)
+                except (httpx.HTTPError, KeyError, ValueError) as exc:  # Ollama down, or an unexpected reply
+                    session.ledger.agents.pop(name, None)
+                    return {"error": f"could not load {model} in Ollama: {exc}"}
+                except BaseException:
+                    session.ledger.agents.pop(name, None)  # never leave a live record that holds money and a model
+                    self.hub.release_soon({model})          # and do not leave the model loaded for nobody
+                    raise
             if not rec.live or self.hub.sessions.get(session.id) is not session:
                 # Fired, or the session closed, while the model loaded. The fire or close already counted this
                 # agent and unloads its model once the load lock is free; it must not be mounted.
                 return {"error": f"{name} was fired while {model} was loading"}
+        else:
+            rec = self._reserve(session, boss, name, role, "remote" if peer else "cloud", model, prompt, budget_usd,
+                                scope, price)
+            if isinstance(rec, dict):
+                return rec
+        if card is not None:
+            self.hub.peer_cards[(session.id, name)] = card
         self.hub.mount(session, rec)
-        return {"hired": name, "tier": tier, "depth": depth, "reserved_usd": budget_usd, "gpu_mb": rec.gpu_mb}
+        return {"hired": name, "tier": rec.tier, "depth": depth, "reserved_usd": budget_usd, "gpu_mb": rec.gpu_mb} | (
+            {"price_usd_per_message": price} if peer is not None else {})
+
+    def _reserve(self, session: Session, boss: AgentRecord, name: str, role: str, tier: str, model: str, prompt: str,
+                 budget_usd: float, scope: tuple[str, ...] | None, price: float) -> AgentRecord | dict[str, Any]:
+        """Re-check what concurrent work may have changed during the awaits, then claim the name and the money with
+        no await in between (so two hires in one turn cannot both spend the same money)."""
+        if not boss.live:
+            return {"error": f"{boss.name} has been fired and cannot hire"}
+        if session.ledger.get(name) is not None:
+            return {"error": f"name {name!r} was just taken"}
+        if self.hub.settings.enforce_budget:
+            # A cloud hirer pays for its own turns too: it must keep something to ask, fire and answer with.
+            margin = 0.0 if boss.tier == "local" else self.hub.settings.turn_reserve_usd
+            left = session.ledger.left()[boss.name]
+            if left + 1e-9 < budget_usd + margin:
+                keep = f" and keep ${margin} for your own turns" if margin else ""
+                return {"error": f"your pool has ${left:.6f} left: not enough to reserve ${budget_usd}{keep}"}
+        rec = session.ledger.add(name, role, tier, model, prompt, boss.name, boss.depth + 1, budget_usd, tools=scope)
+        rec.price_usd = price
+        return rec
 
     async def fire_agent(self, ctx: Context, name: str) -> dict[str, Any]:
         """Fire an agent you hired (directly or below you) and every agent it hired. Unspent money goes back."""
@@ -116,7 +171,9 @@ class Tools:
         for n in fired:
             session.ledger.agents[n].live = False
             self.hub.unmount(session, n)
-            self.hub.revoke(session, n)  # runs still in flight stop at their next LLM turn
+        await self.hub.stop_runs(session, fired)  # stop what they are doing, and let the runs clean up
+        for n in fired:
+            self.hub.revoke(session, n)
         await self.hub.release_models({session.ledger.agents[n].model for n in fired})
         return {"fired": fired}
 

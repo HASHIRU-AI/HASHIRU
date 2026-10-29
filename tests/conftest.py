@@ -32,6 +32,7 @@ class FakeOllama:
         self.unloaded.append(model)
 
     async def sizes(self) -> dict[str, int]:
+        await asyncio.sleep(0)  # like the real HTTP call, let other tasks run
         return {"tiny": 50}
 
 

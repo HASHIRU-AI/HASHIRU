@@ -26,3 +26,4 @@ traces/
 .pytest_cache/
 .coverage
 user_tools/
+data/*.sqlite3

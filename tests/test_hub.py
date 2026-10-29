@@ -78,3 +78,18 @@ def test_a_stuck_random_source_raises_instead_of_hanging(hub, monkeypatch):
     hub.new_session("chat", trace=False)
     with pytest.raises(RuntimeError, match="unused session id"):
         hub.new_session("chat", trace=False)
+
+
+def test_a_busy_port_is_a_clear_error(tmp_path):
+    import socket
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        port = taken.getsockname()[1]
+        hub = Hub(make_settings(tmp_path, port=port))
+
+        async def go():
+            async with hub.serving():
+                pass
+        with pytest.raises(RuntimeError, match="cannot listen"):
+            asyncio.run(go())

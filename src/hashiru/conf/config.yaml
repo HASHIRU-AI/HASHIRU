@@ -7,10 +7,10 @@ budget_usd: ${oc.decode:${oc.env:BUDGET_USD,'0.50'}}  # the CEO's pool for one s
 max_usd: ${oc.decode:${oc.env:MAX_USD,'2.00'}}        # hard cap on real API spend per process
 max_depth: 2                                          # levels of agents below the CEO
 max_turns: 12                                         # LLM turns per manager run before it replies "failed"
-a2a_timeout: 600                                      # seconds a depth-2 agent may take; shallower hops get more
+task_timeout: 1800                                    # seconds for one user request, across every agent it reaches
 ollama_url: ${oc.env:OLLAMA_URL,'http://127.0.0.1:11434'}
 host: 127.0.0.1
-port: ${oc.decode:${oc.env:PORT,'9100'}}
+port: ${oc.decode:${oc.env:PORT,'9200'}}  # 9100 is HASHIRU-lite's
 data_dir: data          # read_file is limited to this directory; memory.json seeds the memory tool
 trace_dir: traces       # one JSONL trace per session
 prices_file: ${oc.env:HASHIRU_PRICES,''}  # LiteLLM price entries for cloud models its map lacks
@@ -28,3 +28,14 @@ mcp_servers: {}
 memory_db: ${data_dir}/memory.sqlite3  # shared, persistent memory; '' gives each session its own copy of memory.json
 memory_autoinject: false               # add relevant saved memories to each user message to the CEO
 mcp_start_timeout: 30                  # seconds to connect to each configured MCP server (they start in parallel)
+# Budgets and modes (v1's Mode switches). With enforce_budget, hires cannot reserve more than the hirer has
+# left, a local model must fit in free memory, and an agent whose pool is spent stops making cloud calls.
+# false keeps accounting only, so policy experiments can watch agents overspend.
+enforce_budget: true
+allow_hiring: true
+allow_local_agents: true
+allow_cloud_agents: true      # cloud models and remote A2A peers
+# Remote A2A agents managers may hire as a2a/<name> (always workers, always billed in dollars).
+#   name: {url: https://example.com/agent/, headers: {Authorization: Bearer ...}, price_usd_per_message: 0.01}
+a2a_peers: {}
+turn_reserve_usd: 0.01        # with enforce_budget, a cloud manager keeps this much for its own turns when it hires

@@ -32,12 +32,6 @@ def test_tool_event_records_the_llm_turn(session):
     assert [e["turn"] for e in session.trace.events if e["kind"] == "tool"] == [7]
 
 
-def test_hop_timeout_shrinks_with_depth(hub, session):
-    team(session)
-    t = hub.settings.a2a_timeout
-    assert [runtime.hop_timeout(hub, session, n) for n in ("ceo", "m1", "w1")] == [3 * t, 2 * t, t]
-
-
 def test_agents_can_only_ask_their_own_hires(hub, session):
     team(session)
     for me, name in [("m1", "ceo"), ("ceo", "w1"), ("w1", "m1"), ("m1", "m1"), (USER, "m1"), ("ceo", "nobody")]:

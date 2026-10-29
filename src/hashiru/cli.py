@@ -111,5 +111,5 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(f"hashiru: {str(exc).splitlines()[0] if str(exc) else type(exc).__name__}")
     try:
         asyncio.run(ask(settings, args.text) if args.command == "ask" else chat(settings))
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         sys.exit(f"hashiru: {exc}")
