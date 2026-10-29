@@ -36,6 +36,17 @@ uv run --env-file .env hashiru ask "..." budget_usd=1.0   # key=value overrides 
 uv run pytest -q                                # no API keys or Ollama needed
 ```
 
+**Tools.** Built in: hiring and firing, `check_usage`, `get_website`, `arxiv_search`, `read_file` (under
+`data_dir`), `memory` (persistent, searchable, shared by sessions; set `memory_db=''` for a per-session copy) and
+`deliver_to_user`. Any MCP server can add more: list it under `mcp_servers` in a config file and its tools appear to
+agents as `<server>__<tool>`. See [`examples/hashiru.yaml`](examples/hashiru.yaml):
+
+```bash
+uv run hashiru chat --config examples/hashiru.yaml      # adds the official fetch server via uvx
+```
+
+A manager can be hired with only some tools: `hire_agent(..., tools=["memory", "ask_agent"])`.
+
 **Tool creation** (off by default). With `tool_creation=true`, managers can write new tools with
 `create_tool`. Each tool runs as its own MCP server process under `uv run --with <its dependencies>`, without
 HASHIRU's environment variables, and is offered to every agent from the next turn on. Created tools are shared
