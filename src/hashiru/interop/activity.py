@@ -53,8 +53,10 @@ def _tool(e: dict[str, Any]) -> str | None:
         return f"{agent} sent you a message"
     if name == "propose_plan":
         hires, problems = len(result.get("hires", [])), len(result.get("problems", []))
+        steps = len(result.get("steps", []))
         flagged = f" ({problems} problem{'s' * (problems != 1)})" if problems else ""
-        return (f"{agent} proposed a plan: {hires} hire{'s' * (hires != 1)}, {money(result.get('total_usd'))} "
+        work = f" and {steps} step{'s' * (steps != 1)}" if steps > hires else ""  # more than one task per hire
+        return (f"{agent} proposed a plan: {hires} hire{'s' * (hires != 1)}{work}, {money(result.get('total_usd'))} "
                 f"reserved{flagged}")
     return f"{agent} called {name}({_args(args)})"
 
@@ -77,6 +79,9 @@ def describe(e: dict[str, Any]) -> str | None:
         return f"added {len(e.get('results', []))} saved memories to your message"
     if kind == "approval":
         return f"{APPROVALS.get(e.get('action', ''), 'approval')}: {clip(e.get('what', ''))}"
+    if kind == "step":  # a step of a plan the hub runs as a graph (plangraph.py)
+        why = f": {clip(e['why'])}" if e.get("why") else ""
+        return f"step {e.get('step')} ({e.get('to')}) {e.get('status')}{why}"
     if kind == "escalate":
         return f"{agent} moved from {e.get('from_model')} to {e.get('to_model')} after: {clip(e.get('why', ''))}"
     if kind == "policy":

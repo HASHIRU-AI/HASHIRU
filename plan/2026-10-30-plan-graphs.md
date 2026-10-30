@@ -50,8 +50,11 @@ to make a cohesive executable plan", "i need langgraph". Builds on 8c′ in `pla
    nudged; empty twice → `runtime.empty`.
 6. **A hire's system prompt** is the plan's optional `prompt`, else its `task`.
 7. **Pregel supersteps:** LangGraph starts a superstep's nodes together and the next superstep after all of them
-   finish, so a short chain beside a long step waits for it. Accepted for now; fan-out/fan-in plans are unaffected.
-8. `recursion_limit` is set to the node count + 2 so long chains do not hit LangGraph's default of 25.
+   finish, so a short chain beside a long step waits for it, and a hire waiting for the user's approval holds up
+   the other hires' first steps. Accepted for now; fan-out/fan-in plans are unaffected.
+8. `recursion_limit` is set to the node count + 2 (a program never needs more supersteps), so a run does not
+   depend on LangGraph's default: 10007 in 1.2.15, 25 in older releases, and `LANGGRAPH_DEFAULT_RECURSION_LIMIT` can
+   lower it.
 
 ## Review Focus
 

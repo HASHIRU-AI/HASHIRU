@@ -120,7 +120,7 @@ async def run(program: Program, runner: Runner) -> str:
     with tracing_context(enabled=False):  # never send the plan's data to LangSmith (R3), whatever the environment says
         state = await build(program, runner).ainvoke(
             {"results": {}, "hired": {}, "answer": ""},
-            {"recursion_limit": len(program.nodes) + 2})  # a superstep per node at most, so long chains finish
+            {"recursion_limit": len(program.nodes) + 2})  # enough for any program, whatever LangGraph's default
     return str(state["answer"])
 
 

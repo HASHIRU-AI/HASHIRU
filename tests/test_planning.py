@@ -34,6 +34,14 @@ READ_ONLY = {"check_usage", "get_website", "arxiv_search", "read_file", "memory"
 PLAN = {"summary": "w1 greets; I pass its greeting on.",
         "hires": [{"name": "w1", "role": "worker", "model": "gpt-4.1-mini", "budget_usd": 0.3,
                    "task": "Say hello."}]}
+STEPPED = {"summary": "w1 finds facts; w2 writes them up.",
+           "hires": [{"name": "w1", "role": "worker", "model": "gpt-4.1-mini", "budget_usd": 0.1,
+                      "task": "Find facts.", "prompt": "Find facts about what you are asked."},
+                     {"name": "w2", "role": "worker", "model": "gpt-4.1-mini", "budget_usd": 0.1,
+                      "task": "Write it up."}],
+           "steps": [{"id": "find", "agent": "w1", "task": "Find three facts about otters."},
+                     {"id": "write", "agent": "w2", "task": "Write a paragraph from these facts.",
+                      "after": ["find"]}]}
 
 
 class PlanLLM:
@@ -160,6 +168,87 @@ def test_a_planned_hire_is_approved_once_and_only_as_planned():
     assert approvals.in_plan("ceo", "w2", "gpt-4.1", 0.3)
 
 
+# ---- steps ----
+
+def test_plan_execution_setting():
+    assert load_settings().plan_execution == "graph"
+    assert load_settings(["plan_execution=ceo"]).plan_execution == "ceo"
+    with pytest.raises(ValueError, match="plan_execution"):
+        load_settings(["plan_execution=fast"])
+
+
+def test_propose_plan_compiles_steps_and_shows_them(hub, session):
+    session.planning = True
+    out = asyncio.run(planning.propose(hub, session, "ceo", STEPPED))
+    assert out["problems"] == [] and [s["id"] for s in out["steps"]] == ["find", "write"]
+    assert out["steps"][1]["after"] == ["find"] and "graph" not in out  # the CEO is not sent the drawing
+    assert out["hires"][0]["prompt"] == "Find facts about what you are asked." and "prompt" not in out["hires"][1]
+    assert session.plan is not None and session.plan.program is not None
+    shown, public = planning.end(session, "my plan")
+    assert "| write | w2 | find | Write a paragraph from these facts. |" in shown
+    assert "runs this plan as a graph" in shown
+    assert "step-find --> step-write" in public["graph"] and "fire-w2 --> answer" in public["graph"]
+    assert [s["id"] for s in public["steps"]] == ["find", "write"]
+
+
+def test_steps_that_cannot_run_are_plan_problems(hub, session):
+    session.planning = True
+    bad = STEPPED | {"steps": [{"id": "find", "agent": "w9", "task": "x", "after": ["write"]},
+                               {"id": "write", "agent": "w2", "task": "y", "after": ["find"]}, "junk"]}
+    out = asyncio.run(planning.propose(hub, session, "ceo", bad))
+    problems = "\n".join(out["problems"])
+    for expected in ("w9", "find, write", "w1 is hired but no step", "each step must be an object"):
+        assert expected in problems, expected
+    assert session.plan is not None and session.plan.program is None
+    shown, public = planning.end(session, "my plan")
+    assert "graph" not in public and "runs this plan as a graph" not in shown
+
+
+def test_a_plan_without_steps_gets_a_step_per_hire(hub, session):
+    session.planning = True
+    out = asyncio.run(planning.propose(hub, session, "ceo", PLAN))
+    assert out["steps"] == [{"id": "w1", "agent": "w1", "task": "Say hello.", "after": []}] and out["problems"] == []
+    shown, public = planning.end(session, "my plan")
+    assert "| Step |" not in shown and "runs this plan as a graph" in shown and "graph" in public
+
+
+def test_steps_can_use_agents_hired_before(hub, session):
+    session.ledger.add("old", "worker", "cloud", "gpt-4.1-mini", "p", "ceo", 1, 0.0)
+    session.planning = True
+    out = asyncio.run(planning.propose(hub, session, "ceo", {"summary": "s", "hires": [], "steps": [
+        {"id": "again", "agent": "old", "task": "do it again"}]}))
+    shown, _ = planning.end(session, "my plan")
+    assert out["problems"] == [] and "No new hires." in shown and "| again | old |" in shown
+
+
+def test_approve_hands_a_compiled_plan_to_the_ceos_run(hub, session):
+    session.planning = True
+    asyncio.run(planning.propose(hub, session, "ceo", STEPPED))
+    planning.end(session, "my plan")
+    prompt = planning.begin(hub, session, "approve")
+    assert session.approved is not None and session.approved.program is not None and session.plan is None
+    assert "the hub carried it out" in prompt and "w1 finds facts; w2 writes them up." in prompt
+    assert session.approvals.planned == {"w1": ("gpt-4.1-mini", 0.1), "w2": ("gpt-4.1-mini", 0.1)}
+
+
+def test_ceo_execution_tells_the_ceo_the_steps(tmp_path, ollama):
+    hub = Hub(make_settings(tmp_path, plan_execution="ceo"), ollama=ollama)  # type: ignore[arg-type]
+    session = hub.new_session("t", trace=False)
+    session.planning = True
+    out = asyncio.run(planning.propose(hub, session, "ceo", STEPPED))
+    assert len(out["steps"]) == 2 and session.plan is not None and session.plan.program is None
+    planning.end(session, "my plan")
+    prompt = planning.begin(hub, session, "approve")
+    assert "The user approved your plan. Carry it out now" in prompt and session.approved is None
+    assert "- write: send w2: Write a paragraph from these facts. (after find, with their results)" in prompt
+
+
+def test_begin_clears_a_stale_approved_plan(hub, session):
+    session.approved = planning.Plan()
+    planning.begin(hub, session, "hello")
+    assert session.approved is None
+
+
 # ---- in a conversation ----
 
 def test_a_plan_turn_hires_nobody_and_approve_carries_it_out(tmp_path):
@@ -173,7 +262,8 @@ def test_a_plan_turn_hires_nobody_and_approve_carries_it_out(tmp_path):
         second = await turn(convs, conv, "approve")
         return first, after_plan, second, list(conv.session.trace.events), conv.history
 
-    first, after_plan, second, events, history = serve(tmp_path, body, llm, approve_hire_usd=0.2)
+    first, after_plan, second, events, history = serve(tmp_path, body, llm, approve_hire_usd=0.2,
+                                                       plan_execution="ceo")
     assert set(llm.offered[0]) == READ_ONLY | {"propose_plan"}      # no hiring, messaging or delivering
     assert "plan mode" in llm.systems[0] and "plan mode" not in llm.systems[-1]
     assert "api_usd" in llm.results[1][0] and "memories" in llm.results[1][1]  # reading works
@@ -186,6 +276,7 @@ def test_a_plan_turn_hires_nobody_and_approve_carries_it_out(tmp_path):
     assert "The user approved your plan" in llm.prompts[-1] and "w1" in llm.prompts[-1]
     actions = [e["action"] for e in events if e["kind"] == "approval"]
     assert actions == ["planned"]                                   # $0.30 > approve_hire_usd, but it was planned
+    assert not [e for e in events if e["kind"] == "step"]           # plan_execution=ceo: the CEO, not a graph
     assert [said for said, _ in history] == ["/plan say hello", "approve"]
 
 
@@ -198,7 +289,8 @@ def test_a_hire_outside_the_plan_still_asks(tmp_path):
         await turn(convs, conv, "say hello", mode="plan")
         return await turn(convs, conv, "approve")
 
-    second = serve(tmp_path, body, llm, approve_hire_usd=0.2, budget_usd=1.0)  # the pool covers both hires
+    second = serve(tmp_path, body, llm, approve_hire_usd=0.2, budget_usd=1.0,  # the pool covers both hires
+                   plan_execution="ceo")
     assert [a["what"] for a in second["approval"]] == ["ceo wants to hire w2 on gpt-4.1-mini with $0.30 reserved"]
 
 
@@ -229,7 +321,7 @@ def test_default_mode_plan_plans_each_new_request(tmp_path):
         conv = await convs.open("chat")
         return [await turn(convs, conv, text) for text in ("say hello", "approve", "and again")]
 
-    first, second, third = serve(tmp_path, body, llm, default_mode="plan")
+    first, second, third = serve(tmp_path, body, llm, default_mode="plan", plan_execution="ceo")
     assert "plan" in first and second["reply"] == "w1 says hello" and "plan" in third
     assert "w1 is taken" in "\n".join(third["plan"]["problems"])  # w1 is still hired
 
@@ -280,7 +372,7 @@ def test_the_terminal_chat_plans_and_approves(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "Hub", lambda settings: Hub(settings, llm=llm, ollama=FakeOllama()))  # type: ignore[arg-type]
     said = iter(["/plan say hello", "approve", "/quit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(said))
-    asyncio.run(cli.chat(make_settings(tmp_path, port=PORT)))
+    asyncio.run(cli.chat(make_settings(tmp_path, port=PORT, plan_execution="ceo")))
     out = capsys.readouterr().out
     assert "| w1 | worker | gpt-4.1-mini | $0.30 |" in out and "[ceo -> you] w1 says hello" in out
     assert "propose_plan" in llm.offered[0] and "propose_plan" not in llm.offered[-1]
@@ -306,5 +398,12 @@ def test_plan_events_have_activity_lines():
     proposed = {"kind": "tool", "agent": "ceo", "name": "propose_plan", "args": {},
                 "result": {"hires": [{"name": "w1"}, {"name": "w2"}], "total_usd": 0.3, "problems": []}}
     assert describe(proposed) == "ceo proposed a plan: 2 hires, $0.30 reserved"
+    proposed["result"]["steps"] = [{"id": "a"}, {"id": "b"}, {"id": "c"}]
+    assert describe(proposed) == "ceo proposed a plan: 2 hires and 3 steps, $0.30 reserved"
+    for status, why, line in [("done", "", "step write (w2) done"),
+                              ("skipped", "it needs find, which failed", "step write (w2) skipped: it needs find, "
+                                                                         "which failed")]:
+        assert describe({"kind": "step", "agent": "ceo", "step": "write", "to": "w2", "status": status,
+                         "why": why}) == line
     what = "ceo wants to hire w1 on gpt-4.1 with $0.30 reserved"
     assert describe({"kind": "approval", "action": "planned", "what": what}) == f"approved with your plan: {what}"
