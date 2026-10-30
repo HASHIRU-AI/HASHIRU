@@ -176,7 +176,21 @@
     if (event.kind === "tool" && event.name === "fire_agent") return "fire";
     if (event.kind === "msg") return "msg";
     if (event.kind === "error") return "err";
+    if (event.kind === "approval") return "ask";
     return "";
+  }
+
+  // Work waits for the user's approval. The next message decides, so the buttons only send one.
+  const awaitsAnswer = (m) => Boolean(m && m.meta && m.meta.approval && !m.meta.answered);
+  function approveView() {
+    const row = el("div", "approve");
+    const yes = el("button", "btn primary", "Approve");
+    const no = el("button", "btn", "Deny");
+    [yes, no].forEach((b) => { b.type = "button"; b.disabled = state.busy; });
+    yes.addEventListener("click", () => send("approve"));
+    no.addEventListener("click", () => send("deny"));
+    row.append(yes, no, el("span", "hint", "or reply with what to do instead"));
+    return row;
   }
 
   function messageView(m, live) {
@@ -202,7 +216,7 @@
       const label = live
         ? `Working${work.length ? ` · ${work.length} step${work.length === 1 ? "" : "s"}` : "…"}`
         : `Worked for ${Math.max(1, Math.round((m.meta && m.meta.secs) || 0))}s` +
-          (hires ? ` · ${hires} hire${hires === 1 ? "" : "s"}` : "") + ` · ${work.length} steps`;
+          (hires ? ` · ${hires} hire${hires === 1 ? "" : "s"}` : "") + ` · ${work.length} step${work.length === 1 ? "" : "s"}`;
       summary.append(el("span", "label", label));
       details.append(summary);
       const ol = el("ol");
@@ -220,6 +234,7 @@
       if (meta.stopped) bits.push("Stopped");
       if (meta.cost !== undefined) bits.push(`${usd(meta.cost)} this turn`);
       if (bits.length) node.append(el("div", "meta", bits.join(" · ")));
+      if (awaitsAnswer(m)) node.append(approveView());
     }
     return node;
   }
@@ -276,6 +291,8 @@
     }
     const reply = { role: "assistant", content: "", work: [], meta: {} };
     const sent = history(c).concat([{ role: "user", content: text }]);
+    const asked = c.messages[c.messages.length - 1];
+    if (awaitsAnswer(asked)) asked.meta.answered = true;  // this message answers it
     c.messages.push({ role: "user", content: text }, reply);
     c.updated = Date.now();
     save();
@@ -317,6 +334,7 @@
         }
         if (delta.content) reply.content += delta.content;
         if (extra.cost_usd !== undefined) reply.meta.cost = extra.cost_usd;
+        if (extra.approval) reply.meta.approval = extra.approval;
         later();
       });
     } catch (err) {
@@ -344,6 +362,9 @@
 
   function setComposer() {
     const input = $("input");
+    const c = chat();
+    input.placeholder = c && awaitsAnswer(c.messages[c.messages.length - 1])
+      ? "Approve, or say what to do instead" : "Message HASHIRU";
     renderPrivacy();
     $("send").hidden = state.busy;
     $("stop").hidden = !state.busy;

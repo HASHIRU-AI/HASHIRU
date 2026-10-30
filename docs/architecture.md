@@ -63,6 +63,9 @@ flowchart LR
 - **Hiring by difficulty** (`router.py`): a hiring agent says how hard a job is; the router picks the model from
   the `routing` order (or one built from `models`), within the modes, the hire's privacy and its pool, and moves a
   failing worker up that list.
+- **Approvals** (`approvals.py`): a big cloud reservation, a big local model to load, or a turn that has spent its
+  threshold pauses the agent that would spend. The conversation answers with the question and keeps the turn
+  waiting; the user's next message decides it, and the paused work goes on (or is told no).
 - **The CEO and managers** run a tool loop: an LLM turn, then every tool call it asked for, in parallel, until
   it replies (at most `max_turns`). **Workers** answer with one LLM call and no tools.
 - **Tools** are served at `/mcp`. Managers reach them with their own bearer token, so the hub knows who is calling

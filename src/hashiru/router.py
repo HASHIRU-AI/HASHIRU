@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from hashiru import approvals
 from hashiru.config import DIFFICULTIES
 from hashiru.ledger import AgentRecord
 from hashiru.llm import is_local
@@ -65,7 +66,7 @@ def price(model: str) -> float:
 async def escalate(hub: "Hub", session: Session, rec: AgentRecord, why: str) -> bool:
     """Move a worker that failed (or answered empty) to the next model on its route that it may use, and say so in the
     trace. A worker holding private data stays local; a cloud model needs money left in its pool; a local one must fit
-    in free memory and load. Returns whether it moved."""
+    in free memory and load, and a big one the user's approval. Returns whether it moved."""
     if rec.role != "worker" or rec.model not in rec.route:
         return False
     for model in rec.route[rec.route.index(rec.model) + 1:]:
@@ -77,6 +78,10 @@ async def escalate(hub: "Hub", session: Session, rec: AgentRecord, why: str) -> 
             continue
         gpu_mb = 0
         if local:
+            asked = await approvals.load(hub, session, rec.name, model, f"{rec.name} failed on {rec.model}; move it to "
+                                                                        f"{model}")
+            if asked is not None and not asked.approved:
+                continue
             try:
                 async with hub.memory_lock:
                     if await hub.fits(model):

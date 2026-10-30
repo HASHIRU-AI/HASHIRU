@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from conftest import FakeOllama, make_settings
+from test_approvals import HireLLM
 from test_interop import PORT, TeamLLM
 from test_obfuscation import ObfLLM
 from test_privacy_interop import ModelLLM
@@ -194,3 +195,28 @@ def test_an_obfuscated_private_chat_keeps_the_cloud_ceo_and_shows_real_names(bro
     model, prompt = llm.seen[-1]
     assert sub == "CEO gpt-4.1-mini · private, obfuscated" and "hidden from cloud models" in fine
     assert model == "gpt-4.1-mini" and "Alice" not in prompt and answer.strip() == "noted Alice Chen"
+
+
+def test_a_question_shows_approve_and_deny_and_a_click_answers_it(browser, tmp_path):
+    settings = make_settings(tmp_path, port=PORT, approve_hire_usd=0.2)
+    hub = Hub(settings, llm=HireLLM(), ollama=FakeOllama())  # type: ignore[arg-type]
+    with serving(hub):
+        page = browser.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(hub.settings.internal_url)
+        page.fill("#input", "build a team")
+        page.keyboard.press("Enter")
+        page.wait_for_selector(".msg.ceo .approve .btn.primary", timeout=15_000)
+        question = page.inner_text(".msg.ceo .md")
+        placeholder = page.get_attribute("#input", "placeholder")
+        page.click(".approve .btn.primary")
+        second = page.locator(".msg.ceo").nth(1)
+        second.locator(".meta").wait_for(state="attached", timeout=15_000)
+        assert question.startswith("Waiting for your approval:") and "w1 on gpt-4.1-mini with $0.30" in question
+        assert placeholder == "Approve, or say what to do instead"
+        assert second.locator(".md").inner_text().strip() == "w1 says hello"
+        assert page.locator(".approve").count() == 0                       # answered: the buttons are gone
+        assert page.locator(".msg.you .body").nth(1).inner_text() == "approve"
+        assert page.get_attribute("#input", "placeholder") == "Message HASHIRU" and errors == []
+        page.close()

@@ -3,7 +3,8 @@
 The model is "hashiru" and its answers come from the CEO. With stream=true, the agents' work arrives while it
 happens as `reasoning_content` deltas (most chat apps show these as the model's thinking); what agents deliver
 straight to the user and the CEO's reply arrive as `content`. Responses and chunks also carry a `hashiru` object
-(the session id, each chunk's event, the cost) that other clients ignore.
+(the session id, each chunk's event, the cost) that other clients ignore. An answer that asks for the user's approval
+also carries `hashiru.approval`, the questions; the next user message answers them.
 """
 import asyncio
 import contextlib
@@ -23,7 +24,8 @@ from hashiru.interop.conversations import Busy, Conversation, History, ShuttingD
 if TYPE_CHECKING:
     from hashiru.hub import Hub
 
-__all__ = ["MODEL", "PRIVATE_HEADER", "SESSION_HEADER", "OpenAIRoutes", "error", "parse_messages", "wants_private"]
+__all__ = ["MODEL", "PRIVATE_HEADER", "SESSION_HEADER", "OpenAIRoutes", "asking", "error", "parse_messages",
+           "wants_private"]
 
 MODEL = "hashiru"
 SESSION_HEADER = "x-hashiru-session"  # optional: the conversation a request continues (the chat page sends it)
@@ -67,6 +69,11 @@ def text_of(content: Any) -> str:
         return "\n".join(str(p.get("text", "")) for p in content
                          if isinstance(p, dict) and p.get("type") in ("text", "input_text"))
     return ""
+
+
+def asking(answer: dict[str, Any]) -> dict[str, Any]:
+    """The approvals an answer asks for, if it asks for any."""
+    return {"approval": answer["approval"]} if answer.get("approval") else {}
 
 
 def wants_private(value: str) -> bool:
@@ -179,7 +186,7 @@ class OpenAIRoutes:
             "id": reply_id, "object": "chat.completion", "created": created, "model": MODEL,
             "choices": [{"index": 0, "message": message, "finish_reason": "stop", "logprobs": None}],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-            "hashiru": {"session": conv.id, "cost_usd": answer["cost_usd"]}}, headers=headers)
+            "hashiru": {"session": conv.id, "cost_usd": answer["cost_usd"]} | asking(answer)}, headers=headers)
 
     @staticmethod
     async def _collect(turn: AsyncGenerator[dict[str, Any]]) -> tuple[list[str], dict[str, Any]]:
@@ -224,7 +231,7 @@ class OpenAIRoutes:
                         yield ": keepalive\n\n"
                     elif item["kind"] == "answer":
                         yield chunk({"content": ("\n\n" if parts else "") + item["reply"]})
-                        yield chunk({}, "stop", cost_usd=item["cost_usd"])
+                        yield chunk({}, "stop", cost_usd=item["cost_usd"], **asking(item))
                     elif text := delivered(item):
                         yield chunk({"content": ("\n\n" if parts else "") + text}, event=public_event(item))
                         parts += 1

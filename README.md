@@ -47,6 +47,11 @@ uv run --with playwright pytest tests/test_ui_browser.py   # optional: the chat 
 `hashiru serve` puts everything on one port: a chat page at `/`, where an **Agents** panel shows the hiring tree,
 each pool and the agents' messages as they happen, plus the three interfaces below.
 
+<p align="center"><img src="docs/screenshots/chat.png" width="820" alt="The chat page after a real run on a local model: the CEO checked its pool, hired haiku_writer as a worker on ollama_chat/qwen3.5:4b, asked it for a haiku about working within a budget, fired it and answered with the haiku, for $0.00."></p>
+<p align="center"><img src="docs/screenshots/chat-dark.png" width="600" alt="The same chat in dark mode."> <img src="docs/screenshots/phone.png" width="173" alt="The chat page at phone width, with example tasks."></p>
+<p align="center"><sub>A real run on a local model (qwen3.5:4b): the CEO hires a worker, asks it, fires it and answers.
+The activity above the answer lists every step. Dark mode and phone width on the right.</sub></p>
+
 ## Use HASHIRU from other apps
 
 **As an OpenAI-compatible model.** `/v1/chat/completions` (streaming or not) and `/v1/models` serve one model,
@@ -116,6 +121,32 @@ privacy and pool allow: a hirer holding private data gets local models first (on
 moves up its list and gets the message again, up to `max_escalations` times per message (2 by default), shown in the
 chat's activity; a worker holding private data never moves to a cloud model. Naming a `model` still works.
 
+## Approvals before a big spend
+
+Three kinds of spending wait for you:
+
+- a hire that reserves `approve_hire_usd` or more ($0.25 by default) for a cloud model or a remote agent;
+- a hire or an escalation that loads a local model needing `approve_hire_mb` of memory or more (16384 MB), unless
+  it is loaded already;
+- a turn whose calls have cost `approve_turn_usd` ($0.25), and again at each further $0.25.
+
+The agent that would spend pauses while the rest of the turn goes on, and the reply asks, e.g. "Waiting for your
+approval: ceo wants to hire w1 on gpt-4.1 with $0.30 reserved". Your next message decides. `approve` (or yes, ok)
+allows it once. Anything else denies it, and a hirer that is denied hears your words, so "no, use a local model"
+works; in a private chat a cloud hirer hears them obfuscated.
+
+<p align="center"><img src="docs/screenshots/approval.png" width="820" alt="The chat page waiting for approval: the CEO checked its pool and wants to hire writer on gpt-4.1 with $0.30 reserved. The reply asks to approve, with Approve and Deny buttons; the Agents panel shows only the CEO, since the writer is not hired yet."></p>
+<p align="center"><sub>A hard job, so the router picked gpt-4.1; the $0.30 reservation waits for you (scripted models).</sub></p>
+
+- **The chat page** shows Approve and Deny buttons.
+- **The APIs** carry the questions with the answer: `hashiru.approval` on `/v1`, `approval` from MCP `ask`, and
+  `hashiru_approval` in A2A reply metadata. The next message in the same conversation answers them.
+- **`hashiru chat` and `hashiru ask`** ask on the terminal.
+
+A question nobody answers by the turn's deadline is denied, and so is every question when nobody can answer
+(`hashiru ask` in a script). Set a threshold to 0 to never ask. Whoever sends the next message decides: over the
+APIs, that is whoever holds the API key, including another hub that hired this one (its agents may approve).
+
 ## Private data
 
 Some data is private: what `read_file` and `memory` return, memories that `memory_autoinject` adds, results of MCP
@@ -134,6 +165,12 @@ placeholders are restored: you see the real names, and only your machine knows t
 answer, that text is refused rather than sent. `obfuscate_with=patterns` uses Presidio alone (no model call, but
 names are not found). Obfuscation is best effort: a detail that neither the patterns nor the model recognize goes
 through as written.
+
+<p align="center"><img src="docs/screenshots/private-chat.png" width="820" alt="A private, obfuscated chat. The user asked for a thank-you note to Alice Chen (alice.chen@example.com) for help with a $120k grant application. The cloud CEO hired note_writer on a local model and sent it the real details; the worker's reply went back to the CEO as Dear ⟦PERSON_1⟧ ... ⟦MONEY_1⟧, and the user was shown the note with the real name and amount."></p>
+<p align="center"><img src="docs/screenshots/private-cloud-view.png" width="700" alt="What the cloud model saw, from the chat's trace: the user typed Alice Chen, alice.chen@example.com and $120k; the cloud CEO received ⟦PERSON_1⟧, ⟦EMAIL_1⟧ and ⟦MONEY_1⟧ and answered with placeholders; the user was shown the note with the real values."></p>
+<p align="center"><sub>A real private chat (local models only: the "cloud" CEO was a stand-in, qwen3.5:4b served by the local
+Ollama, which HASHIRU treated as a cloud model). The local worker saw the real details; the CEO saw placeholders; you
+see the note as written. Below it, the same turn from the trace.</sub></p>
 
 **Blocking** (`private_mode=block`). Cloud and remote agents never see private data at all: it is refused to them, a
 cloud CEO cannot use `memory` or `read_file`, and a private chat's CEO moves to a local model (`private_ceo_model`; by
@@ -212,6 +249,7 @@ src/hashiru/
   tools.py, web.py, memory.py, gateway.py, mcplink.py   built-in tools and third-party MCP servers
   toolsmith/             tool creation
   peers.py               remote A2A agents and the cost extension
+  privacy.py, obfuscation/, router.py, approvals.py   private stays local, masking, hiring by difficulty, approvals
   interop/               the chat page's API: OpenAI-compatible /v1, public A2A agent, public MCP server
   ui/                    the chat page (static files, no build step)
   conf/config.yaml       every setting, with comments

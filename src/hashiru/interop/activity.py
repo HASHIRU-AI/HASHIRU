@@ -12,6 +12,8 @@ __all__ = ["describe", "public_event"]
 
 CLIP = 240
 RULE_NAMES = {"R3": "private stays local"}
+APPROVALS = {"asked": "waiting for your approval", "approved": "you approved", "denied": "you did not approve",
+             "expired": "not approved in time", "unattended": "nobody can approve here, so not"}
 PUBLIC_KEYS = ("seq", "ts", "kind", "agent", "to", "name", "tier", "model", "cost_usd", "labels")
 
 
@@ -67,6 +69,8 @@ def describe(e: dict[str, Any]) -> str | None:
         return f"{agent}: {clip(e.get('error', ''))}"
     if kind == "recall":
         return f"added {len(e.get('results', []))} saved memories to your message"
+    if kind == "approval":
+        return f"{APPROVALS.get(e.get('action', ''), 'approval')}: {clip(e.get('what', ''))}"
     if kind == "escalate":
         return f"{agent} moved from {e.get('from_model')} to {e.get('to_model')} after: {clip(e.get('why', ''))}"
     if kind == "policy":

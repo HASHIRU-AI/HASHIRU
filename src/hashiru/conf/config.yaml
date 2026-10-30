@@ -50,6 +50,11 @@ a2a_peers: {}
 routing: {}
 max_escalations: 2            # a worker that fails or answers empty moves up its list this many times per message
 turn_reserve_usd: 0.01        # with enforce_budget, a cloud manager keeps this much for its own turns when it hires
+# Approvals before a big spend: the turn pauses, the reply asks, and the user's next message decides ("approve"
+# allows it once; anything else denies it). 0 never asks. Sessions nobody can answer (`hashiru ask` in a script) deny.
+approve_hire_usd: 0.25        # a hire reserving this much or more for a cloud model or a remote agent
+approve_hire_mb: 16384        # a hire or an escalation that loads a local model this big (MB) that is not loaded
+approve_turn_usd: 0.25        # a turn that has spent this much (and each further step) before its next cloud call
 # Serving (`hashiru serve`): a chat page at /, an OpenAI-compatible API at /v1, the CEO as an A2A agent at /a2a
 # (card at /.well-known/agent-card.json and /a2a/.well-known/agent-card.json) and HASHIRU as an MCP server
 # (/public/mcp), all on one port.

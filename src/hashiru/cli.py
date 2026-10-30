@@ -17,12 +17,13 @@ from typing import Any
 
 from hydra.errors import HydraException
 
+from hashiru.approvals import Answer, Decision, Request
 from hashiru.config import Settings, load_settings
 from hashiru.hub import Hub
 from hashiru.interop.conversations import with_history
 from hashiru.privacy import holds_private
 from hashiru.runtime import ask_agent
-from hashiru.session import USER
+from hashiru.session import USER, Session
 
 __all__ = ["main"]
 
@@ -33,10 +34,32 @@ def deliveries(events: list[dict[str, Any]]) -> list[str]:
             if e["kind"] == "tool" and e["name"] == "deliver_to_user"]
 
 
+def terminal(session: Session) -> Answer:
+    """Approvals asked on the terminal, one at a time. End of input denies."""
+    lock = asyncio.Lock()
+
+    async def answer(request: Request) -> Decision:
+        async with lock:
+            print(f"\n[approval] {request.what}", flush=True)
+            try:
+                said = await asyncio.to_thread(input, "approve? (approve, or say why not) ")
+            except EOFError:
+                said = ""
+        return Decision.of(said, session.trace.outgoing(USER, session.id, said))
+    return answer
+
+
+def attend(session: Session) -> None:
+    """Ask the person at the terminal when work needs approval; without one (a script), such work is denied."""
+    if sys.stdin.isatty():
+        session.approvals.answer = terminal(session)
+
+
 async def ask(settings: Settings, text: str) -> None:
     hub = Hub(settings)
     async with hub.serving():
         session = hub.new_session("ask")
+        attend(session)
         try:
             why = await hub.make_private(session) if settings.private_by_default else None
             reply = f"error: {why}" if why else await ask_agent(hub, session, USER, "ceo", hub.recall(session, text))
@@ -50,6 +73,7 @@ async def chat(settings: Settings) -> None:
     hub = Hub(settings)
     async with hub.serving():
         session = hub.new_session("chat")
+        attend(session)
         if settings.private_by_default and (why := await hub.make_private(session)):
             await hub.close_session(session)
             raise SystemExit(f"error: {why}")

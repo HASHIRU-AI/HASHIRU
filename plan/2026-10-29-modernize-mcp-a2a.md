@@ -1,6 +1,6 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5, 7, 8a, 8a′ and 8b done on `develop`; 8c–8e next; Phase 6 waits for HASHIRU-lite (after
+Status: Phases 0–5, 7, 8a, 8a′, 8b and 8c done on `develop`; 8d–8e next; Phase 6 waits for HASHIRU-lite (after
 2026-12-03).
 Date: 2026-10-29
 
@@ -385,11 +385,39 @@ MCP servers configured with `labels: [private]`) and propagates labels through m
     one must fit and load) and gets the message again, up to `max_escalations` (2) times; an `escalate` event and an
     activity line record it.
   - [x] Tests: `test_router.py` (8). 10 mutations of the new checks and the follow-up fixes are each caught.
-- **8c. Approvals (2–3 days).**
-  - [ ] When a private task has no local model left, or a hire or a turn would exceed thresholds
-    (`approve_hire_usd`, `approve_turn_usd`), the turn stops and asks. In-band first, so every interface works: the
-    reply says what needs approval, and the user's next message `approve` (or `deny`) grants a one-time
-    permission. The chat page shows buttons; A2A's `input-required` state and MCP elicitation can follow.
+- **8c. Approvals (2–3 days).** — DONE 2026-10-29 on `feature/approvals`
+  - [x] `approvals.py`: big spends of dollars (api) and of memory (gpu) wait for the user. A cloud or remote hire
+    reserving `approve_hire_usd` ($0.25) or more; a hire or an escalation loading a local model of `approve_hire_mb`
+    (16384 MB) or more that no live agent has loaded (and that would fit: a load that cannot happen is refused
+    without a question); a turn whose calls have cost `approve_turn_usd` ($0.25), asked again at each multiple.
+    0 never asks. Asked before `memory_lock` and after the pool check, so other hires never wait for the user and the
+    user is never asked about money the hirer lacks.
+  - [x] In-band: the agent that would spend pauses (the rest of the turn goes on); the conversation answers with the
+    question (`Waiting for your approval: ...`) and keeps the turn waiting, not busy; the next message decides
+    (`approve`, yes, ok allow once; anything else denies) and gets the rest of the turn, billed for that part only.
+    Departure: the turn does not stop and re-plan, it pauses, so an approved hire goes ahead without asking the CEO
+    again. A denied hirer hears the user's words as the reason ("no, use a local model"), carrying the user's
+    labels so R3 masks them for a cloud hirer; a denial ends a hire by difficulty (no other model is tried).
+    Several questions at once are asked together; one raised while the user is being asked is asked next. A question
+    expires at the turn's deadline, and every question in a session nobody can answer (no conversation and no
+    terminal) is denied at once; closing a session denies its questions.
+  - [x] Interfaces: the chat page shows Approve and Deny (they send the next message) and a placeholder; `/v1`
+    answers carry `hashiru.approval`, MCP `ask` returns `approval`, A2A replies carry `hashiru_approval` metadata;
+    `hashiru chat` and `hashiru ask` ask on the terminal (end of input denies). Activity lines for every decision.
+  - [x] README screenshots (`docs/screenshots/`): the chat page in light and dark and at phone width (a real local
+    run restored from the page's storage, so no model ran), an approval (scripted models), and the real obfuscation
+    run with what the cloud model saw. Also fixed the finished turn's "1 steps".
+  - [x] Tests: `test_approvals.py` (13) and a browser test, seen failing first; 22 mutations of the new checks are
+    each caught (one survived at first, the resumed answer's cost; its test was tightened). A mutation run that
+    timed out left its test server on the port, so the runs after it were repeated with the port free.
+  - Follow-ups:
+    - [ ] Approval to send a private task to the cloud when no local model is left. With obfuscation the default a
+      cloud model sees it masked, and in block mode it stays refused; the plan's question is still open there.
+    - [ ] A2A `input-required` for the question: the a2a-sdk does not end a blocking send on it and the bounded task
+      store keeps such tasks, so replies complete with `hashiru_approval` metadata for now. MCP elicitation, when
+      hosts show it to the person rather than their model.
+    - [ ] A question that expired leaves its conversation waiting until the next message, which then gets the rest
+      of the old turn rather than starting a new one.
 - **8d. A local detector for sensitive messages (2 days).**
   - [ ] Patterns for personal data and secrets (emails, phone numbers, card numbers, government IDs, API keys,
     private keys) mark a message private before any model sees it. Optional: a small local model as a second

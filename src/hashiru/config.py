@@ -21,7 +21,8 @@ PEER_KEYS = {"url", "headers", "price_usd_per_message", "labels"}
 POSITIVE = ("task_timeout", "tool_start_timeout", "tool_call_timeout", "mcp_start_timeout", "session_ttl",
             "max_sessions", "ollama_num_ctx")
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
-NON_NEGATIVE = ("budget_usd", "max_usd", "turn_reserve_usd", "max_escalations")
+NON_NEGATIVE = ("budget_usd", "max_usd", "turn_reserve_usd", "max_escalations", "approve_hire_usd", "approve_hire_mb",
+                "approve_turn_usd")
 LABELS = {"private", "untrusted"}
 DIFFICULTIES = ("easy", "medium", "hard")  # what a hiring agent says about a job (router.py)
 
@@ -97,6 +98,9 @@ class Settings:
     obfuscate_model: str = ""  # the local model that finds them; default: as private_ceo_model
     routing: tuple[tuple[str, tuple[str, ...]], ...] = ()  # difficulty -> models to try, in order (router.py)
     max_escalations: int = 2  # times a failing worker moves up its list of models, per message
+    approve_hire_usd: float = 0.25  # a cloud hire reserving this much or more waits for the user (0: never)
+    approve_hire_mb: int = 16384  # a local model this big (MB) waits for the user before it loads (0: never)
+    approve_turn_usd: float = 0.25  # a turn asks before spending more each time it has spent this much (0: never)
 
     @property
     def internal_url(self) -> str:
