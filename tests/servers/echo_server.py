@@ -2,11 +2,13 @@
 import os
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 server = MCPServer("echo")
 
 
-@server.tool(name="shout.loud")  # some servers use names that function calls do not allow
+# Some servers use names that function calls do not allow. This tool says it only reads, so plan mode offers it.
+@server.tool(name="shout.loud", annotations=ToolAnnotations(read_only_hint=True))
 def shout(text: str) -> str:
     """Upper-case the text."""
     return text.upper()

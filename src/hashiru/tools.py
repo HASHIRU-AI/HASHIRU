@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 from a2a.utils.errors import A2AError
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.types import ToolAnnotations
 
 from hashiru import approvals
 from hashiru.config import DIFFICULTIES
@@ -29,6 +30,7 @@ ROLES = ("manager", "worker")
 NAME = re.compile(r"[a-z0-9_]{1,32}")
 RESERVED = {USER, "ceo"}  # an agent named "user" would get the human's token and speak to the CEO as them
 ALWAYS = "ask_agent"      # the runtime's own tool, not served over MCP
+READ_ONLY = ToolAnnotations(read_only_hint=True)
 CREATE_TOOL = (
     "Create a new tool that every manager can call from its next turn on. code is a Python module that "
     "defines a top-level function named exactly `name`, with a type hint on every parameter, a docstring "
@@ -54,9 +56,10 @@ class Tools:
                 "For a manager, tools optionally limits which of your tools it may use (by name, including "
                 "ask_agent)."))(self.hire_agent)
             mcp.tool()(self.fire_agent)
-        for tool in (self.check_usage, self.get_website, self.arxiv_search, self.read_file, self.memory,
-                     self.deliver_to_user):
-            mcp.tool()(tool)
+        for reader in (self.check_usage, self.get_website, self.arxiv_search, self.read_file):
+            mcp.tool(annotations=READ_ONLY)(reader)  # what plan mode offers (planning.readable)
+        mcp.tool()(self.memory)
+        mcp.tool()(self.deliver_to_user)
         if self.hub.settings.tool_creation:
             mcp.tool(description=CREATE_TOOL)(self.create_tool)
             mcp.tool()(self.delete_tool)

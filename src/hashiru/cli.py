@@ -17,6 +17,7 @@ from typing import Any
 
 from hydra.errors import HydraException
 
+from hashiru import planning
 from hashiru.approvals import Answer, Decision, Request
 from hashiru.config import Settings, load_settings
 from hashiru.hub import Hub
@@ -62,7 +63,11 @@ async def ask(settings: Settings, text: str) -> None:
         attend(session)
         try:
             why = await hub.make_private(session) if settings.private_by_default else None
-            reply = f"error: {why}" if why else await ask_agent(hub, session, USER, "ceo", hub.recall(session, text))
+            if why:
+                reply = f"error: {why}"
+            else:  # /plan ... answers with the plan; approving it needs `hashiru chat`
+                prompt = planning.begin(hub, session, text)
+                reply, _ = planning.end(session, await ask_agent(hub, session, USER, "ceo", prompt))
         finally:
             await hub.close_session(session)
     print("\n".join([*deliveries(session.trace.events), f"[ceo -> you] {reply}", f"trace: {session.trace.path}"]))
@@ -97,8 +102,9 @@ async def chat(settings: Settings) -> None:
                     print(f"[ceo -> you] error: {why}")  # a private delivery made the chat private, and it cannot be
                     break
                 seen = len(session.trace.events)
-                reply = await ask_agent(hub, session, USER, "ceo",
-                                        with_history(session, history, hub.recall(session, text)))
+                prompt = planning.begin(hub, session, text)  # /plan ... plans; then "approve" carries the plan out
+                reply, _ = planning.end(session, await ask_agent(hub, session, USER, "ceo",
+                                                                 with_history(session, history, prompt)))
                 turn = session.trace.events[seen:]
                 cost = sum(e.get("cost_usd", 0) for e in turn if e["kind"] == "llm")
                 hires = [e["result"]["hired"] for e in turn

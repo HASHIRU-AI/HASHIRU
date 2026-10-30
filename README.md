@@ -147,6 +147,35 @@ A question nobody answers by the turn's deadline is denied, and so is every ques
 (`hashiru ask` in a script). Set a threshold to 0 to never ask. Whoever sends the next message decides: over the
 APIs, that is whoever holds the API key, including another hub that hired this one (its agents may approve).
 
+## Plan before acting
+
+In plan mode the CEO researches the request and proposes a plan, but hires nobody and spends nothing on agents. It
+may use only tools that read: `check_usage`, `get_website`, `arxiv_search`, `read_file`, `memory` (search and list)
+and the tools of MCP servers that declare them read-only (`readOnlyHint`, taken at the server's word). Everything
+else (hiring, firing, messaging agents, `deliver_to_user`, saving memories, created tools) is refused in code, not
+just discouraged in the prompt. The plan names each hire with a role, a difficulty or a model, a budget and a task,
+and the hub previews each one as `hire_agent` would make it now: the model the router picks, what it reserves and the
+memory a local model takes, with the totals checked against the CEO's pool. The numbers come from the hub, not the
+model.
+
+The reply shows the plan as a table and waits. `approve` (or yes, ok) carries it out, and the planned hires (same
+name and model, no bigger budget) need no further approval; a hire outside the plan, a big escalation or a turn's
+spending still asks. Anything else is feedback, and the CEO revises the plan.
+
+<p align="center"><img src="docs/screenshots/plan.png" width="820" alt="The chat page in plan mode. The user asked to hire one worker to say hello; the CEO replied 'I will hire w1 to say hello.' with a table: w1, worker, gpt-4.1-mini, reserves $0.30, memory none, task Say hello. Below it: Reserves $0.30 of the $0.50 left in the CEO's pool, an Approve plan button, and the Plan switch on in the message box. The Agents panel shows only the CEO."></p>
+<p align="center"><sub>A plan waiting for approval (scripted models): nothing is hired yet.</sub></p>
+
+- **The chat page:** the Plan switch beside the message box. Approving a plan turns it off.
+- **Any client:** start a message with `/plan` or `/act`, e.g. `/plan compare these two papers`.
+- **The APIs:** `x-hashiru-mode: plan` (or `act`) with `/v1/chat/completions`, `hashiru_mode` in an A2A message's
+  metadata, `mode` for MCP `ask`. A proposed plan comes back as `hashiru.plan`, `hashiru_plan` and `plan`.
+- **`hashiru chat`:** `/plan ...`, then `approve`. `hashiru ask "/plan ..."` prints the plan and stops.
+
+Without a mode, a message continues planning while a plan waits, and a new request starts in `default_mode` (`act`;
+`plan` plans every new request first). `/act` or act mode leaves plan mode and drops the plan. Planning costs the CEO's
+own turns, and the plan shows reservations, not what each agent will spend within them. A plan covers the CEO's own
+hires; a manager's hires within its pool ask as before.
+
 ## Private data
 
 Some data is private: what `read_file` and `memory` return, memories that `memory_autoinject` adds, results of MCP
@@ -250,6 +279,7 @@ src/hashiru/
   toolsmith/             tool creation
   peers.py               remote A2A agents and the cost extension
   privacy.py, obfuscation/, router.py, approvals.py   private stays local, masking, hiring by difficulty, approvals
+  planning.py            plan and act modes
   interop/               the chat page's API: OpenAI-compatible /v1, public A2A agent, public MCP server
   ui/                    the chat page (static files, no build step)
   conf/config.yaml       every setting, with comments

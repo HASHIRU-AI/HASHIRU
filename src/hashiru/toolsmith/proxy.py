@@ -11,6 +11,7 @@ from inspect import Parameter, Signature
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 __all__ = ["make_proxy", "py_type", "register_proxy"]
@@ -70,14 +71,15 @@ def make_proxy(name: str, schema: dict[str, Any], description: str, forward: For
     return proxy
 
 
-def register_proxy(mcp: MCPServer, name: str, description: str, schema: dict[str, Any], forward: Forward) -> None:
+def register_proxy(mcp: MCPServer, name: str, description: str, schema: dict[str, Any], forward: Forward,
+                   annotations: ToolAnnotations | None = None) -> None:
     """Offer a remote tool on `mcp` under `name`, publishing its exact schema (enums, nested types).
 
     Raises ValueError if a parameter name cannot be a Python keyword argument.
     """
     proxy = make_proxy(name, schema, description, forward)
     try:
-        mcp.add_tool(proxy, name=name, description=description)
+        mcp.add_tool(proxy, name=name, description=description, annotations=annotations)
     except Exception as exc:  # pydantic refuses some signatures; report them like any unusable schema
         raise ValueError(f"cannot offer {name}: {exc}") from exc
     registered = mcp._tool_manager.get_tool(name)  # mcp==2.2.0 is pinned; there is no public setter

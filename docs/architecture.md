@@ -66,6 +66,10 @@ flowchart LR
 - **Approvals** (`approvals.py`): a big cloud reservation, a big local model to load, or a turn that has spent its
   threshold pauses the agent that would spend. The conversation answers with the question and keeps the turn
   waiting; the user's next message decides it, and the paused work goes on (or is told no).
+- **Plan mode** (`planning.py`): a planning turn offers the CEO only the tools that declare MCP's `readOnlyHint` (and
+  memory search) plus `propose_plan`, and `runtime.dispatch` refuses every other call. `propose_plan` previews each
+  hire through the router and the ledger without reserving anything. The plan waits in the session; the user's
+  `approve` starts an act turn in which the planned hires need no further approval (`Approvals.planned`).
 - **The CEO and managers** run a tool loop: an LLM turn, then every tool call it asked for, in parallel, until
   it replies (at most `max_turns`). **Workers** answer with one LLM call and no tools.
 - **Tools** are served at `/mcp`. Managers reach them with their own bearer token, so the hub knows who is calling
@@ -170,6 +174,9 @@ rebuilt from a trace alone (`ledger.replay`), so budget rules can be checked aft
   does not cover.
 - **Created tools** run in their own `uv` environment without HASHIRU's environment variables, but as your user.
   That isolates dependencies, not the machine, which is why `tool_creation` is off by default.
+
+A configured MCP server's `readOnlyHint` is trusted: a server that marks a writing tool read-only can act during
+planning.
 
 Known limits: one `api_key` is one trust domain (key holders can reach each other's conversations by id); the
 Auth0 login of v1 was not ported; with several agents spending at once, `max_usd` can be exceeded by the calls already
