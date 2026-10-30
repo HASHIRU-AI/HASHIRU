@@ -123,6 +123,7 @@ class OpenAIRoutes:
                              "max_usd": s.max_usd, "tool_creation": s.tool_creation, "allow_hiring": s.allow_hiring,
                              "open_sessions": len(self.hub.conversations.open_), "max_sessions": s.max_sessions,
                              "private_by_default": s.private_by_default,
+                             "private_mode": "obfuscate" if self.hub.obfuscating() else "block",
                              "private_ceo_model": self.hub.private_ceo_model()})
 
     async def session(self, request: Request) -> Response:

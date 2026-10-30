@@ -9,12 +9,17 @@ The runtime and the hub call these checks at their chokepoints (runtime.call_too
 Hub.recall); Hub.make_private opens the front door for a private chat.
 """
 from collections.abc import Collection, Mapping
+from typing import TYPE_CHECKING
 
 from hashiru.ledger import AgentRecord
 from hashiru.session import USER, Session
-from hashiru.trace import PRIVATE
+from hashiru.trace import OBFUSCATED, PRIVATE
 
-__all__ = ["EGRESS", "RULE", "holds_private", "may_hold", "refuse", "tool_refusal", "where"]
+if TYPE_CHECKING:
+    from hashiru.obfuscation import Obfuscator
+
+__all__ = ["EGRESS", "RULE", "cross", "holds_private", "may_hold", "refuse", "tool_refusal", "where"]
+MISSED = "and its private details could not be found to hide them"
 
 RULE = "R3"
 SAFE = frozenset({"local", USER})  # who may see private data: local agents and the user
@@ -44,12 +49,35 @@ def refuse(session: Session, agent: str, action: str, why: str) -> str:
 
 
 def tool_refusal(session: Session, rec: AgentRecord, tool: str, sources: Mapping[str, list[str]],
-                 egress: Collection[str]) -> str | None:
-    """Why `rec` may not call `tool` at all, or None. Checked before the call, so the tool never runs."""
-    if PRIVATE in sources.get(tool, ()) and not may_hold(rec.tier):
+                 egress: Collection[str], obfuscating: bool = False) -> str | None:
+    """Why `rec` may not call `tool` at all, or None. Checked before the call, so the tool never runs. When
+    obfuscating, a cloud agent may call a tool that returns private data: it gets the result obfuscated."""
+    if PRIVATE in sources.get(tool, ()) and not may_hold(rec.tier) and not obfuscating:
         return refuse(session, rec.name, "tool", f"{tool} returns private data and {rec.name} {where(rec.tier)}; "
                                                  "hire a local agent to use it")
     if tool in egress and holds_private(session, rec.name):
         return refuse(session, rec.name, "egress", f"{rec.name} holds private data and {tool} sends data off this "
                                                    "machine")
     return None
+
+
+async def cross(session: Session, obfuscator: "Obfuscator | None", text: str, labels: list[str], sender_tier: str,
+                receiver_tier: str, agent: str, action: str, why: str) -> tuple[str, list[str], str | None]:
+    """R3 for text moving between two parties: (what the receiver gets, its labels, why it was refused or None).
+
+    Private text for a cloud or remote receiver is obfuscated, or refused (in block mode, or if its details could not
+    be found). Text from a cloud or remote sender to a local agent or the user gets its placeholders restored, and is
+    then private.
+    """
+    if PRIVATE in labels and not may_hold(receiver_tier):
+        if obfuscator is None:
+            return text, labels, refuse(session, agent, action, why)
+        masked = await obfuscator.mask(session, text)
+        if masked is None:
+            return text, labels, refuse(session, agent, action, f"{why}, {MISSED}")
+        return masked, sorted((set(labels) - {PRIVATE}) | {OBFUSCATED}), None
+    if obfuscator is not None and may_hold(receiver_tier) and not may_hold(sender_tier):
+        restored, changed = obfuscator.unmask(session, text)
+        if changed:
+            return restored, sorted(set(labels) | {PRIVATE}), None
+    return text, labels, None

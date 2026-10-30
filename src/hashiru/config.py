@@ -90,7 +90,10 @@ class Settings:
     frame_ancestors: str = "'none'"  # CSP frame-ancestors for the chat page
     private_ceo_model: str = ""  # a private chat's CEO; default ceo_model if local, else the first local model
     private_egress: str = "block"  # "block": agents holding private data cannot call tools that leave the machine
-    private_by_default: bool = False  # every chat is private: local models only, from its first message
+    private_by_default: bool = False  # every chat is private, from its first message
+    private_mode: str = "obfuscate"  # obfuscate: cloud models see private data masked; block: they never see it
+    obfuscate_with: str = "patterns+model"  # patterns (Presidio) alone, or plus a local model for names and details
+    obfuscate_model: str = ""  # the local model that finds them; default: as private_ceo_model
 
     @property
     def internal_url(self) -> str:
@@ -256,7 +259,15 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
         raise ValueError(f"private_ceo_model must be a local model (ollama_chat/...), got {settings.private_ceo_model}")
     if settings.private_egress not in ("block", "allow"):
         raise ValueError(f"private_egress must be 'block' or 'allow', got {settings.private_egress!r}")
-    if settings.private_by_default and not (settings.private_ceo_model or is_local(settings.ceo_model)
-                                            or any(is_local(m) for m in settings.models)):
+    if settings.private_mode not in ("obfuscate", "block"):
+        raise ValueError(f"private_mode must be 'obfuscate' or 'block', got {settings.private_mode!r}")
+    if settings.obfuscate_with not in ("patterns+model", "patterns"):
+        raise ValueError(f"obfuscate_with must be 'patterns+model' or 'patterns', got {settings.obfuscate_with!r}")
+    if settings.obfuscate_model and not is_local(settings.obfuscate_model):
+        raise ValueError(f"obfuscate_model must be a local model (ollama_chat/...), got {settings.obfuscate_model}")
+    has_local = bool(settings.private_ceo_model or settings.obfuscate_model or is_local(settings.ceo_model)
+                     or any(is_local(m) for m in settings.models))
+    patterns_only = settings.private_mode == "obfuscate" and settings.obfuscate_with == "patterns"
+    if settings.private_by_default and not (has_local or patterns_only):
         raise ValueError("private_by_default needs a local model: add one to models or set private_ceo_model")
     return settings

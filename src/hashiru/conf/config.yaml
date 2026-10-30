@@ -59,4 +59,11 @@ frame_ancestors: ${oc.env:HASHIRU_FRAME_ANCESTORS,"'none'"}  # who may embed the
 private_ceo_model: ${oc.env:HASHIRU_PRIVATE_CEO_MODEL,''}  # default: ceo_model if local, else the first local model
 private_egress: block            # block (or any value but allow): agents holding private data cannot call tools
                                  # that leave the machine. R3 does not hold with tool_creation on (see README)
-private_by_default: ${oc.decode:${oc.env:HASHIRU_PRIVATE_BY_DEFAULT,'false'}}  # every chat private (local only)
+private_by_default: ${oc.decode:${oc.env:HASHIRU_PRIVATE_BY_DEFAULT,'false'}}  # every chat private
+# How private data reaches cloud models. obfuscate: names, contact details, numbers and secrets become placeholders
+# (⟦PERSON_1⟧) and amounts, dates, ages and health details vague descriptions, restored when replies come back;
+# found by Presidio's patterns and a local model. block: cloud models never see it (a private chat's CEO moves to
+# private_ceo_model). If obfuscation cannot run (no local model for the detector) or misses, it blocks instead.
+private_mode: ${oc.env:HASHIRU_PRIVATE_MODE,obfuscate}
+obfuscate_with: patterns+model     # or patterns: Presidio only (no model call, but names are not found)
+obfuscate_model: ''                # local model for the detector; default as private_ceo_model

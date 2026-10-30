@@ -53,7 +53,7 @@ def test_the_private_header_moves_the_chat_to_a_local_ceo_for_good(tmp_path):
             state = (await http.get(f"/hashiru/sessions/{cid}")).json()
         return state
 
-    state = serve(tmp_path, body, llm)
+    state = serve(tmp_path, body, llm, private_mode="block")
     assert llm.models == ["gpt-4.1-mini", "ollama_chat/tiny", "ollama_chat/tiny"]
     assert state["private"] is True
     assert next(a for a in state["agents"] if a["name"] == "ceo")["tier"] == "local"
@@ -67,7 +67,7 @@ def test_private_by_default_makes_every_chat_private(tmp_path):
             r = await http.post("/chat/completions", json={"model": "hashiru", "messages": chat("hi")})
             return r.status_code
 
-    assert serve(tmp_path, body, llm, private_by_default=True) == 200
+    assert serve(tmp_path, body, llm, private_mode="block", private_by_default=True) == 200
     assert llm.models == ["ollama_chat/tiny"]
 
 
@@ -80,7 +80,7 @@ def test_a_private_chat_without_a_local_model_is_refused_before_any_model_sees_i
                                 headers={PRIVATE_HEADER: "true"})
             return r.status_code, r.json()
 
-    status, reply = serve(tmp_path, body, llm, models=("gpt-4.1-mini",))
+    status, reply = serve(tmp_path, body, llm, private_mode="block", models=("gpt-4.1-mini",))
     assert status == 200 and "no local model" in reply["choices"][0]["message"]["content"]
     assert llm.models == []
 
@@ -103,7 +103,7 @@ def test_a2a_and_mcp_clients_can_mark_a_message_private(tmp_path):
             await mcp.call_tool("ask", {"text": "another secret", "private": True})
             await mcp.call_tool("ask", {"text": "not private"})
 
-    serve(tmp_path, body, llm)
+    serve(tmp_path, body, llm, private_mode="block")
     assert llm.models == ["ollama_chat/tiny", "ollama_chat/tiny", "gpt-4.1-mini"]
 
 
@@ -123,7 +123,7 @@ def test_a_delivery_of_private_data_keeps_the_next_turn_off_the_cloud(tmp_path):
             await http.post("/chat/completions", json={"model": "hashiru", "messages": chat("hi", "and?")},
                             headers={SESSION_HEADER: cid})
 
-    serve(tmp_path, body, llm)
+    serve(tmp_path, body, llm, private_mode="block")
     assert llm.models == ["gpt-4.1-mini", "ollama_chat/tiny"]
 
 
@@ -145,7 +145,7 @@ def test_a_private_a2a_context_stays_private_after_its_conversation_closes(tmp_p
             await send("my bank PIN is 1234")
             await client.close()
 
-    serve(tmp_path, body, llm)
+    serve(tmp_path, body, llm, private_mode="block")
     assert llm.models == ["ollama_chat/tiny", "ollama_chat/tiny"]
 
 
@@ -160,14 +160,14 @@ def test_a_private_chat_resent_after_its_conversation_closed_stays_private(tmp_p
             await http.post("/chat/completions", json={"model": "hashiru", "messages": chat("a secret", "more")})
             await http.post("/chat/completions", json={"model": "hashiru", "messages": chat("unrelated")})
 
-    serve(tmp_path, body, llm)
+    serve(tmp_path, body, llm, private_mode="block")
     assert llm.models == ["ollama_chat/tiny", "ollama_chat/tiny", "gpt-4.1-mini"]
 
 
 def test_the_cli_honors_private_by_default(tmp_path, monkeypatch, capsys):
     llm = ModelLLM()
     monkeypatch.setattr(cli, "Hub", lambda settings: Hub(settings, llm=llm, ollama=FakeOllama()))  # type: ignore[arg-type]
-    asyncio.run(cli.ask(make_settings(tmp_path, port=9356, private_by_default=True), "a secret"))
+    asyncio.run(cli.ask(make_settings(tmp_path, port=9356, private_by_default=True, private_mode="block"), "a secret"))
     assert llm.models == ["ollama_chat/tiny"] and "[ceo -> you] ok" in capsys.readouterr().out
 
 

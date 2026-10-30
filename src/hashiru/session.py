@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 
 from hashiru.ledger import AgentRecord, Ledger
 from hashiru.memory import MemoryStore, SessionMemory
+from hashiru.obfuscation.vault import Vault
 from hashiru.trace import Trace
 
 __all__ = ["USER", "Session"]
@@ -19,6 +20,7 @@ class Session:
     ledger: Ledger = field(default_factory=Ledger)
     memory: MemoryStore = field(default_factory=SessionMemory)
     tokens: dict[str, str] = field(default_factory=dict)  # caller name -> bearer token
+    vault: Vault = field(default_factory=Vault)  # placeholders for what cloud models see of private data
 
     def may_ask(self, me: str, name: str) -> bool:
         """Only the hirer may message an agent, and only the user may message the CEO."""

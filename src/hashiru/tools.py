@@ -13,8 +13,9 @@ from hashiru.ledger import AgentRecord, free_mb
 from hashiru.llm import is_local
 from hashiru.memory import MAX_KEY_CHARS
 from hashiru.peers import PEER_PREFIX, fetch_card, pin, price_of
-from hashiru.privacy import holds_private, may_hold, refuse
+from hashiru.privacy import MISSED, holds_private, may_hold, refuse
 from hashiru.session import USER, Session
+from hashiru.trace import OBFUSCATED, PRIVATE
 from hashiru.web import fetch_page, search_arxiv
 
 if TYPE_CHECKING:
@@ -96,9 +97,15 @@ class Tools:
         if peer is not None and role != "worker":
             return {"error": "a remote agent can only be hired as a worker"}
         tier = "local" if is_local(model) else "remote" if peer else "cloud"
-        if holds_private(session, boss.name) and not may_hold(tier):  # R3: the hire prompt would carry private data
-            return {"error": refuse(session, boss.name, "hire", f"{boss.name} holds private data and may hire only "
-                                                                f"local agents, not {model}")}
+        obfuscator, private_prompt = self.hub.obfuscating(), False
+        if holds_private(session, boss.name) and not may_hold(tier):  # R3: the hire prompt carries private data
+            masked = None if obfuscator is None else await obfuscator.mask(session, prompt)
+            if masked is None:
+                why = f"{boss.name} holds private data and may hire only local agents, not {model}"
+                return {"error": refuse(session, boss.name, "hire", f"{why}, {MISSED}" if obfuscator else why)}
+            prompt = masked
+        elif obfuscator is not None and may_hold(tier) and not may_hold(boss.tier):
+            prompt, private_prompt = obfuscator.unmask(session, prompt)  # a local hire reads the real values
         price, card = 0.0, None
         if peer is not None:
             try:  # fetched once, and pinned: requests go only to the configured URL, whatever the card says
@@ -114,8 +121,8 @@ class Tools:
         scope = tuple(sorted(set(tools))) if tools is not None else None
         if is_local(model):
             async with self.hub.memory_lock:  # check free memory, reserve and load as one step
-                if why := await self.hub.fits(model):
-                    return {"error": why}
+                if too_big := await self.hub.fits(model):
+                    return {"error": too_big}
                 rec = self._reserve(session, boss, name, role, "local", model, prompt, budget_usd, scope, price)
                 if isinstance(rec, dict):
                     return rec
@@ -139,6 +146,10 @@ class Tools:
                 return rec
         if card is not None:
             self.hub.peer_cards[(session.id, name)] = card
+        if holds_private(session, boss.name) and not may_hold(tier):
+            session.trace.receive(name, session.id, [OBFUSCATED])
+        elif private_prompt:
+            session.trace.receive(name, session.id, [PRIVATE])
         self.hub.mount(session, rec)
         return {"hired": name, "tier": rec.tier, "depth": depth, "reserved_usd": budget_usd, "gpu_mb": rec.gpu_mb} | (
             {"price_usd_per_message": price} if peer is not None else {})

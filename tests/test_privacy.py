@@ -52,6 +52,16 @@ def make_private(session, agent):
     session.trace.receive(agent, session.id, [PRIVATE])
 
 
+def strict(tmp_path, **settings):
+    return make_settings(tmp_path, private_mode="block", **settings)
+
+
+@pytest.fixture
+def hub(tmp_path, ollama):
+    """These are R3's block-mode tests (cloud models never see private data); obfuscation: test_obfuscation."""
+    return Hub(strict(tmp_path), ollama=ollama)  # type: ignore[arg-type]
+
+
 # ---- tools ----
 
 def test_a_cloud_agent_cannot_use_a_tool_that_returns_private_data(session):
@@ -90,7 +100,7 @@ def test_an_agent_holding_private_data_cannot_send_data_off_the_machine(session)
 
 
 def test_tools_that_leave_the_machine(tmp_path, ollama):
-    hub = Hub(make_settings(tmp_path, tool_creation=True), ollama=ollama)  # type: ignore[arg-type]
+    hub = Hub(strict(tmp_path, tool_creation=True), ollama=ollama)  # type: ignore[arg-type]
     fetch, files = McpServer("fetch", command="uvx"), McpServer("files", command="npx", egress=False)
     hub.gateway.routes = {"fetch__fetch": (fetch, "fetch"), "files__read": (files, "read")}
     egress = hub.egress()
@@ -100,7 +110,7 @@ def test_tools_that_leave_the_machine(tmp_path, ollama):
 
 def test_the_hub_applies_private_egress_to_every_call(tmp_path, ollama):
     def attempt(egress_setting):
-        hub = Hub(make_settings(tmp_path, private_egress=egress_setting), ollama=ollama)  # type: ignore[arg-type]
+        hub = Hub(strict(tmp_path, private_egress=egress_setting), ollama=ollama)  # type: ignore[arg-type]
         session = hub.new_session("t", trace=False)
         add(session, "m1", "local", "ollama_chat/tiny", role="manager")
         make_private(session, "m1")
@@ -143,7 +153,7 @@ def test_a_reply_carrying_private_data_is_withheld_from_a_cloud_hirer(hub, sessi
 
 
 def test_an_agent_holding_private_data_may_hire_only_local_agents(tmp_path, ollama):
-    hub = Hub(make_settings(tmp_path, a2a_peers=(A2APeer("p1", "http://127.0.0.1:9/"),)), ollama=ollama)  # type: ignore[arg-type]
+    hub = Hub(strict(tmp_path, a2a_peers=(A2APeer("p1", "http://127.0.0.1:9/"),)), ollama=ollama)  # type: ignore[arg-type]
     session = hub.new_session("t", trace=False)
     make_private(session, "ceo")
 
@@ -159,7 +169,7 @@ def test_an_agent_holding_private_data_may_hire_only_local_agents(tmp_path, olla
 
 def test_recalled_memories_are_not_injected_into_a_cloud_ceo(tmp_path, ollama):
     def recall(ceo_model):
-        hub = Hub(make_settings(tmp_path, ceo_model=ceo_model, memory_autoinject=True), ollama=ollama)  # type: ignore[arg-type]
+        hub = Hub(strict(tmp_path, ceo_model=ceo_model, memory_autoinject=True), ollama=ollama)  # type: ignore[arg-type]
         session = hub.new_session("t", trace=False)
         session.memory.add("pet", "my cat is named Miso", [])
         return hub.recall(session, "what is my cat named?"), session
@@ -182,7 +192,7 @@ def test_a_private_chat_moves_a_cloud_ceo_to_a_local_model(hub, session):
 
 
 def test_a_private_chat_needs_a_local_model(tmp_path, ollama):
-    hub = Hub(make_settings(tmp_path, models=("gpt-4.1-mini",)), ollama=ollama)  # type: ignore[arg-type]
+    hub = Hub(strict(tmp_path, models=("gpt-4.1-mini",)), ollama=ollama)  # type: ignore[arg-type]
     session = hub.new_session("t", trace=False)
     assert "no local model" in asyncio.run(hub.make_private(session))
     assert labels(session, USER) == set() and session.ledger.agents["ceo"].tier == "cloud"
@@ -216,7 +226,7 @@ def test_a_private_chat_on_a_cloud_ceo_moves_it_even_after_the_user_turned_priva
 
 
 def test_private_ceo_model_is_used_even_when_the_ceo_is_already_local(tmp_path, ollama):
-    hub = Hub(make_settings(tmp_path, ceo_model="ollama_chat/tiny", private_ceo_model="ollama_chat/big",
+    hub = Hub(strict(tmp_path, ceo_model="ollama_chat/tiny", private_ceo_model="ollama_chat/big",
                             models=("gpt-4.1-mini", "ollama_chat/tiny", "ollama_chat/big")), ollama=ollama)  # type: ignore[arg-type]
     session = hub.new_session("t", trace=False)
     assert asyncio.run(hub.make_private(session)) is None
@@ -250,19 +260,19 @@ def test_the_private_event_records_the_model(hub, session):
 
 
 def test_created_tools_leave_the_machine(tmp_path, ollama):
-    hub = Hub(make_settings(tmp_path, tool_creation=True), ollama=ollama)  # type: ignore[arg-type]
+    hub = Hub(strict(tmp_path, tool_creation=True), ollama=ollama)  # type: ignore[arg-type]
     hub.toolsmith.procs["made"] = None  # type: ignore[assignment]
     assert "made" in hub.egress()
 
 
 def test_privacy_settings_built_directly_fail_closed(tmp_path, ollama):
-    typo = Hub(make_settings(tmp_path, private_egress="blcok"), ollama=ollama)  # type: ignore[arg-type]
+    typo = Hub(strict(tmp_path, private_egress="blcok"), ollama=ollama)  # type: ignore[arg-type]
     session = typo.new_session("t", trace=False)
     add(session, "m1", "local", "ollama_chat/tiny", role="manager")
     make_private(session, "m1")
     call = SimpleNamespace(id="c1", function=SimpleNamespace(name="get_website", arguments='{"url": "https://a.b"}'))
     assert asyncio.run(runtime.dispatch(typo, session, RecordingMCP(), "m1", call))["error"].startswith("R3")
-    cloud = Hub(make_settings(tmp_path, private_ceo_model="gpt-4.1-mini"), ollama=ollama)  # type: ignore[arg-type]
+    cloud = Hub(strict(tmp_path, private_ceo_model="gpt-4.1-mini"), ollama=ollama)  # type: ignore[arg-type]
     s2 = cloud.new_session("t", trace=False)
     assert "not a local model" in asyncio.run(cloud.make_private(s2)) and s2.ledger.agents["ceo"].tier == "cloud"
 
@@ -283,7 +293,7 @@ def test_a_chat_that_cannot_go_private_answers_why_and_stays_usable(tmp_path):
     class DownOllama(FakeOllama):
         async def sizes(self):
             raise httpx.ConnectError("connection refused")
-    hub = Hub(make_settings(tmp_path), ollama=DownOllama())  # type: ignore[arg-type]
+    hub = Hub(strict(tmp_path), ollama=DownOllama())  # type: ignore[arg-type]
 
     async def go():
         conv = await hub.conversations.open("t")
