@@ -1,7 +1,7 @@
 """Agent runtime: the LLM loop, MCP tool calls and A2A ask_agent.
 
 Every action and message passes through call_tool or ask_agent, so this is the one place that writes
-the trace and moves labels.
+the trace and moves labels. An approved plan's graph (plangraph.py) acts as the CEO through the same calls.
 """
 import asyncio
 import json
@@ -19,11 +19,13 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
 
-from hashiru import approvals
+from hashiru import approvals, plangraph
 from hashiru.ledger import AgentRecord
 from hashiru.peers import DEADLINE_KEY, send, serve_request
-from hashiru.planning import PLAN_RULES, PROPOSE_TOOL, propose, readable, refusal
+from hashiru.plangraph import Outcome
+from hashiru.planning import PLAN_RULES, PROPOSE_TOOL, Plan, propose, readable, refusal
 from hashiru.privacy import MISSED, cross, may_hold, refuse, tool_refusal, where
+from hashiru.program import Node, Step
 from hashiru.router import escalate
 from hashiru.session import USER, Session
 from hashiru.trace import OBFUSCATED, PRIVATE, SOURCES
@@ -32,7 +34,7 @@ if TYPE_CHECKING:
     from hashiru.hub import Hub
     from hashiru.obfuscation import Obfuscator
 
-__all__ = ["CEO_PROMPT", "DEADLINE", "Executor", "ask_agent", "run_agent", "system_prompt"]
+__all__ = ["CEO_PROMPT", "DEADLINE", "Executor", "PlanRunner", "ask_agent", "perform", "run_agent", "system_prompt"]
 
 DEADLINE: ContextVar[float | None] = ContextVar("hashiru_deadline", default=None)  # Unix time, per agent run
 
@@ -219,15 +221,21 @@ async def call_tool(session: Session, mcp: Any, me: str, name: str, args: dict[s
 
 async def dispatch(hub: "Hub", session: Session, mcp: Any, me: str, call: Any,
                    turn: int | None = None) -> dict[str, Any]:
-    """Route one LLM tool call to ask_agent (A2A), propose_plan or an MCP tool. While the session plans, every call
-    that is not reading is refused here (planning.refusal), whatever the model was offered."""
+    """Run one LLM tool call (perform), once its arguments parse."""
     try:
         args = json.loads(call.function.arguments or "{}")
     except json.JSONDecodeError:
         return {"error": "tool arguments were not valid JSON"}
     if not isinstance(args, dict):
         return {"error": "tool arguments must be a JSON object"}
-    rec, name = session.ledger.agents[me], call.function.name
+    return await perform(hub, session, mcp, me, call.function.name, args, turn)
+
+
+async def perform(hub: "Hub", session: Session, mcp: Any, me: str, name: str, args: dict[str, Any],
+                  turn: int | None = None) -> dict[str, Any]:
+    """Route one call by `me` to ask_agent (A2A), propose_plan or an MCP tool. While the session plans, every call
+    that is not reading is refused here (planning.refusal), whatever the model was offered."""
+    rec = session.ledger.agents[me]
     if not allowed(rec, name):
         return {"error": f"{name} is not one of your tools"}
     if session.planning:
@@ -244,7 +252,7 @@ async def dispatch(hub: "Hub", session: Session, mcp: Any, me: str, call: Any,
     if name == "ask_agent":
         return {"reply": await ask_agent(hub, session, me, str(args.get("name", "")), str(args.get("text", "")))}
     egress = set() if hub.settings.private_egress == "allow" else hub.egress()  # an unknown value blocks
-    return await call_tool(session, mcp, me, call.function.name, args, turn, hub.sources(), hub.external(), egress,
+    return await call_tool(session, mcp, me, name, args, turn, hub.sources(), hub.external(), egress,
                            hub.obfuscating())
 
 
@@ -315,6 +323,9 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
                 streamable_http_client(f"{hub.settings.internal_url}/mcp", http_client=http) as (read, write, *_),
                 ClientSession(read, write) as mcp):
         await mcp.initialize()
+        if name == "ceo" and (plan := session.approved) is not None and plan.program is not None:
+            session.approved = None  # the user approved it this turn (planning.begin): it runs once, as a graph
+            return await plangraph.run(plan.program, PlanRunner(hub, session, mcp, plan, text))
         nudged = False
         for _ in range(hub.settings.max_turns):
             if not still_on(hub, session, rec):
@@ -343,6 +354,52 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
             messages += [{"role": "tool", "tool_call_id": c.id, "content": json.dumps(t.result())}
                          for c, t in zip(calls, tasks, strict=True)]
     return "failed"
+
+
+class PlanRunner:
+    """Carries out an approved plan's graph as the CEO (plangraph.Runner). It hires, asks and fires through the
+    CEO's own paths, so the trace, labels, R3, budgets, escalation and approvals apply as to the CEO's calls; the
+    answer is one CEO turn with no tools."""
+
+    def __init__(self, hub: "Hub", session: Session, mcp: Any, plan: Plan, text: str) -> None:
+        self.hub, self.session, self.mcp, self.text = hub, session, mcp, text
+        self.hires = {h.name: h for h in plan.hires}
+
+    async def hire(self, agent: str) -> str | None:
+        h = self.hires[agent]
+        args = {"name": h.name, "role": h.role, "prompt": h.prompt or h.task, "budget_usd": h.budget_usd} | (
+            {"difficulty": h.difficulty} if h.difficulty else {"model": h.model}) | (
+            {"tools": list(h.tools)} if h.tools is not None else {})
+        out = await perform(self.hub, self.session, self.mcp, "ceo", "hire_agent", args)
+        return None if "hired" in out else str(out.get("error") or "not hired")
+
+    async def ask(self, agent: str, text: str) -> str:
+        return await ask_agent(self.hub, self.session, "ceo", agent, text)
+
+    async def fire(self, agent: str) -> None:
+        await perform(self.hub, self.session, self.mcp, "ceo", "fire_agent", {"name": agent})
+
+    async def answer(self, results: list[tuple[Step, Outcome]]) -> str:
+        rec = self.session.ledger.agents["ceo"]
+        lines = "\n\n".join(f"{s.id} ({s.agent}), {o.status}:" + ("\n" if o.status == "done" else " ") + o.text
+                            for s, o in results)
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt(rec)}, {
+            "role": "user", "content": f"{self.text}\n\nWhat each step returned:\n\n{lines}"}]
+        for attempt in range(2):
+            if refused := spent_out(self.hub, self.session, rec) or await approvals.turn(self.hub, self.session, rec):
+                return refused
+            msg, _, _ = await think(self.hub, self.session, rec, messages, None)
+            if (msg.content or "").strip():
+                return msg.content or ""
+            if attempt:
+                break
+            messages += NUDGE
+        return empty(rec)
+
+    def note(self, node: Node, outcome: Outcome) -> None:
+        self.session.trace.emit("step", task=self.session.id, agent="ceo", step=node.step.id if node.step else "",
+                                to=node.agent, status=outcome.status,
+                                why="" if outcome.status == "done" else outcome.text)
 
 
 class Executor(AgentExecutor):

@@ -1,7 +1,7 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5, 7, 8a, 8a′, 8b, 8c and 8c′ done on `develop`; 8d–8e next; Phase 6 waits for HASHIRU-lite (after
-2026-12-03).
+Status: Phases 0–5, 7, 8a, 8a′, 8b, 8c and 8c′ done on `develop`; 8c″ (plan graphs) done on `feature/plan-graph`;
+8d–8e next; Phase 6 waits for HASHIRU-lite (after 2026-12-03).
 Date: 2026-10-29
 
 ## 0. Decisions so far
@@ -21,6 +21,7 @@ Date: 2026-10-29
 | 11 | How private data reaches cloud models (2026-10-29) | **Obfuscated, by default**: placeholders for identifiers, restored on the way back, and local generalizations for values whose meaning matters (both). `private_mode=block` keeps the strict rule |
 | 12 | What finds the sensitive values | **Presidio**'s pattern recognizers (on a blank spaCy pipeline: no NER model download) plus secret patterns, and a local model for names, places, health and money details |
 | 13 | Plan and act modes (2026-10-29) | **Plan mode is enforced in code**, not only prompted (Claude Code's plan mode was found to be mostly a prompt): the CEO is offered, and may call, only tools that declare MCP's `readOnlyHint` (plus memory search) and `propose_plan`. **The plan's numbers come from the hub** (router, ledger, Ollama sizes), and **approving the plan approves its hires** |
+| 14 | How an approved plan runs (2026-10-30) | **Compiled into a LangGraph graph** (user's choice): the plan's steps become hire, step, fire and answer nodes and the hub runs them as the CEO, through the CEO's own calls. Decision 1 still holds for the agents' own loops; LangGraph runs only approved plans, pinned exactly, with LangSmith tracing held off |
 
 ## 1. Requirements restatement
 
@@ -456,6 +457,34 @@ MCP servers configured with `labels: [private]`) and propagates labels through m
       improvising (the replanner of plan-and-execute).
     - [ ] A plan covers the CEO's own hires only. Managers' hires inside their reserved pools, and the turn's spend
       (`approve_turn_usd`), still ask as before; the plan cannot estimate token spend inside a reservation.
+- **8c″. Plan graphs (1 day).** — DONE 2026-10-30 on `feature/plan-graph`; plan in `plan/2026-10-30-plan-graphs.md`
+  - [x] `propose_plan` takes `steps` (`id`, `agent`, `task`, `after`) and an optional hire `prompt`; without steps each
+    hire gets its task once. `program.py` compiles the steps: a hire node per planned hire (all at the start), a step
+    node waiting for its hire and its inputs (a join where there are several), a fire node after each hire's last
+    step, and an answer node. Unknown agents or inputs, steps waiting for each other and unused hires are plan
+    problems. Agents hired in earlier turns can take steps and are neither hired nor fired.
+  - [x] `plangraph.py` builds the LangGraph `StateGraph` (results and hires merged by reducers) and runs it through a
+    `Runner`; a step whose hire was refused fails, a step that needs a failed or skipped step is skipped, the rest
+    run. `runtime.PlanRunner` is the CEO: `perform` (split out of `dispatch`) for `hire_agent` and `fire_agent`,
+    `ask_agent` for steps, one tool-less CEO turn for the answer. `planning.begin` hands the approved plan to the CEO's
+    run (`Session.approved`, cleared every turn). `step` trace events and activity lines; the plan carries `steps` and
+    a Mermaid `graph`. `plan_execution=ceo` keeps 8c′.
+  - [x] Found while probing: LangGraph pulls in `langsmith`, which with `LANGSMITH_TRACING=true` in the environment
+    POSTs every node's state to LangSmith. The run holds tracing off (`tracing_context(enabled=False)`); a test with
+    the variables set sees no tracer and no connection. LangGraph 1.2.15's default recursion limit is 10007 (older
+    releases: 25); the run sets its own, from the program's size.
+  - [x] Tests: `test_plangraph.py` (19: compiling, running with a fake runner, a conversation that plans and approves,
+    a denied hire, an empty answer, LangSmith) and 8 more in `test_planning.py`; the 8c′ conversation tests pin
+    `plan_execution=ceo`. 22 mutations of the new checks are each caught (two survived at first: the recursion limit
+    and the tracing guard; their tests were tightened).
+  - Follow-ups:
+    - [ ] Replanning when a step fails, instead of skipping what needs it (the 8c′ follow-up still stands).
+    - [ ] Steps that call a tool directly, and conditional edges.
+    - [ ] A LangGraph checkpointer (SQLite) so a running plan survives a restart (Phase 9's durable sessions).
+    - [ ] Draw `graph` on the chat page.
+    - [ ] Supersteps: a short chain waits beside a long step, and one hire waiting for approval holds up the
+      others' first steps. Eager scheduling if that matters in real runs.
+    - [ ] One real run (local models only) once the user asks for it.
 - **8d. A local detector for sensitive messages (2 days).**
   - [ ] Patterns for personal data and secrets (emails, phone numbers, card numbers, government IDs, API keys,
     private keys) mark a message private before any model sees it. Optional: a small local model as a second

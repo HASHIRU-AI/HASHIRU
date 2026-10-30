@@ -102,6 +102,7 @@ class Settings:
     approve_hire_mb: int = 16384  # a local model this big (MB) waits for the user before it loads (0: never)
     approve_turn_usd: float = 0.25  # a turn asks before spending more each time it has spent this much (0: never)
     default_mode: str = "act"  # plan: every new request is planned first and waits for approval (planning.py)
+    plan_execution: str = "graph"  # how an approved plan runs: graph (plangraph.py) or ceo (the CEO's tool loop)
 
     @property
     def internal_url(self) -> str:
@@ -281,6 +282,8 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
         raise ValueError(f"private_egress must be 'block' or 'allow', got {settings.private_egress!r}")
     if settings.default_mode not in ("act", "plan"):
         raise ValueError(f"default_mode must be 'act' or 'plan', got {settings.default_mode!r}")
+    if settings.plan_execution not in ("graph", "ceo"):
+        raise ValueError(f"plan_execution must be 'graph' or 'ceo', got {settings.plan_execution!r}")
     if settings.private_mode not in ("obfuscate", "block"):
         raise ValueError(f"private_mode must be 'obfuscate' or 'block', got {settings.private_mode!r}")
     if settings.obfuscate_with not in ("patterns+model", "patterns"):

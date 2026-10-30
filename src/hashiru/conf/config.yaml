@@ -60,6 +60,10 @@ approve_turn_usd: 0.25        # a turn that has spent this much (and each furthe
 # else revises it. A message picks its mode with /plan or /act, a client with x-hashiru-mode, A2A hashiru_mode or MCP
 # ask mode; otherwise a waiting plan keeps planning, and a new request starts in default_mode.
 default_mode: ${oc.env:HASHIRU_DEFAULT_MODE,act}  # act, or plan: every new request is planned first
+# How an approved plan is carried out. graph: its steps compile into a LangGraph graph (each hire, each step once the
+# steps it needs are done, each hire fired after its last step, then the CEO's answer) and the hub runs it. ceo: the
+# CEO is told the plan and carries it out with its tools.
+plan_execution: ${oc.env:HASHIRU_PLAN_EXECUTION,graph}
 # Serving (`hashiru serve`): a chat page at /, an OpenAI-compatible API at /v1, the CEO as an A2A agent at /a2a
 # (card at /.well-known/agent-card.json and /a2a/.well-known/agent-card.json) and HASHIRU as an MCP server
 # (/public/mcp), all on one port.

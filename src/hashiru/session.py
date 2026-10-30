@@ -29,6 +29,7 @@ class Session:
     approvals: Approvals = field(default_factory=Approvals)  # big spends waiting for the user
     planning: bool = False  # this turn only reads and plans (planning.py); its actions are refused
     plan: "Plan | None" = None  # the plan proposed this turn, or waiting for the user's approval
+    approved: "Plan | None" = None  # an approved plan the CEO's run this turn carries out as a graph (plangraph.py)
 
     def may_ask(self, me: str, name: str) -> bool:
         """Only the hirer may message an agent, and only the user may message the CEO."""

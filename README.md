@@ -158,9 +158,26 @@ and the hub previews each one as `hire_agent` would make it now: the model the r
 memory a local model takes, with the totals checked against the CEO's pool. The numbers come from the hub, not the
 model.
 
+The plan also gives the work as steps: each step sends one agent a task, and `after` names the steps whose results
+it needs (they are added to its message). Without steps, each hire gets its own task once. A step may also go to an
+agent hired in an earlier turn.
+
 The reply shows the plan as a table and waits. `approve` (or yes, ok) carries it out, and the planned hires (same
 name and model, no bigger budget) need no further approval; a hire outside the plan, a big escalation or a turn's
 spending still asks. Anything else is feedback, and the CEO revises the plan.
+
+**An approved plan runs as a graph.** The hub compiles the steps into a [LangGraph](https://github.com/langchain-ai/langgraph)
+graph and adds the nodes the CEO would otherwise have to remember: a hire for each planned agent (all at once, as the
+plan's totals were checked together), each step once every step it needs is done (in parallel where they can), a
+fire after each hire's last step (its unspent money goes back and a local model is unloaded), and the CEO's answer,
+one turn with every step's result. A step whose hire was refused fails, a step that needs a failed or skipped step is
+skipped, and the rest still run; the answer says what happened. Every hire, message and fire goes through the same
+paths as the CEO's own calls, so private data, budgets, escalation and approvals work as before, and each step's end
+is a `step` event in the trace with an activity line. Steps that wait for each other, or name an agent or a step that
+does not exist, are problems the CEO sees in `propose_plan`'s answer; a plan that does not compile is carried out by
+the CEO as before. The plan carries its graph as Mermaid (`graph`, next to `steps`). `plan_execution=ceo` (or
+`HASHIRU_PLAN_EXECUTION=ceo`) keeps the CEO in charge of carrying out the plan. LangSmith tracing stays off for these
+graphs whatever the environment says, because it would send step results off the machine.
 
 <p align="center"><img src="docs/screenshots/plan.png" width="820" alt="The chat page in plan mode. The user asked to hire one worker to say hello; the CEO replied 'I will hire w1 to say hello.' with a table: w1, worker, gpt-4.1-mini, reserves $0.30, memory none, task Say hello. Below it: Reserves $0.30 of the $0.50 left in the CEO's pool, an Approve plan button, and the Plan switch on in the message box. The Agents panel shows only the CEO."></p>
 <p align="center"><sub>A plan waiting for approval (scripted models): nothing is hired yet.</sub></p>
@@ -280,6 +297,7 @@ src/hashiru/
   peers.py               remote A2A agents and the cost extension
   privacy.py, obfuscation/, router.py, approvals.py   private stays local, masking, hiring by difficulty, approvals
   planning.py            plan and act modes
+  program.py, plangraph.py   an approved plan's steps, compiled and run as a LangGraph graph
   interop/               the chat page's API: OpenAI-compatible /v1, public A2A agent, public MCP server
   ui/                    the chat page (static files, no build step)
   conf/config.yaml       every setting, with comments
