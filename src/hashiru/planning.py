@@ -1,7 +1,7 @@
 """Plan and act modes.
 
 In plan mode the CEO researches and proposes but does not act. It is offered only the tools that declare MCP's
-readOnlyHint (and memory, for search and list) plus propose_plan, and runtime.dispatch refuses anything else in code,
+readOnlyHint (and memory, for search and list) plus propose_plan, and runtime.perform refuses anything else in code,
 whatever the model calls. propose_plan previews each hire as hire_agent would make it (the router's model, the
 reservation, the memory a local model takes) and checks the totals against the CEO's pool, without hiring or
 reserving anything. The plan's steps (program.py) say who gets which task and which results each step needs; under

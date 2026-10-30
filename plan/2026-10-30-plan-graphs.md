@@ -1,4 +1,4 @@
-# Plan Graphs (Phase 8c″) Implementation Plan
+# Plan Graphs (Phase 8c″) Implementation Plan — DONE 2026-10-30 on `feature/plan-graph`
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -90,7 +90,7 @@ to make a cohesive executable plan", "i need langgraph". Builds on 8c′ in `pla
   - `compile_steps(steps: Sequence[Step], hired: Sequence[str], live: Collection[str]) -> tuple[Program | None,
     list[str]]`: Program is None when there are problems
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_compile_inserts_hire_fire_and_answer_nodes():
@@ -124,12 +124,12 @@ def test_default_steps_give_each_hire_its_task():
     assert default_steps([("w1", "say hi")]) == [Step("w1", "w1", "say hi")]
 ```
 
-- [ ] **Step 2: Run them to see them fail** — `uv run pytest tests/test_plangraph.py -q` → ImportError.
-- [ ] **Step 3: Implement `program.py`.** Topological order by Kahn's algorithm in plan order; steps left over form
+- [x] **Step 2: Run them to see them fail** — `uv run pytest tests/test_plangraph.py -q` → ImportError.
+- [x] **Step 3: Implement `program.py`.** Topological order by Kahn's algorithm in plan order; steps left over form
   the cycle, named sorted ("steps c, d wait for each other"). Node order: hires (plan order), steps (topological),
   fires, answer. The answer waits for every fire node and every sink step on a live agent.
-- [ ] **Step 4: Run the tests** → PASS.
-- [ ] **Step 5: Commit** (with Task 2).
+- [x] **Step 4: Run the tests** → PASS.
+- [x] **Step 5: Commit** (with Task 2).
 
 ### Task 2: LangGraph build and run (`plangraph.py`)
 
@@ -150,7 +150,7 @@ def test_default_steps_give_each_hire_its_task():
   - `async run(program: Program, runner: Runner) -> str` (the answer)
   - `mermaid(program: Program) -> str`
 
-- [ ] **Step 1: Write the failing tests** (a `FakeRunner` that records calls and replies `"<agent> did <task>"`,
+- [x] **Step 1: Write the failing tests** (a `FakeRunner` that records calls and replies `"<agent> did <task>"`,
   fails agents in `fail`, and refuses hires in `refuse`):
 
 ```python
@@ -183,13 +183,13 @@ def test_mermaid_draws_the_compiled_graph():
     assert "hire-w1 --> step-a" in text and "fire-w2 --> answer" in text
 ```
 
-- [ ] **Step 2: Run them to see them fail.**
-- [ ] **Step 3: `uv add langgraph==1.2.15`, implement `plangraph.py`.** State is a TypedDict with `results` (step id →
+- [x] **Step 2: Run them to see them fail.**
+- [x] **Step 3: `uv add langgraph==1.2.15`, implement `plangraph.py`.** State is a TypedDict with `results` (step id →
   Outcome) and `hired` (agent → "" or why not), both merged by a dict-union reducer, and `answer: str`. Nodes with no
   waits get `START` edges; one wait is a plain edge; several are one list edge (a join). `answer → END`.
   `ainvoke(..., {"recursion_limit": len(program.nodes) + 2})`.
-- [ ] **Step 4: Run the tests** → PASS.
-- [ ] **Step 5: Commit** `feat(planning): compile plans into LangGraph graphs`.
+- [x] **Step 4: Run the tests** → PASS.
+- [x] **Step 5: Commit** `feat(planning): compile plans into LangGraph graphs`.
 
 ### Task 3: Steps in the plan (`planning.py`, `session.py`, `config.py`)
 
@@ -205,7 +205,7 @@ def test_mermaid_draws_the_compiled_graph():
   `graph` (Mermaid); `Session.approved: Plan | None` (the approved plan the CEO's next run carries out);
   `Settings.plan_execution: str = "graph"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_propose_plan_compiles_steps_and_shows_them(hub, session):
@@ -225,17 +225,17 @@ def test_plan_execution_setting():
         load_settings(["plan_execution=fast"])
 ```
 
-- [ ] **Step 2: Run them to see them fail.**
-- [ ] **Step 3: Implement.** `PROPOSE_TOOL` gains `hires[].prompt` and `steps` (`id`, `agent`, `task`, `after`);
+- [x] **Step 2: Run them to see them fail.**
+- [x] **Step 3: Implement.** `PROPOSE_TOOL` gains `hires[].prompt` and `steps` (`id`, `agent`, `task`, `after`);
   `PLAN_RULES` asks for steps. `propose` parses steps (or defaults them), compiles against the planned hires' names
   and the CEO's live hires, adds compile problems, and keeps the program only in graph mode. `table()` adds
   `| Step | Agent | After | Task |` and, with a program, "Approving runs these steps as a graph: ...". `begin`
   clears `session.approved`; on approve with a program it sets `session.approved` and returns `run_prompt(plan)`;
   otherwise `carry_out` (which now lists the steps). The `propose_plan` activity line counts steps; a `step` event
   gets a line ("step write (w2) skipped: ...").
-- [ ] **Step 4: Run** `uv run pytest tests/test_planning.py -q` → PASS (8c′ conversation tests that script the CEO
+- [x] **Step 4: Run** `uv run pytest tests/test_planning.py -q` → PASS (8c′ conversation tests that script the CEO
   carrying a plan out run with `plan_execution=ceo`).
-- [ ] **Step 5: Commit** (with Task 4).
+- [x] **Step 5: Commit** (with Task 4).
 
 ### Task 4: The CEO runs the graph (`runtime.py`)
 
@@ -249,7 +249,7 @@ def test_plan_execution_setting():
   `PlanRunner(hub, session, mcp, plan, text)` implementing `Runner`; `run_agent` runs `session.approved` as a graph in
   the CEO's run; `step` trace events (`node`, `agent`, `status`, `why`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_approve_runs_the_plan_as_a_graph(tmp_path):
@@ -267,24 +267,24 @@ def test_a_denied_hire_fails_its_steps_and_the_answer_says_so(tmp_path): ...
 def test_plan_execution_ceo_keeps_the_ceo_in_charge(tmp_path): ...   # the 8c′ prompt, no step events
 ```
 
-- [ ] **Step 2: Run them to see them fail.**
-- [ ] **Step 3: Implement.** In `run_agent`, after the MCP session opens: when `name == "ceo"` and `session.approved`
+- [x] **Step 2: Run them to see them fail.**
+- [x] **Step 3: Implement.** In `run_agent`, after the MCP session opens: when `name == "ceo"` and `session.approved`
   is set, take it and `return await plangraph.run(plan.program, PlanRunner(...))`. `PlanRunner.hire` calls
   `perform(..., "ceo", "hire_agent", args)` with the hire's name, role, prompt, budget, tools and model or difficulty;
   `ask` is `ask_agent(hub, session, "ceo", ...)`; `fire` calls `fire_agent`; `answer` checks `spent_out` and
   `approvals.turn`, then `think` with no tools on the turn's text plus the outcomes; `note` emits `step` events.
-- [ ] **Step 4: Run the full suite, ruff and mypy** → all pass.
-- [ ] **Step 5: Mutation checks:** skip-on-failure, fire-after-last-step waits, the join list edge, the recursion
+- [x] **Step 4: Run the full suite, ruff and mypy** → all pass.
+- [x] **Step 5: Mutation checks:** skip-on-failure, fire-after-last-step waits, the join list edge, the recursion
   limit, `begin` clearing `approved`, the fallback to `carry_out`, the answer offering no tools: each mutation must
   fail a test.
-- [ ] **Step 6: Commit** `feat(planning): run approved plans as LangGraph graphs (Phase 8c″)`.
+- [x] **Step 6: Commit** `feat(planning): run approved plans as LangGraph graphs (Phase 8c″)`.
 
 ### Task 5: Docs
 
 **Files:** `README.md` (plan mode section, layout), `docs/architecture.md` (plan mode bullet), master plan
 (decision 14, phase 8c″ with follow-ups).
 
-- [ ] Write them; commit `docs: plan graphs in README, architecture and plan`.
+- [x] Write them; commit `docs: plan graphs in README, architecture and plan`.
 
 ## Follow-ups (not in this plan)
 
