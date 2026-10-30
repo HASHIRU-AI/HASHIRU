@@ -17,7 +17,6 @@ from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Any
-from unittest import mock
 
 import httpx
 import litellm
@@ -26,11 +25,18 @@ from hashiru.catalog import Card, cloud_cards, local_cards, picks, routing
 from hashiru.config import AUTO, Settings
 from hashiru.ollama import Ollama
 
-__all__ = ["MAP_URL", "Survey", "check", "has_key", "listed", "load", "refresh", "settle", "survey", "use_cached_map"]
+__all__ = ["KEYED", "MAP_URL", "Survey", "check", "has_key", "listed", "load", "refresh", "settle", "survey",
+           "use_cached_map"]
 
 log = logging.getLogger(__name__)
 MAP_URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 MIN_ENTRIES = 100  # fewer usable models than this is not LiteLLM's map: keep the one we have
+# Providers that take one API key from the environment, which LiteLLM names (checked 2026-10-30 with LiteLLM 1.103.4:
+# no network, an answer in a millisecond). Others (bedrock, vertex_ai, azure, github_copilot, ...) are left to
+# MODELS: name their models yourself.
+KEYED = ("openai", "anthropic", "gemini", "groq", "mistral", "deepseek", "xai", "openrouter", "together_ai",
+         "fireworks_ai", "deepinfra", "cerebras", "perplexity", "moonshot", "nebius", "novita", "dashscope", "cohere",
+         "ai21", "nvidia_nim", "featherless_ai")
 
 
 def load(path: str) -> dict[str, Any]:
@@ -107,17 +113,16 @@ async def check(path: str, providers: Iterable[str]) -> dict[str, list[str]]:
 
 
 def has_key(provider: str, model: str) -> bool:
-    """Whether the environment holds the keys `provider` needs (asked of LiteLLM for one of its models). LiteLLM
-    answers yes for a provider whose keys it does not know, so it is asked again with no environment: a provider it
-    cannot tell about does not count. Call it before the hub runs (it empties the environment for a moment)."""
+    """Whether the environment holds the key `provider` needs, asked of LiteLLM for one of its models. Only the
+    providers in KEYED are asked: for some others LiteLLM's check is not a look at the environment (github_copilot
+    starts GitHub's device login and waits for it), and for some it cannot tell (it answers yes)."""
+    if provider not in KEYED:
+        return False
     probe = model if model.startswith(f"{provider}/") else f"{provider}/{model}"
     try:
-        found = litellm.validate_environment(probe)
-        with mock.patch.dict(os.environ, {}, clear=True):
-            bare = litellm.validate_environment(probe)
-    except Exception:  # LiteLLM raises plain Exceptions for providers it cannot place
+        return bool(litellm.validate_environment(probe)["keys_in_environment"])
+    except Exception:  # LiteLLM raises plain Exceptions for models it cannot place
         return False
-    return bool(found["keys_in_environment"]) and not bare["keys_in_environment"]
 
 
 def use_cached_map(path: str, models: Iterable[str]) -> None:
@@ -138,8 +143,9 @@ class Survey:
     notes: list[str]
 
 
-async def survey(settings: Settings, ollama: Any) -> Survey:
+async def survey(settings: Settings, ollama: Any = None) -> Survey:
     """Everything this machine can use now: the map (refreshed or bundled), the keys, the checks and Ollama."""
+    ollama = ollama or Ollama(settings.ollama_url, ())
     cache = load(settings.model_catalog)
     model_map: Mapping[str, Any] = cache.get("map") or litellm.model_cost
     source = f"refreshed {cache.get('fetched', '')}".strip() if cache.get("map") else "bundled with LiteLLM"
@@ -172,7 +178,7 @@ async def settle(settings: Settings, ollama: Any = None) -> Settings:
     are."""
     if settings.models != AUTO:
         return settings
-    found = await survey(settings, ollama or Ollama(settings.ollama_url, ()))
+    found = await survey(settings, ollama)
     for note in found.notes:
         log.warning(note)
     if not found.picks:

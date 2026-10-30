@@ -8,7 +8,7 @@ import httpx
 import pytest
 from conftest import make_settings
 
-from hashiru import recon
+from hashiru import cli, recon
 from hashiru.catalog import Card, base, cloud_cards, cloud_tier, local_cards, local_tier, picks, routing
 from hashiru.config import load_settings
 from hashiru.hub import Hub
@@ -198,8 +198,27 @@ def test_keys_come_from_the_environment(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     assert recon.has_key("openai", "gpt-4.1-mini") and not recon.has_key("anthropic", "claude-sonnet-4-5")
-    assert not recon.has_key("no-such-provider", "x") and not recon.has_key("bedrock_converse", "x")  # unknowable
-    assert recon.os.environ["OPENAI_API_KEY"] == "sk-test"  # the environment is back
+    for other in ("no-such-provider", "bedrock_converse", "github_copilot", "hyperbolic"):
+        assert not recon.has_key(other, "x"), other  # not asked: LiteLLM cannot tell, or its check logs in
+
+
+def test_surveying_the_real_map_asks_only_keyed_providers_and_opens_no_socket(tmp_path, monkeypatch):
+    connects, asked = [], []
+    real = recon.litellm.validate_environment
+
+    def offline(self, address):
+        connects.append(address)
+        raise OSError("offline")
+
+    def validate(model, *args, **kwargs):
+        asked.append(model.split("/", 1)[0])
+        return real(model, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", offline)
+    monkeypatch.setattr(recon.litellm, "validate_environment", validate)
+    found = asyncio.run(recon.survey(make_settings(tmp_path), DescribingOllama(down=True)))  # LiteLLM's bundled map
+    assert connects == [] and asked and set(asked) <= set(recon.KEYED)
+    assert all(c.local for c in found.cards) or found.keyed  # cloud cards only for providers with keys
 
 
 def test_the_hub_prices_models_from_the_cached_map(tmp_path):
@@ -265,3 +284,82 @@ def test_auto_with_routing_is_a_config_error(tmp_path):
 def test_an_unsettled_auto_hub_says_so(tmp_path):
     with pytest.raises(ValueError, match="settled first"):
         Hub(make_settings(tmp_path, models=("auto",)))
+
+
+# ---- the command line ----
+
+def recon_cli(tmp_path, monkeypatch, keys=("openai",)):
+    path = auto(tmp_path, monkeypatch, keys).model_catalog
+    monkeypatch.setattr(recon, "Ollama", lambda url, models: DescribingOllama())
+    monkeypatch.delenv("MODELS", raising=False)
+    monkeypatch.setenv("CEO_MODEL", "ollama_chat/qwen3.5:4b")  # not pulled here
+    return path
+
+
+def test_models_command_lists_picks_and_counts_the_rest(tmp_path, monkeypatch, capsys):
+    path = recon_cli(tmp_path, monkeypatch)
+    cli.main(["models", f"model_catalog={path}"])
+    out = capsys.readouterr().out
+    assert "refreshed" in out and "Keys set for: openai" in out
+    lines = [line for line in out.splitlines() if line.startswith("*")]
+    assert [line.split()[1:3] for line in lines] == [["easy", "ollama_chat/tiny:1b"], ["easy", "gpt-cheap"],
+                                                     ["medium", "gpt-mid"], ["hard", "gpt-big"]]
+    assert "2 more usable models" in out and "gpt-old-2024-05-13" not in out
+    assert "The CEO model ollama_chat/qwen3.5:4b is not among the usable models" in out
+    cli.main(["models", "--all", f"model_catalog={path}"])
+    everything = capsys.readouterr().out
+    assert "gpt-old-2024-05-13" in everything and "deprecated 2027-01-01" in everything
+    assert "more usable models" not in everything
+
+
+def test_models_command_refreshes_and_checks(tmp_path, monkeypatch, capsys):
+    path = recon_cli(tmp_path, monkeypatch)
+    refreshed = []
+
+    async def fake_refresh(where, transport=None):
+        refreshed.append(where)
+        return 17
+
+    monkeypatch.setattr(recon, "refresh", fake_refresh)
+    monkeypatch.setattr(recon, "listed", lambda provider: {"openai": ["gpt-cheap-2025-01-01"]}[provider])
+    cli.main(["models", "--refresh", "--check", f"model_catalog={path}"])
+    out = capsys.readouterr().out
+    assert refreshed == [path] and "Refreshed LiteLLM's model map: 17 models" in out
+    assert "openai lists 1 model" in out
+    picked = [line.split()[2] for line in out.splitlines() if line.startswith("*")]
+    assert picked == ["ollama_chat/tiny:1b", "gpt-cheap"]  # openai listed only gpt-cheap
+
+
+def test_context_windows_read_short():
+    assert [cli.context(n) for n in (None, 8192, 272000, 1_000_000, 1_048_576, 2_097_152)] == [
+        "?", "8k", "272k", "1M", "1M", "2.1M"]
+
+
+def test_a_failed_refresh_is_one_line(tmp_path, monkeypatch, capsys):
+    path = recon_cli(tmp_path, monkeypatch)
+
+    async def broken(where, transport=None):
+        raise ValueError("could not download LiteLLM's model map: offline")
+
+    monkeypatch.setattr(recon, "refresh", broken)
+    with pytest.raises(SystemExit, match="hashiru: could not download"):
+        cli.main(["models", "--refresh", f"model_catalog={path}"])
+
+
+def test_ask_chat_and_serve_settle_auto_first(tmp_path, monkeypatch):
+    settings = auto(tmp_path, monkeypatch)
+    monkeypatch.setattr(recon, "Ollama", lambda url, models: DescribingOllama())
+    seen = []
+
+    class Stop(Exception):
+        pass
+
+    def hub(settled):
+        seen.append(settled.models)
+        raise Stop
+
+    monkeypatch.setattr(cli, "Hub", hub)
+    for run in (lambda s: cli.ask(s, "hi"), cli.chat, cli.serve):
+        with pytest.raises(Stop):
+            asyncio.run(run(settings))
+    assert len(seen) == 3 and all("gpt-cheap" in models for models in seen)
