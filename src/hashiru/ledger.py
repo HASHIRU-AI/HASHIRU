@@ -32,6 +32,8 @@ class AgentRecord:
     live: bool = True
     tools: tuple[str, ...] | None = None  # None: every tool; else only these (managers)
     price_usd: float = 0.0  # per message, for a remote A2A peer
+    route: tuple[str, ...] = ()  # models to move up through if it fails, when hired by difficulty (router.py)
+    difficulty: str = ""
 
 
 @dataclass

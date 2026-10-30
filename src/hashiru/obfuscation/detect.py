@@ -91,8 +91,19 @@ class Detector:
 
 
 def patterns(text: str) -> list[Span]:
+    offline_suffix_list()
     return [Span(r.start, r.end, r.entity_type) for r in analyzer().analyze(text=text, language="en",
                                                                             score_threshold=SCORE)]
+
+
+def offline_suffix_list() -> None:
+    """Keep detection off the network: Presidio's email recognizer calls tldextract, whose default extractor
+    downloads the public suffix list from publicsuffix.org on first use. Use the list bundled with the package."""
+    import tldextract
+
+    if tldextract.tldextract.TLD_EXTRACTOR.suffix_list_urls:
+        tldextract.tldextract.TLD_EXTRACTOR = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None,
+                                                                    fallback_to_snapshot=True)
 
 
 def parse(reply: str, text: str) -> list[Span] | None:

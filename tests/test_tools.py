@@ -21,7 +21,8 @@ def fire(hub: Hub, session: Session, caller: str, name: str) -> dict:
 
 
 def test_hire_reserves_budget_from_hirer(hub, session):
-    assert hire(hub, session) == {"hired": "w1", "tier": "cloud", "depth": 1, "reserved_usd": 0.2, "gpu_mb": 0}
+    assert hire(hub, session) == {"hired": "w1", "tier": "cloud", "depth": 1, "reserved_usd": 0.2, "gpu_mb": 0,
+                                  "model": "gpt-4.1-mini"}
     assert session.ledger.agents["w1"].parent == "ceo"
     assert round(session.ledger.left()["ceo"], 6) == 0.3  # 0.50 budget - 0.20 reserved
 

@@ -171,6 +171,7 @@
   }
 
   function workKind(event) {
+    if (event.kind === "tool" && event.failed) return "err";
     if (event.kind === "tool" && event.name === "hire_agent") return "hire";
     if (event.kind === "tool" && event.name === "fire_agent") return "fire";
     if (event.kind === "msg") return "msg";

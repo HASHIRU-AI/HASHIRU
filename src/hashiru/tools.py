@@ -9,6 +9,7 @@ import httpx
 from a2a.utils.errors import A2AError
 from mcp.server.mcpserver import Context, MCPServer
 
+from hashiru.config import DIFFICULTIES
 from hashiru.ledger import AgentRecord, free_mb
 from hashiru.llm import is_local
 from hashiru.memory import MAX_KEY_CHARS
@@ -46,9 +47,11 @@ class Tools:
             models = ", ".join(self.hub.hireable())
             mcp.tool(description=(
                 "Hire an agent. role is 'manager' (uses tools and may hire) or 'worker' (answers once, no tools). "
-                f"model is one of: {models} ({PEER_PREFIX}... models are remote agents, hired as workers). "
-                "Reserves budget_usd from your pool. For a manager, tools optionally limits which of your tools it "
-                "may use (by name, including ask_agent)."))(self.hire_agent)
+                "Say how hard its job is with difficulty (easy, medium or hard) and the hub picks a model that fits "
+                f"the job, your pool and the data involved; or name a model: {models} ({PEER_PREFIX}... models are "
+                "remote agents, hired as workers). Reserves budget_usd from your pool (0 means local models only). "
+                "For a manager, tools optionally limits which of your tools it may use (by name, including "
+                "ask_agent)."))(self.hire_agent)
             mcp.tool()(self.fire_agent)
         for tool in (self.check_usage, self.get_website, self.arxiv_search, self.read_file, self.memory,
                      self.deliver_to_user):
@@ -68,8 +71,9 @@ class Tools:
             raise PermissionError(f"{rec.name} has been fired")
         return found[0], rec
 
-    async def hire_agent(self, ctx: Context, name: str, role: str, model: str, prompt: str,
-                         budget_usd: float, tools: list[str] | None = None) -> dict[str, Any]:
+    async def hire_agent(self, ctx: Context, name: str, role: str, model: str = "", prompt: str = "",
+                         budget_usd: float = 0.0, tools: list[str] | None = None,
+                         difficulty: Literal["easy", "medium", "hard"] | None = None) -> dict[str, Any]:
         session, boss = self.who(ctx)
         settings, depth = self.hub.settings, boss.depth + 1
         if boss.role != "manager":
@@ -85,14 +89,42 @@ class Tools:
                 return {"error": f"you cannot grant tools you do not have: {not_mine}"}
         if not (math.isfinite(budget_usd) and budget_usd >= 0):
             return {"error": "budget_usd must be a finite number >= 0"}
-        if model not in self.hub.hireable():
-            return {"error": f"unknown or disabled model {model!r}; choose from {self.hub.hireable()}"}
         if role not in ROLES:
             return {"error": "role must be 'manager' or 'worker'"}
         if depth > settings.max_depth:
             return {"error": f"agents at depth {boss.depth} cannot hire (max depth {settings.max_depth})"}
         if not NAME.fullmatch(name) or name in RESERVED or session.ledger.get(name) is not None:
             return {"error": f"name {name!r} must be new, not {sorted(RESERVED)}, and use only a-z, 0-9 and _"}
+        if model:
+            if model not in self.hub.hireable():
+                return {"error": f"unknown or disabled model {model!r}; choose from {self.hub.hireable()}"}
+            candidates = [model]
+        elif difficulty in DIFFICULTIES:
+            candidates = await self.hub.router.candidates(session, boss, difficulty, budget_usd)
+            if not candidates:
+                return {"error": f"no model you may use fits a {difficulty} job: check the modes, and give cloud "
+                                 "models a budget_usd above 0"}
+        else:
+            return {"error": "say how hard the job is with difficulty (easy, medium or hard), or name a model"}
+        scope = tuple(sorted(set(tools))) if tools is not None else None
+        failures = []
+        for candidate in candidates:  # a model that does not fit or load gives way to the next one
+            out = await self._hire_one(session, boss, name, role, candidate, prompt, budget_usd, scope)
+            if "hired" in out:
+                if not model:
+                    rec = session.ledger.agents[name]
+                    rec.route, rec.difficulty = tuple(candidates), str(difficulty)
+                    out["difficulty"] = difficulty
+                return out | {"model": candidate}
+            if len(candidates) == 1:
+                return out
+            failures.append(f"{candidate}: {out['error']}")
+        return {"error": "no model could be hired: " + "; ".join(failures)}
+
+    async def _hire_one(self, session: Session, boss: AgentRecord, name: str, role: str, model: str, prompt: str,
+                        budget_usd: float, scope: tuple[str, ...] | None) -> dict[str, Any]:
+        """Hire `name` on one model: privacy, a peer's card and price, memory and the pool, then mount it."""
+        settings, depth = self.hub.settings, boss.depth + 1
         peer = self.hub.peer(model)
         if peer is not None and role != "worker":
             return {"error": "a remote agent can only be hired as a worker"}
@@ -118,7 +150,6 @@ class Tools:
             price = max(declared.per_message_usd if declared else 0.0, peer.price_usd_per_message or 0.0)
             if settings.enforce_budget and budget_usd + 1e-9 < price:
                 return {"error": f"budget_usd must cover one message to {peer.name}: ${price}"}
-        scope = tuple(sorted(set(tools))) if tools is not None else None
         if is_local(model):
             async with self.hub.memory_lock:  # check free memory, reserve and load as one step
                 if too_big := await self.hub.fits(model):

@@ -256,3 +256,51 @@ def test_obfuscation_settings():
                        ("obfuscate_model=gpt-4.1-mini", "obfuscate_model")):
         with pytest.raises(ValueError, match=match):
             load_settings([bad])
+
+
+# ---- follow-ups from the real run ----
+
+def test_detection_never_goes_to_the_network(monkeypatch, tmp_path):
+    import socket
+
+    import tldextract
+
+    def offline(*args, **kwargs):
+        raise AssertionError("detection tried to reach the network")
+    monkeypatch.setattr(socket.socket, "connect", offline)
+    # A fresh machine: tldextract's default extractor, with nothing cached, would download the public suffix list.
+    monkeypatch.setattr(tldextract.tldextract, "TLD_EXTRACTOR", tldextract.TLDExtract(cache_dir=str(tmp_path)))
+    text = "mail bob@example.org or visit https://example.net/x"
+    found = asyncio.run(Detector(None, "").detect(text))
+    assert ("EMAIL_ADDRESS", "bob@example.org") in kinds(found, text)
+
+
+def test_local_parties_hold_real_values_not_obfuscated_ones(tmp_path, ollama, monkeypatch):
+    hub = obf_hub(tmp_path, ollama)
+    session = hub.new_session("t", trace=False)
+    session.trace.receive("ceo", session.id, [OBFUSCATED])  # the cloud CEO saw a masked message
+    session.ledger.add("w1", "worker", "local", "ollama_chat/tiny", "p", "ceo", 1, 0.0)
+    session.vault.mask("Alice Chen", [Span(0, 10, "PERSON")])
+
+    async def fake_send(hub_, session_, me, name, text):
+        return "done for ⟦PERSON_1⟧"
+    monkeypatch.setattr(runtime, "a2a_send", fake_send)
+    asyncio.run(runtime.ask_agent(hub, session, "ceo", "w1", "write to ⟦PERSON_1⟧"))
+    assert session.trace.labels("w1", session.id) == {PRIVATE}
+    args = {"name": "w2", "role": "worker", "model": "ollama_chat/tiny", "prompt": "greet ⟦PERSON_1⟧",
+            "budget_usd": 0.0}
+    hire = SimpleNamespace(id="c2", function=SimpleNamespace(name="hire_agent", arguments=json.dumps(args)))
+    asyncio.run(runtime.dispatch(hub, session, HiringMCP(hub, session), "ceo", hire))
+    assert session.trace.labels("w2", session.id) == {PRIVATE}
+
+
+class HiringMCP:
+    """Runs hire_agent on the hub, as the real MCP endpoint would."""
+
+    def __init__(self, hub, session):
+        self.hub, self.session = hub, session
+
+    async def call_tool(self, name, args):
+        out = await self.hub.tools.hire_agent(ctx(self.session, "ceo"), **args)
+        return SimpleNamespace(content=[SimpleNamespace(text=json.dumps(out))], is_error=False,
+                               structured_content=out)

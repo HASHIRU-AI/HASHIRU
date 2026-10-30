@@ -76,8 +76,10 @@ async def cross(session: Session, obfuscator: "Obfuscator | None", text: str, la
         if masked is None:
             return text, labels, refuse(session, agent, action, f"{why}, {MISSED}")
         return masked, sorted((set(labels) - {PRIVATE}) | {OBFUSCATED}), None
-    if obfuscator is not None and may_hold(receiver_tier) and not may_hold(sender_tier):
-        restored, changed = obfuscator.unmask(session, text)
-        if changed:
-            return restored, sorted(set(labels) | {PRIVATE}), None
+    if may_hold(receiver_tier):  # a local receiver holds real values, never obfuscated ones
+        labels = [label for label in labels if label != OBFUSCATED]
+        if obfuscator is not None and not may_hold(sender_tier):
+            restored, changed = obfuscator.unmask(session, text)
+            if changed:
+                return restored, sorted(set(labels) | {PRIVATE}), None
     return text, labels, None

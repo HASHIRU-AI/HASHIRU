@@ -43,6 +43,12 @@ allow_cloud_agents: true      # cloud models and remote A2A peers
 # Remote A2A agents managers may hire as a2a/<name> (always workers, always billed in dollars).
 #   name: {url: https://example.com/agent/, headers: {Authorization: Bearer ...}, price_usd_per_message: 0.01}
 a2a_peers: {}
+# Hiring by difficulty: a hiring agent says how hard a job is (easy, medium, hard) and the hub picks the model. Each
+# difficulty lists models to try, best first; one it does not list is ordered from models: easy tries small local
+# models, then cheap cloud ones; medium large local, then cheap cloud; hard the dearest cloud, then large local.
+#   routing: {hard: [gpt-4.1, ollama_chat/gemma4:12b]}
+routing: {}
+max_escalations: 2            # a worker that fails or answers empty moves up its list this many times per message
 turn_reserve_usd: 0.01        # with enforce_budget, a cloud manager keeps this much for its own turns when it hires
 # Serving (`hashiru serve`): a chat page at /, an OpenAI-compatible API at /v1, the CEO as an A2A agent at /a2a
 # (card at /.well-known/agent-card.json and /a2a/.well-known/agent-card.json) and HASHIRU as an MCP server

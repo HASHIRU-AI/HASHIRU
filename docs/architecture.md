@@ -60,6 +60,9 @@ flowchart LR
   and send each new message to that session's CEO, as the user.
 - **A session** is one hiring tree: a CEO, the agents it hired and theirs, a ledger of pools, and a trace file.
   Each agent is mounted as its own A2A app at `/s/{session}/agents/{name}/`, with its own Agent Card.
+- **Hiring by difficulty** (`router.py`): a hiring agent says how hard a job is; the router picks the model from
+  the `routing` order (or one built from `models`), within the modes, the hire's privacy and its pool, and moves a
+  failing worker up that list.
 - **The CEO and managers** run a tool loop: an LLM turn, then every tool call it asked for, in parallel, until
   it replies (at most `max_turns`). **Workers** answer with one LLM call and no tools.
 - **Tools** are served at `/mcp`. Managers reach them with their own bearer token, so the hub knows who is calling
