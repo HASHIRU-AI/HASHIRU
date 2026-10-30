@@ -106,24 +106,38 @@ overspending, for policy experiments). `max_usd` caps real API spend for the who
 
 ## Private data
 
-Some data must never reach a cloud model: what `read_file` and `memory` return, memories that `memory_autoinject`
-adds, results of MCP servers configured with `labels: [private]`, and everything you say in a private chat. HASHIRU
-labels that data `private`, follows it through every message and hire, and enforces one rule in code (R3 from
-HASHIRU-lite, *private stays local*): private data reaches only local models and you. A cloud or remote agent is
-refused it, whether in a message, a reply, a hire prompt or a tool result, and an agent holding it may not call a
-tool that sends data off the machine: `get_website`, `arxiv_search`, `create_tool`, created tools, and MCP servers
-unless their config says `egress: false` (`private_egress=allow` lifts this). Refusals are `policy` events in the
-trace and show in the chat's activity.
+Some data is private: what `read_file` and `memory` return, memories that `memory_autoinject` adds, results of MCP
+servers configured with `labels: [private]`, and everything you say in a private chat. HASHIRU labels it `private`,
+follows it through every message and hire, and enforces one rule in code (R3 from HASHIRU-lite, *private stays
+local*): a cloud or remote model never sees private data as it is.
+
+**Obfuscation** (`private_mode=obfuscate`, the default). Before private text reaches a cloud or remote agent (in a
+message, a reply, a hire prompt or a tool result), HASHIRU finds its sensitive values with
+[Presidio](https://microsoft.github.io/presidio/)'s pattern recognizers (contact details, card, account and ID
+numbers, IPs, URLs, dates, plus API keys and private keys) and a local model (names, places, employers, health and
+money details), and replaces them: identifiers with placeholders such as `⟦PERSON_1⟧`, the same one for the same value
+throughout the chat, and amounts, dates, ages and health details with vague descriptions ("a six-figure amount"), so
+the cloud model can still reason about them. When a reply comes back to you, a local agent or a local tool, the
+placeholders are restored: you see the real names, and only your machine knows them. If the local model cannot
+answer, that text is refused rather than sent. `obfuscate_with=patterns` uses Presidio alone (no model call, but
+names are not found). Obfuscation is best effort: a detail that neither the patterns nor the model recognize goes
+through as written.
+
+**Blocking** (`private_mode=block`). Cloud and remote agents never see private data at all: it is refused to them, a
+cloud CEO cannot use `memory` or `read_file`, and a private chat's CEO moves to a local model (`private_ceo_model`; by
+default `ceo_model` if it is local, else the first local model in `models`). Without a local model for the detector,
+`obfuscate` falls back to this.
+
+In both modes an agent holding private data may not call a tool that sends data off the machine: `get_website`,
+`arxiv_search`, `create_tool`, created tools, and MCP servers unless their config says `egress: false`
+(`private_egress=allow` lifts this). Refusals are `policy` events in the trace and show in the chat's activity.
 
 To make a chat private, click the lock beside the message box, send `x-hashiru-private: 1` with
 `/v1/chat/completions`, set `hashiru_private: true` in an A2A message's metadata, or pass `private: true` to the MCP
-`ask` tool; `private_by_default=true` makes every chat private. A private chat's CEO runs on `private_ceo_model`
-(by default `ceo_model` if it is local, else the first local model in `models`), and the chat stays private from
-then on, also when its conversation closes and the client continues it. The hub remembers private chats only until it
-restarts, so clients should send the flag with every message (the chat page does). A chat also becomes private when a
-local agent shows you private data with `deliver_to_user`, since the chat's history now holds it. A cloud CEO cannot
-use `memory` or `read_file`, and a local agent's reply that carries private data is withheld from it: to work with
-private data, make the chat private.
+`ask` tool; `private_by_default=true` makes every chat private. A chat stays private from then on, also when its
+conversation closes and the client continues it. The hub remembers private chats only until it restarts, so clients
+should send the flag with every message (the chat page does). A chat also becomes private when a local agent shows you
+private data with `deliver_to_user`, since the chat's history now holds it.
 
 What R3 does not cover:
 
@@ -137,6 +151,7 @@ What R3 does not cover:
   agent or the MCP server, including another hub that hires this one, gets answers that private data went into.
 - **Coarse labels.** Once an agent has seen private data, everything it sends afterwards counts as private, except
   the exact replies `done` and `failed` (which reveal one bit).
+- **What obfuscation misses.** Detection is best effort; use `private_mode=block` where nothing may leave.
 
 ## Remote agents over A2A
 

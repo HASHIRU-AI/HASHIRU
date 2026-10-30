@@ -15,9 +15,11 @@ Date: 2026-10-29
 | 5 | UI (decided at Phase 5) | **OpenAI style instead of Gradio:** an OpenAI-compatible API (so Open WebUI, LibreChat and the SDKs work) and a built-in ChatGPT-style page on that API |
 | 6 | Benchmarking (decided after Phase 5, refined 2026-10-29) | **No benchmarking until the feature set is settled.** Phase 7 was docs only; benchmarks come after Phase 8 |
 | 7 | What decides local vs cloud (2026-10-29) | **The task's sensitivity and complexity.** Sensitivity is a hard rule enforced in code; complexity is a judgement the hiring agent declares and the hub's router turns into a model |
-| 8 | Private task that no local model can do | **Ask the user** before any cloud model sees it; redaction is a later option |
+| 8 | Private task that no local model can do | ~~Ask the user~~ Superseded by 11: the cloud sees it obfuscated |
 | 9 | Where sensitivity comes from | **Data labels plus the user's private flag** first; a local detector on new messages after |
 | 10 | Who judges difficulty | **The hiring agent declares it** (`difficulty`); track records correct it over time. No separate classifier |
+| 11 | How private data reaches cloud models (2026-10-29) | **Obfuscated, by default**: placeholders for identifiers, restored on the way back, and local generalizations for values whose meaning matters (both). `private_mode=block` keeps the strict rule |
+| 12 | What finds the sensitive values | **Presidio**'s pattern recognizers (on a blank spaCy pipeline: no NER model download) plus secret patterns, and a local model for names, places, health and money details |
 
 ## 1. Requirements restatement
 
@@ -338,6 +340,33 @@ MCP servers configured with `labels: [private]`) and propagates labels through m
     with `tool_creation` on (created tools run unsandboxed: Phase 9's container backend), an Ollama on another
     machine, stateful `egress: false` servers, and API-key holders counting as the user. 11 mutations of the new
     checks are each caught by a test.
+- **8a′. Obfuscation instead of refusal (decisions 11–12).** — DONE 2026-10-29 on `feature/obfuscation`
+  - [x] `obfuscation/`: `detect.py` (Presidio's predefined pattern recognizers on a blank spaCy pipeline, a `SECRET`
+    recognizer for API keys, tokens and private keys, and a local-model pass that marks names, places, employers, IDs,
+    contact details, amounts, dates, ages and health details and proposes generalizations; cached; any failure
+    returns None so the caller refuses), `vault.py` (per-session placeholders `⟦PERSON_1⟧`, consistent across the
+    chat, restored even when a model rewrites the brackets; generalizations are one-way).
+  - [x] `privacy.cross` is the one place text crosses: private text to a cloud or remote party is masked (or refused
+    in block mode or when detection fails); text from one to a local agent or the user is restored and becomes
+    private. Tool results to a cloud caller are masked; a cloud caller's placeholders are restored for local tools but
+    never for tools that leave the machine; a cloud hire's prompt is masked and a local hire's restored; recall into a
+    cloud CEO labels the user so the message is masked. In obfuscate mode a private chat keeps its CEO.
+  - [x] Settings `private_mode` (obfuscate, block), `obfuscate_with` (patterns+model, patterns), `obfuscate_model`;
+    without a local model for the detector the hub blocks and says so. The page shows "private, obfuscated".
+  - [x] Tests: `test_obfuscation.py` (19) and a browser test; the 8a tests now pin `private_mode=block`. Tests default
+    to `obfuscate_with=patterns`, because a test hub without a fake LLM in obfuscate mode reached the real Ollama
+    (no model ran: it asked for one named `tiny`). 15 mutations of the new checks are caught (one survived at first;
+    its test was tightened). The vault and detector were written before their tests were seen failing, hence the
+    mutation run. Presidio adds 86 MB to the environment.
+  - [x] Real run (local only: the "cloud" CEO was `openai/qwen3.5:4b` served by the local Ollama's OpenAI-compatible
+    endpoint, checked to route to localhost): the CEO received "a thank-you note to ⟦PERSON_1⟧ (⟦EMAIL_1⟧) for my
+    ⟦MONEY_1⟧ grant application", a local worker got the real values, its reply went back masked, and the user saw
+    the restored note (213 s, $0).
+  - Follow-ups (the independent review was stopped early, at the user's request): Presidio's URL recognizer uses
+    `tldextract`, which fetched the public suffix list from publicsuffix.org on first use (no chat text is sent; pin
+    it to the bundled snapshot); in the real run the 4B detector gave the amount a placeholder instead of a
+    generalization; the activity's hire count includes a failed hire; the `obfuscated` label spreads to local agents
+    in the agents panel. Rerun the review before the next release.
 - **8b. Declarative hiring and the router (3–4 days).**
   - [ ] `hire_agent(..., difficulty="easy|medium|hard")`; `model` becomes optional. Sensitivity is inherited
     from the hirer's labels, never chosen by the model.
