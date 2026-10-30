@@ -1,7 +1,8 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
 Status: Phases 0–5, 7, 8a, 8a′, 8b, 8c and 8c′ done on `develop`; 8c″ (plan graphs) done on `feature/plan-graph`;
-8d–8e next; Phase 6 waits for HASHIRU-lite (after 2026-12-03).
+8b′ (model recon) done on `feature/model-recon` (branched from it); 8d–8e next; Phase 6 waits for HASHIRU-lite (after
+2026-12-03).
 Date: 2026-10-29
 
 ## 0. Decisions so far
@@ -22,6 +23,7 @@ Date: 2026-10-29
 | 12 | What finds the sensitive values | **Presidio**'s pattern recognizers (on a blank spaCy pipeline: no NER model download) plus secret patterns, and a local model for names, places, health and money details |
 | 13 | Plan and act modes (2026-10-29) | **Plan mode is enforced in code**, not only prompted (Claude Code's plan mode was found to be mostly a prompt): the CEO is offered, and may call, only tools that declare MCP's `readOnlyHint` (plus memory search) and `propose_plan`. **The plan's numbers come from the hub** (router, ledger, Ollama sizes), and **approving the plan approves its hires** |
 | 14 | How an approved plan runs (2026-10-30) | **Compiled into a LangGraph graph** (user's choice): the plan's steps become hire, step, fire and answer nodes and the hub runs them as the CEO, through the CEO's own calls. Decision 1 still holds for the agents' own loops; LangGraph runs only approved plans, pinned exactly, with LangSmith tracing held off |
+| 15 | Where the model list comes from (2026-10-30) | **What this machine can use, classified from LiteLLM's map** (`hashiru models`, `MODELS=auto`): Ollama's pulled models that call tools plus cloud models whose provider key is set, tiered by output price or size; the user's `models` still wins. The network only on `--refresh` and `--check` |
 
 ## 1. Requirements restatement
 
@@ -387,6 +389,31 @@ MCP servers configured with `labels: [private]`) and propagates labels through m
     one must fit and load) and gets the message again, up to `max_escalations` (2) times; an `escalate` event and an
     activity line record it.
   - [x] Tests: `test_router.py` (8). 10 mutations of the new checks and the follow-up fixes are each caught.
+- **8b′. Model recon (1 day).** — DONE 2026-10-30 on `feature/model-recon`; plan in `plan/2026-10-30-model-recon.md`
+  - [x] `catalog.py` classifies: a cloud model counts when LiteLLM's map lists it as a chat model that calls tools,
+    priced above $0, not retired, its provider keyed, and not a special-purpose or floating name; a dated snapshot
+    gives way to its alias. A local model counts when Ollama reports `tools` (and it is not a `-cloud` tag or
+    embedding-only). Tiers: output $/M under 2 easy, under 10 medium; local params under 8B easy, under 30B medium.
+    Picks per provider and tier (`auto_per_tier`, under `auto_max_usd`): reasoning first, cheapest for easy and
+    medium, dearest for hard. Routing: own tier, then up, then down.
+  - [x] `recon.py`: `refresh` (LiteLLM's public map, validated: costs must be numbers >= 0, at least 100 models, else
+    the old file stays), `check` (each keyed provider's model list; an empty list means the key failed and drops that
+    provider's picks; dated ids match aliases), `survey`, `settle` (`MODELS=auto` → `models` and `routing` before the
+    Hub; `routing` with `auto` is a config error). The Hub prices its own models from a refreshed map.
+    `hashiru models [--refresh] [--check] [--all]`; `serve` prints its models.
+  - [x] Found while building: LiteLLM's `validate_environment` is not always an environment lookup. For
+    `github_copilot` it starts GitHub's device login and polls (it hung `hashiru models`), and for providers whose
+    keys it does not know (bedrock_converse, vertex_ai-language-models, hyperbolic, ...) it answers yes. Keys are now
+    asked only for 21 plain API-key providers (`recon.KEYED`, each checked: no socket, a millisecond); a test surveys
+    the real bundled map with sockets blocked. Registering the whole refreshed map with LiteLLM took 0.6 s and logged
+    a warning per entry, so the Hub registers only the models it uses.
+  - [x] Tests: `test_catalog.py` (24). 34 mutations of the rules, the cache checks, the CLI and the settling are each
+    caught.
+  - Follow-ups:
+    - [ ] A refresh button on the chat page and `/v1/hashiru/models`.
+    - [ ] Track records (8e) reorder the auto routing by how models actually did.
+    - [ ] `ceo_model=auto`, once the picks have been seen in real runs.
+    - [ ] One real `--refresh` and `--check` with the user's keys (not run: needs their keys and their say-so).
 - **8c. Approvals (2–3 days).** — DONE 2026-10-29 on `feature/approvals`
   - [x] `approvals.py`: big spends of dollars (api) and of memory (gpu) wait for the user. A cloud or remote hire
     reserving `approve_hire_usd` ($0.25) or more; a hire or an escalation loading a local model of `approve_hire_mb`

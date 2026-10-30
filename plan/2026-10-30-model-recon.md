@@ -1,4 +1,4 @@
-# Model Recon (Phase 8b′) Implementation Plan
+# Model Recon (Phase 8b′) Implementation Plan — DONE 2026-10-30 on `feature/model-recon`
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -58,6 +58,10 @@ the freshly available models, and then check with the api keys set in .env to se
 6. **The refreshed map** is validated before it is cached: a JSON object of objects; an entry with a non-finite or
    negative cost is dropped; fewer than 100 valid entries refuses the refresh and keeps the old cache.
 7. `ceo_model` stays explicit (no `auto`); `hashiru models` prints a hint when the CEO model lacks tools.
+8. **Changed while building:** keys are asked of LiteLLM only for `recon.KEYED`, 21 plain API-key providers.
+   `validate_environment("github_copilot/...")` starts GitHub's device login and polls (it hung the first real
+   `hashiru models`), and for providers whose keys LiteLLM does not know it answers yes. And the Hub registers only
+   the models it uses from a refreshed map: registering all of it took 0.6 s and logged a warning per entry.
 
 ## Review Focus
 
@@ -86,7 +90,7 @@ the freshly available models, and then check with the api keys set in .env to se
 - `picks(cards: Sequence[Card], per_tier: int, max_usd: float, listed: Mapping[str, Collection[str]]) -> list[Card]`
 - `routing(cards: Sequence[Card]) -> tuple[tuple[str, tuple[str, ...]], ...]`
 
-- [ ] **Step 1: Write the failing tests** (a synthetic map; `keyed` = provider in {"openai", "anthropic"}):
+- [x] **Step 1: Write the failing tests** (a synthetic map; `keyed` = provider in {"openai", "anthropic"}):
   `test_cloud_cards_keep_only_usable_chat_models` (drops embedding, no tools, $0, deprecated, unkeyed provider,
   `ft:`, audio/search/`-latest`/`-exp`, a snapshot whose alias is usable; keeps a snapshot without alias),
   `test_tiers_follow_price_and_size` (out $1.6 easy, $8 medium, $15 hard; 4B easy, 12B medium, 70B hard, unknown easy),
@@ -94,7 +98,7 @@ the freshly available models, and then check with the api keys set in .env to se
   (reasoning first; easy/medium cheapest, hard dearest under `max_usd`; ties by name descending; all local kept),
   `test_a_failed_check_drops_that_provider_only`, `test_listed_names_match_without_prefix_or_date`,
   `test_routing_moves_up_then_down` (exact lists for a small set).
-- [ ] **Step 2: See them fail.**  **Step 3: Implement.**  **Step 4: Pass.**  **Step 5: Commit** (with Task 2).
+- [x] **Step 2: See them fail.**  **Step 3: Implement.**  **Step 4: Pass.**  **Step 5: Commit** (with Task 2).
 
 ### Task 2: Recon I/O and `models=auto` (`recon.py`, config, hub)
 
@@ -118,13 +122,13 @@ the freshly available models, and then check with the api keys set in .env to se
 - `Hub.__init__` calls `use_cached_map(settings.model_catalog)` before `prices_file`, and refuses unsettled
   `models=auto` with "models=auto must be settled first (hashiru.recon.settle)".
 
-- [ ] **Step 1: Write the failing tests:** `test_refresh_caches_a_valid_map` (MockTransport; entries with bad
+- [x] **Step 1: Write the failing tests:** `test_refresh_caches_a_valid_map` (MockTransport; entries with bad
   prices dropped), `test_a_bad_download_keeps_the_old_cache`, `test_check_saves_each_providers_list`,
   `test_the_hub_prices_models_from_the_cached_map`, `test_settle_turns_auto_into_models_and_routing`,
   `test_settle_without_ollama_uses_cloud_picks`, `test_settle_with_nothing_usable_says_why`,
   `test_settle_opens_no_socket`, `test_auto_with_routing_is_a_config_error`, `test_an_unsettled_auto_hub_says_so`.
-- [ ] **Step 2: See them fail.**  **Step 3: Implement.**  **Step 4: Pass.**
-- [ ] **Step 5: Commit** `feat(models): model recon, refresh, key checks and models=auto`.
+- [x] **Step 2: See them fail.**  **Step 3: Implement.**  **Step 4: Pass.**
+- [x] **Step 5: Commit** `feat(models): model recon, refresh, key checks and models=auto`.
 
 ### Task 3: `hashiru models` and the CLI
 
@@ -135,11 +139,11 @@ the keyed providers (and checks), and a table `Tier | Model | Where | Tools | Re
 Note`, picks marked `*` (only picks unless `--all`); `ask`, `chat` and `serve` call `recon.settle` first; `serve`
 prints the auto picks per tier.
 
-- [ ] **Step 1: Write the failing tests:** `test_models_command_lists_picks_and_counts_the_rest`,
+- [x] **Step 1: Write the failing tests:** `test_models_command_lists_picks_and_counts_the_rest`,
   `test_models_command_refreshes_and_checks` (fakes), `test_serve_settles_auto_first`.
-- [ ] **Step 2: See them fail.**  **Step 3: Implement.**  **Step 4: Full suite, ruff, mypy; mutation checks** (filter
+- [x] **Step 2: See them fail.**  **Step 3: Implement.**  **Step 4: Full suite, ruff, mypy; mutation checks** (filter
   rules, tier thresholds, pick order, check filtering, cache validation, no-network settle, routing order).
-- [ ] **Step 5: Commit** `feat(cli): hashiru models`.
+- [x] **Step 5: Commit** `feat(cli): hashiru models`.
 
 ### Task 4: Docs
 
