@@ -38,7 +38,8 @@ class FakeOllama:
 
 def make_settings(tmp_path: Any, **overrides: Any) -> Settings:
     base: dict[str, Any] = {"ceo_model": "gpt-4.1-mini", "models": ("gpt-4.1-mini", "ollama_chat/tiny"),
-                            "data_dir": str(tmp_path / "data"), "trace_dir": str(tmp_path / "traces")}
+                            "data_dir": str(tmp_path / "data"), "trace_dir": str(tmp_path / "traces"),
+                            "obfuscate_with": "patterns"}  # no detector model calls: a test opts in with a fake LLM
     return Settings(**(base | overrides))
 
 

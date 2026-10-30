@@ -30,6 +30,7 @@ from hashiru.interop import Conversations, mount
 from hashiru.ledger import AgentRecord, free_mb
 from hashiru.llm import LLM, Wallet, check_priced, is_local, register_prices
 from hashiru.memory import MemoryStore, open_memory, words
+from hashiru.obfuscation import Detector, Obfuscator
 from hashiru.ollama import Ollama, tag
 from hashiru.peers import PEER_PREFIX, BoundedTaskStore, PeerExecutor, Price, cost_extension, model_price
 from hashiru.privacy import EGRESS, RULE, holds_private, may_hold, refuse
@@ -75,6 +76,7 @@ class Hub:
         self.memory: MemoryStore | None = (  # shared by all sessions when persistent
             open_memory(settings.memory_db, Path(settings.data_dir)) if settings.memory_db else None)
         self.app = self.mcp.streamable_http_app(host=settings.host)
+        self._obfuscator = self._make_obfuscator()
         self.conversations = Conversations(self)
         self.public_mcp = mount(self)
         self.asgi = AuthGate(self.app, self)
@@ -221,17 +223,22 @@ class Hub:
         """`text` plus the saved memories that best match it, when memory_autoinject is on (v1's behavior).
 
         Clients call this on the user's own words, before adding chat history. The CEO then holds private data,
-        so its label set records that, and a 'recall' event records what was added. A cloud CEO gets nothing (R3).
+        so its label set records that, and a 'recall' event records what was added. A cloud CEO gets them only
+        obfuscated: the user is then private, so the message is masked on its way to the CEO; in block mode it gets
+        nothing (R3).
         """
         if not self.settings.memory_autoinject or not words(text):  # no words: nothing to match on
             return text
         if not (hits := session.memory.search(text, limit)):
             return text
-        if not may_hold(session.ledger.agents["ceo"].tier):
+        labels = sorted({PRIVATE} | {lbl for h in hits for lbl in h["labels"]})
+        local_ceo = may_hold(session.ledger.agents["ceo"].tier)
+        if not local_ceo and self.obfuscating() is None:
             refuse(session, "ceo", "recall", "saved memories are private and the CEO runs on a cloud model")
             return text
         session.trace.emit("recall", task=session.id, agent="ceo", query=text[:200], results=hits)
-        session.trace.receive("ceo", session.id, sorted({PRIVATE} | {lbl for h in hits for lbl in h["labels"]}))
+        # A local CEO holds them; for a cloud one the user's message carries them, so it is masked on the way.
+        session.trace.receive("ceo" if local_ceo else USER, session.id, labels)
         lines = "\n".join(f"- {h['key']}: {h['text']}" for h in hits)
         return f"{text}\n\nSaved memories that may be relevant:\n{lines}"
 
@@ -257,11 +264,36 @@ class Hub:
         need, free = (await self.ollama.sizes()).get(tag(model), 0), free_mb()
         return f"{model} needs {need} MB of memory and only {free} MB is free" if need > free else None
 
+    def _make_obfuscator(self) -> Obfuscator | None:
+        s = self.settings
+        if s.private_mode != "obfuscate":
+            return None
+        if s.obfuscate_with == "patterns":
+            return Obfuscator(Detector(None, ""))
+        model = s.obfuscate_model or self.private_ceo_model()
+        if model is None:
+            log.warning("private_mode is obfuscate but no local model can find names for it: private data is "
+                        "blocked from cloud models instead (add a local model, or set obfuscate_with=patterns)")
+            return None
+        return Obfuscator(Detector(self.llm, model))
+
+    def obfuscating(self) -> Obfuscator | None:
+        """How private data reaches cloud models: through this obfuscator, or (None) not at all."""
+        return self._obfuscator
+
     async def make_private(self, session: Session) -> str | None:
-        """Make the rest of this session private: everything the user says carries `private`, so the CEO must run on
-        private_ceo_model and moves to it (also after a delivery made the user private while the CEO was in the
-        cloud). Returns why that is impossible, or None. Calling it again changes nothing."""
+        """Make the rest of this session private: everything the user says carries `private`. When obfuscating, the
+        CEO stays where it is and sees it obfuscated; otherwise it must run on private_ceo_model and moves to it
+        (also after a delivery made the user private while the CEO was in the cloud). Returns why that is
+        impossible, or None. Calling it again changes nothing."""
         ceo, target = session.ledger.agents["ceo"], self.private_ceo_model()
+        if self.obfuscating() is not None:
+            if not holds_private(session, USER):
+                session.trace.receive(USER, session.id, [PRIVATE])
+                session.trace.emit("policy", task=session.id, agent="ceo", rule=RULE, action="private",
+                                   model=ceo.model, tier=ceo.tier, why="the chat is private from here on; cloud "
+                                   "models see it obfuscated")
+            return None
         if holds_private(session, USER) and ceo.model == target:
             return None
         if target is None:

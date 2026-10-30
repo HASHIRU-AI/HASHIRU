@@ -92,23 +92,29 @@
   const FINE = "Agents can make mistakes, and cloud models spend real money. Check the agents panel.";
   const isPrivate = () => { const c = chat(); return c ? Boolean(c.private) : state.draftPrivate; };
 
-  // The lock, the header and the fine print. A chat that went private stays private (the hub keeps it on local
-  // models), so its lock cannot be turned off.
+  // The lock, the header and the fine print. A chat that went private stays private (the hub keeps it so), so its
+  // lock cannot be turned off. When the hub obfuscates, cloud models see a private chat with names and details hidden;
+  // when it blocks, only local models see it.
   function renderPrivacy() {
     const on = isPrivate();
     const c = chat();
     const lock = $("private");
-    const noLocal = Boolean(state.info) && !state.info.private_ceo_model;
+    const info = state.info;
+    const obfuscating = Boolean(info && info.private_mode === "obfuscate");
+    const noLocal = Boolean(info) && !obfuscating && !info.private_ceo_model;
     lock.setAttribute("aria-pressed", String(on));
     lock.disabled = state.busy || Boolean(c && c.private) || noLocal;
     lock.title = noLocal ? "This hub has no local model, so its chats cannot be private"
-      : on ? "Private chat: only local models see it" : "Make this chat private: local models only";
-    $("fine").textContent = on ? "Private chat: only local models on this machine see it." : FINE;
-    const info = state.info;
+      : obfuscating ? (on ? "Private chat: cloud models see it only obfuscated"
+        : "Make this chat private: hide names and details from cloud models")
+        : (on ? "Private chat: only local models see it" : "Make this chat private: local models only");
+    $("fine").textContent = !on ? FINE : obfuscating
+      ? "Private chat: names and other details are hidden from cloud models."
+      : "Private chat: only local models on this machine see it.";
     if (!info) return;
-    const model = (on && info.private_ceo_model) || info.ceo_model;
+    const model = (on && !obfuscating && info.private_ceo_model) || info.ceo_model;
     $("model-sub").textContent = `CEO ${model.replace(/^ollama(_chat)?\//, "")} · ` +
-      (on ? "private, local only" : `${usd(info.budget_usd)} per chat`);
+      (!on ? `${usd(info.budget_usd)} per chat` : obfuscating ? "private, obfuscated" : "private, local only");
   }
 
   function togglePrivate() {

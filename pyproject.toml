@@ -22,6 +22,7 @@ dependencies = [
     "psutil",
     "starlette",
     "uvicorn",
+    "presidio-analyzer==2.2.366",
 ]
 
 [project.scripts]
