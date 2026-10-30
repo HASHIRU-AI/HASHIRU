@@ -1,6 +1,7 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5 and 7 done on `develop`; Phase 6 waits for HASHIRU-lite (after 2026-12-03).
+Status: Phases 0–5 and 7 done on `develop`; Phase 8 (routing by sensitivity and complexity) planned; Phase 6 waits
+for HASHIRU-lite (after 2026-12-03).
 Date: 2026-10-29
 
 ## 0. Decisions so far
@@ -12,7 +13,11 @@ Date: 2026-10-29
 | 3 | Tool-creation sandbox | **`uv` subprocess now**, optional container backend later |
 | 4 | Paper continuity | **This is v2.** No need to reproduce v1 HASHIRUBench numbers; v1 stays reproducible at a tag |
 | 5 | UI (decided at Phase 5) | **OpenAI style instead of Gradio:** an OpenAI-compatible API (so Open WebUI, LibreChat and the SDKs work) and a built-in ChatGPT-style page on that API |
-| 6 | Benchmarking (decided after Phase 5) | **No benchmark runs for v2.** Phase 7 is docs only |
+| 6 | Benchmarking (decided after Phase 5, refined 2026-10-29) | **No benchmarking until the feature set is settled.** Phase 7 was docs only; benchmarks come after Phase 8 |
+| 7 | What decides local vs cloud (2026-10-29) | **The task's sensitivity and complexity.** Sensitivity is a hard rule enforced in code; complexity is a judgement the hiring agent declares and the hub's router turns into a model |
+| 8 | Private task that no local model can do | **Ask the user** before any cloud model sees it; redaction is a later option |
+| 9 | Where sensitivity comes from | **Data labels plus the user's private flag** first; a local detector on new messages after |
+| 10 | Who judges difficulty | **The hiring agent declares it** (`difficulty`); track records correct it over time. No separate classifier |
 
 ## 1. Requirements restatement
 
@@ -261,7 +266,7 @@ Known limitations: one API key is one trust domain (key holders can reach each o
 
 - [x] `docs/architecture.md`: components, protocols, one request end to end (Mermaid), budget arithmetic with a
   worked example, trust boundaries. The README's v1 paper figure is replaced by a small v2 diagram.
-- [x] `CITATION.cff` for v2 (`2.0.0.dev0`, MIT), with the arXiv paper as `preferred-citation`; checked against
+- [x] `CITATION.cff` for v2 (`2.0.0.dev0`), with the arXiv paper as `preferred-citation`; checked against
   the CFF 1.2.0 schema.
 - [x] Examples: `examples/clock_mcp_server.py` (an MCP server; `ToolError` for failures the agent should read),
   `examples/calc_a2a_agent.py` (a priced A2A agent: exact rational arithmetic that restates the expression it
@@ -286,6 +291,65 @@ Known limitations: one API key is one trust domain (key holders can reach each o
   every message even when it spends nothing (e.g. on local models). A "maximum per message" param, charged at the
   reported cost, would fit hubs better.
 
+### Phase 8: Routing by sensitivity and complexity (14–17 days)
+
+The goal: every hire runs on the right model for **what it may see** and **how hard its job is**, within the
+hirer's pool and free memory. Gateways route single calls by privacy or difficulty; HASHIRU routes a delegation
+tree, and its privacy routing follows where data has flowed. Decisions 7–10 above.
+
+**The rule (enforced in code, not prompts):** private data never enters a cloud model's context or leaves the
+machine unless the user approves. HASHIRU already labels data `private` (from `read_file`, `memory`, recall, and
+MCP servers configured with `labels: [private]`) and propagates labels through messages; Phase 8 enforces them.
+
+- **8a. Enforce sensitivity (4–5 days).**
+  - [ ] One check at the hub's chokepoints: a message, reply, hire prompt or delivery that carries `private` is
+    refused when its receiver is a cloud agent or a remote A2A peer (the sender gets an error saying why), and a
+    tool result labeled `private` is withheld from a cloud caller. Memory recall is not injected into a cloud CEO.
+  - [ ] External sinks: an agent holding `private` may not call tools that send data off the machine
+    (`get_website`, `arxiv_search`, MCP servers reached by `url`, created tools), unless the setting
+    `private_egress` says otherwise. Local stdio MCP servers stay allowed.
+  - [ ] The front door: the user can mark a chat private (chat page toggle; `x-hashiru-private: 1` on `/v1`;
+    request metadata on A2A; an `ask` argument on MCP). A private turn runs on a local CEO (`private_ceo_model`,
+    default the largest local model in `models`), and a conversation stays private from its first private turn
+    on, because its history now holds private text.
+  - [ ] The trace records every refusal (`policy` events) so leaks can be audited, and later benchmarked as zero.
+  - [ ] Write the check as a rule table compatible with lite's R1–R5 naming, so Phase 6 extends it instead of
+    forking it.
+- **8b. Declarative hiring and the router (3–4 days).**
+  - [ ] `hire_agent(..., difficulty="easy|medium|hard")`; `model` becomes optional. Sensitivity is inherited
+    from the hirer's labels, never chosen by the model.
+  - [ ] `router.py`: a config table maps each difficulty to an ordered list of models; the router takes the first
+    one that the sensitivity rule, `allow_*` modes, the hirer's pool (estimated price) and free memory all allow.
+    An explicit `model` is checked against the same constraints. The routing decision is traced.
+  - [ ] Escalation: a worker that fails or answers empty is re-hired one step up its list, within the
+    sensitivity bound (a private task moves to a bigger local model, never to the cloud) and the same pool.
+- **8c. Approvals (2–3 days).**
+  - [ ] When a private task has no local model left, or a hire or a turn would exceed thresholds
+    (`approve_hire_usd`, `approve_turn_usd`), the turn stops and asks. In-band first, so every interface works: the
+    reply says what needs approval, and the user's next message `approve` (or `deny`) grants a one-time
+    permission. The chat page shows buttons; A2A's `input-required` state and MCP elicitation can follow.
+- **8d. A local detector for sensitive messages (2 days).**
+  - [ ] Patterns for personal data and secrets (emails, phone numbers, card numbers, government IDs, API keys,
+    private keys) mark a message private before any model sees it. Optional: a small local model as a second
+    check (`private_detector: patterns|local_model`). The user can override a false positive.
+- **8e. Track records (3 days).**
+  - [ ] Per model and peer, from traces and persistent across sessions: hires, failures, empty answers,
+    escalations, cost and time per task. The router reorders a difficulty's list by track record; the CEO sees
+    the numbers next to price and memory.
+- Tests with fake LLMs for every rule: a cloud manager cannot read a private file; a private worker's reply never
+  reaches a cloud hirer; a private chat gets a local CEO and stays private; escalation stops at the sensitivity
+  bound; approvals grant once; the detector marks and the user overrides. One real run, local models only.
+- After Phase 8, the benchmark (decision 6): leakage (should be zero by construction, checked with adversarial
+  tasks), cost and quality against all-cloud, all-local, model-picks-model, the rule router and the track-record
+  router, at the same dollars.
+
+### Phase 9: Upkeep (9–12 days, alongside or after Phase 8)
+
+- [ ] MCP: run the public `ask` as a Task (Tasks extension); test clients speaking the 2026-07-28 spec.
+- [ ] OpenTelemetry GenAI spans exported from the trace (the measurement layer for the benchmark).
+- [ ] Durable sessions: conversations and hires survive a restart (SQLite).
+- [ ] A container backend for created tools before any public demo with tool creation.
+
 ## 6. Risks
 
 | Level | Risk | Mitigation |
@@ -298,6 +362,11 @@ Known limitations: one API key is one trust domain (key holders can reach each o
 | MED | MCP/A2A SDK churn | Pin; keep protocol calls in `runtime.py` and `a2a_host.py` only |
 | MED | Python 3.13 on Hugging Face Spaces | Verify in Phase 1; fall back to Docker Space |
 | LOW | Diverging from lite while its Phase 2 is still in progress | Port the policy layer only after 2026-12-03 |
+| HIGH | Labels are coarse: one private input marks an agent private for the rest of its task, which pushes work to local models and lowers quality | Replies of exactly `done`/`failed` stay clean (lite's rule 4); hire narrow workers for private reads; measure how often agents become private |
+| HIGH | The detector misses sensitive text (patterns cannot tell "my diagnosis is ...") | The user's private flag is the reliable path; the detector is a safety net, documented as such |
+| MED | Local CEOs plan worse than cloud ones, so private requests get weaker answers | `private_ceo_model` defaults to the largest local model; approvals let the user send a hard task to the cloud |
+| MED | Several local agents at once exhaust memory | The router already checks free memory; prefer models that are already loaded |
+| MED | Phase 8's rule table and lite's R1–R5 diverge | Same label names and rule numbering; Phase 6 extends the table |
 
 ## 7. Estimate
 
@@ -311,6 +380,8 @@ Known limitations: one API key is one trust domain (key holders can reach each o
 | 5 UI + interop | 3 days |
 | 6 Policy layer (optional) | 2–3 days |
 | 7 Docs (no benchmarking) | 1–2 days |
-| **Total** | **~3–4 weeks** |
+| 8 Routing by sensitivity and complexity | 14–17 days |
+| 9 Upkeep | 9–12 days |
+| **Total** | **~8–10 weeks** |
 
 Phases 2, 3 and 4 depend only on Phase 1 and can run in parallel.
