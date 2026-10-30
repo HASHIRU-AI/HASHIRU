@@ -21,11 +21,14 @@ from mcp.shared.exceptions import MCPError
 
 from hashiru.ledger import AgentRecord
 from hashiru.peers import DEADLINE_KEY, send, serve_request
+from hashiru.privacy import MISSED, cross, may_hold, refuse, tool_refusal, where
+from hashiru.router import escalate
 from hashiru.session import USER, Session
-from hashiru.trace import SOURCES
+from hashiru.trace import OBFUSCATED, PRIVATE, SOURCES
 
 if TYPE_CHECKING:
     from hashiru.hub import Hub
+    from hashiru.obfuscation import Obfuscator
 
 __all__ = ["CEO_PROMPT", "DEADLINE", "Executor", "ask_agent", "run_agent", "system_prompt"]
 
@@ -37,7 +40,8 @@ RULES = "\n".join([
     "cover the hire. If anyone may have hired since your last check, check again.",
     "2. Your own spending plus what you reserved for agents you hired must never exceed your pool.",
     "3. Only check your own pool.",
-    "4. Prefer local models: they cost no money, only memory. Use cloud models when the task needs them.",
+    "4. Hire by difficulty (easy, medium or hard): the hub picks a model, local ones first where they can do the "
+    "job. Name a model only when the job needs that one.",
     "5. Fire agents once you no longer need them. Firing a local agent frees its memory.",
 ])
 
@@ -115,41 +119,70 @@ async def a2a_send(hub: "Hub", session: Session, me: str, name: str, text: str) 
     return reply
 
 
-async def ask_agent(hub: "Hub", session: Session, me: str, name: str, text: str) -> str:
-    """Message an agent `me` hired over A2A, tracing both directions and moving labels (rules 2-4)."""
+async def ask_agent(hub: "Hub", session: Session, me: str, name: str, text: str, escalations: int = 0) -> str:
+    """Message an agent `me` hired over A2A, tracing both directions and moving labels (rules 2-4). Private data
+    reaches a cloud or remote agent only obfuscated, and what comes back from one is restored (R3, privacy.cross)."""
     target = session.ledger.get(name)
     if target is None or not session.may_ask(me, name):
         return f"error: {name!r} is not a live agent you hired"
     if not text.strip():
         return "error: the message is empty"
-    trace, task = session.trace, session.id
+    trace, task, asked = session.trace, session.id, text
     me_rec = session.ledger.get(me)
     my_tier = me_rec.tier if me_rec else USER
+    obfuscator = hub.obfuscating()
     sent = trace.outgoing(me, task, text)
+    text, sent, refused = await cross(session, obfuscator, text, sent, my_tier, target.tier, me, "message",
+                                      f"{name} {where(target.tier)}, and this message carries private data")
+    if refused:
+        return "error: " + refused
     trace.emit("msg", task=task, agent=me, tier=my_tier, to=name, to_tier=target.tier,
                text=text, labels=sent, reply=False)
     trace.receive(name, task, sent)
     try:
         reply = await a2a_send(hub, session, me, name, text)
     except (A2AError, httpx.HTTPError, TimeoutError) as exc:
-        return f"error: {name} failed: {exc}"
+        return await retry(hub, session, me, name, asked, escalations, f"error: {name} failed: {exc}")
     back = trace.outgoing(name, task, reply)
+    reply, back, refused = await cross(session, obfuscator, reply, back, target.tier, my_tier, me, "reply",
+                                       f"{name}'s reply carries private data and {me} {where(my_tier)}")
+    if refused:
+        return "error: " + refused
     trace.emit("msg", task=task, agent=name, tier=target.tier, to=me, to_tier=my_tier,
                text=reply, labels=back, reply=True)
     trace.receive(me, task, back)
+    return await retry(hub, session, me, name, asked, escalations, reply)
+
+
+async def retry(hub: "Hub", session: Session, me: str, name: str, text: str, escalations: int, reply: str) -> str:
+    """A worker hired by difficulty that failed moves up its list of models and gets the message again, at most
+    max_escalations times; otherwise the reply stands."""
+    target = session.ledger.agents[name]
+    failed = not reply.strip() or reply.startswith(("failed:", "error: "))
+    if failed and target.route and escalations < hub.settings.max_escalations \
+            and await escalate(hub, session, target, reply):
+        return await ask_agent(hub, session, me, name, text, escalations + 1)
     return reply
 
 
 async def call_tool(session: Session, mcp: Any, me: str, name: str, args: dict[str, Any],
                     turn: int | None = None, sources: Mapping[str, list[str]] = SOURCES,
-                    created: Collection[str] = ()) -> dict[str, Any]:
-    """Run one MCP tool for agent `me`, tracing it and applying label rules 1-3.
+                    created: Collection[str] = (), egress: Collection[str] = (),
+                    obfuscator: "Obfuscator | None" = None) -> dict[str, Any]:
+    """Run one MCP tool for agent `me`, tracing it, applying label rules 1-3 and R3 (private stays local).
 
     `turn` is the seq of the LLM turn that issued the call: calls from one turn run concurrently,
     so completion order alone cannot say what the LLM had seen when it decided. Results of `created` (agent-made)
-    tools carry their labels even when they are errors, because the tool wrote the error text.
+    tools carry their labels even when they are errors, because the tool wrote the error text. `egress` names the
+    tools an agent holding private data may not call. With an `obfuscator`, a cloud agent's placeholders are restored
+    for local tools (not for tools that leave the machine) and private results reach it obfuscated.
     """
-    trace, task = session.trace, session.id
+    trace, task, rec = session.trace, session.id, session.ledger.agents[me]
+    if refused := tool_refusal(session, rec, name, sources, egress, obfuscator is not None):
+        return {"error": refused}
+    restored = False
+    if obfuscator is not None and not may_hold(rec.tier) and name not in egress and name != "hire_agent":
+        args, restored = obfuscator.unmask_value(session, args)  # hire_agent restores by the hire's tier (Tools)
     arg_labels = trace.outgoing(me, task, json.dumps(args))
     try:
         result = unpack(await mcp.call_tool(name, args))
@@ -158,11 +191,23 @@ async def call_tool(session: Session, mcp: Any, me: str, name: str, args: dict[s
     extra = result.pop("_labels", [])  # labels a tool attaches to this particular result (e.g. memory)
     got = sources.get(name, []) if "error" not in result or name in created else []
     got = sorted(set(got) | {str(label) for label in extra}) if isinstance(extra, list) else got
-    trace.emit("tool", task=task, agent=me, tier=session.ledger.agents[me].tier, name=name, turn=turn,
+    if PRIVATE in got and not may_hold(rec.tier):  # a cloud agent gets a private result obfuscated, or not at all
+        masked = None if obfuscator is None else await obfuscator.mask_value(session, result)
+        if masked is None:
+            why = f"{name}'s result carries private data and {me} {where(rec.tier)}"
+            result, got = {"error": refuse(session, me, "withheld", f"{why}, {MISSED}" if obfuscator else why)}, []
+        else:
+            result, got = masked, sorted((set(got) - {PRIVATE}) | {OBFUSCATED})
+    trace.emit("tool", task=task, agent=me, tier=rec.tier, name=name, turn=turn,
                args=args, arg_labels=arg_labels, result=result, labels=got)
     trace.receive(me, task, got)
-    if name == "hire_agent" and "hired" in result:
-        trace.receive(result["hired"], task, arg_labels)  # rule 2: the hire prompt carries the hirer's labels
+    if name == "hire_agent" and "hired" in result:  # rule 2: the hire prompt carries the hirer's labels
+        local = may_hold(str(result.get("tier", "")))  # a cloud hire got its prompt obfuscated (Tools.hire_agent)
+        trace.receive(result["hired"], task, [label for label in arg_labels if label != OBFUSCATED] if local else
+                      [label if label != PRIVATE else OBFUSCATED for label in arg_labels])
+    if name == "deliver_to_user" and "error" not in result:  # the chat's history now holds it
+        delivered = {label for label in arg_labels if label != OBFUSCATED} | ({PRIVATE} if restored else set())
+        trace.receive(USER, task, sorted(delivered))  # private, if it carried private data or restored values
     return result
 
 
@@ -179,7 +224,9 @@ async def dispatch(hub: "Hub", session: Session, mcp: Any, me: str, call: Any,
         return {"error": f"{call.function.name} is not one of your tools"}
     if call.function.name == "ask_agent":
         return {"reply": await ask_agent(hub, session, me, str(args.get("name", "")), str(args.get("text", "")))}
-    return await call_tool(session, mcp, me, call.function.name, args, turn, hub.sources(), hub.external())
+    egress = set() if hub.settings.private_egress == "allow" else hub.egress()  # an unknown value blocks
+    return await call_tool(session, mcp, me, call.function.name, args, turn, hub.sources(), hub.external(), egress,
+                           hub.obfuscating())
 
 
 async def think(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]],

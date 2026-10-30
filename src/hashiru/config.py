@@ -11,16 +11,19 @@ from hydra import compose, initialize_config_module
 from hydra.core.override_parser.overrides_parser import OverridesParser
 from omegaconf import DictConfig, OmegaConf
 
-__all__ = ["A2APeer", "McpServer", "Settings", "load_settings"]
+from hashiru.llm import is_local
+
+__all__ = ["DIFFICULTIES", "A2APeer", "McpServer", "Settings", "load_settings"]
 
 SERVER_NAME = re.compile(r"[a-z][a-z0-9_]{0,23}")
-SERVER_KEYS = {"command", "args", "env", "url", "headers", "labels"}
+SERVER_KEYS = {"command", "args", "env", "url", "headers", "labels", "egress"}
 PEER_KEYS = {"url", "headers", "price_usd_per_message", "labels"}
 POSITIVE = ("task_timeout", "tool_start_timeout", "tool_call_timeout", "mcp_start_timeout", "session_ttl",
             "max_sessions", "ollama_num_ctx")
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
-NON_NEGATIVE = ("budget_usd", "max_usd", "turn_reserve_usd")
+NON_NEGATIVE = ("budget_usd", "max_usd", "turn_reserve_usd", "max_escalations")
 LABELS = {"private", "untrusted"}
+DIFFICULTIES = ("easy", "medium", "hard")  # what a hiring agent says about a job (router.py)
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,7 @@ class McpServer:
     url: str = ""
     headers: tuple[tuple[str, str], ...] = ()   # sent to an HTTP server, e.g. Authorization
     labels: tuple[str, ...] = ("untrusted",)    # what its results carry in the trace
+    egress: bool = True                         # may send data off the machine (so private data may not reach it)
 
 
 @dataclass(frozen=True)
@@ -85,6 +89,14 @@ class Settings:
     max_sessions: int = 16  # open conversations from the chat page, the OpenAI API, A2A and MCP clients
     session_ttl: float = 3600.0  # seconds an idle conversation stays open with its hires
     frame_ancestors: str = "'none'"  # CSP frame-ancestors for the chat page
+    private_ceo_model: str = ""  # a private chat's CEO; default ceo_model if local, else the first local model
+    private_egress: str = "block"  # "block": agents holding private data cannot call tools that leave the machine
+    private_by_default: bool = False  # every chat is private, from its first message
+    private_mode: str = "obfuscate"  # obfuscate: cloud models see private data masked; block: they never see it
+    obfuscate_with: str = "patterns+model"  # patterns (Presidio) alone, or plus a local model for names and details
+    obfuscate_model: str = ""  # the local model that finds them; default: as private_ceo_model
+    routing: tuple[tuple[str, tuple[str, ...]], ...] = ()  # difficulty -> models to try, in order (router.py)
+    max_escalations: int = 2  # times a failing worker moves up its list of models, per message
 
     @property
     def internal_url(self) -> str:
@@ -138,9 +150,15 @@ def _servers(value: Any) -> tuple[McpServer, ...]:
         labels = tuple(str(label) for label in labels)
         if not set(labels) <= LABELS:
             raise ValueError(f"{where}.labels may only use {sorted(LABELS)}")
+        egress = spec.get("egress", True)
+        if not isinstance(egress, bool):
+            raise ValueError(f"{where}.egress must be true or false")
+        if url and not egress:
+            raise ValueError(f"{where}: egress: false cannot hold for a server reached by url (it receives what "
+                             "you send it)")
         servers.append(McpServer(name, command, tuple(str(a) for a in args),
                                  _pairs(spec.get("env"), f"{where}.env"), url,
-                                 _pairs(spec.get("headers"), f"{where}.headers"), labels))
+                                 _pairs(spec.get("headers"), f"{where}.headers"), labels, egress))
     return tuple(servers)
 
 
@@ -171,6 +189,16 @@ def _peers(value: Any) -> tuple[A2APeer, ...]:
         peers.append(A2APeer(name, url, _pairs(spec.get("headers"), f"{where}.headers"),
                              None if price is None else float(price), tuple(map(str, labels))))
     return tuple(peers)
+
+
+def _routing(value: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if not value:
+        return ()
+    if not isinstance(value, dict) or set(map(str, value)) - set(DIFFICULTIES):
+        raise ValueError(f"routing must map difficulties {list(DIFFICULTIES)} to lists of models")
+    if not all(isinstance(models, list) for models in value.values()):
+        raise ValueError("routing: each difficulty takes a list of models, best first")
+    return tuple((str(d), tuple(str(m) for m in models)) for d, models in value.items())
 
 
 def _compose(overrides: list[str], config_file: str) -> DictConfig:
@@ -221,6 +249,8 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
             values[key] = _servers(value)
         elif key == "a2a_peers":
             values[key] = _peers(value)
+        elif key == "routing":
+            values[key] = _routing(value)
         else:
             try:
                 values[key] = kind(value) if kind in (int, float, str) else value
@@ -240,4 +270,24 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
         raise ValueError(f"listening on {settings.host} needs an api_key (set HASHIRU_API_KEY)")
     if settings.public_url and urlsplit(settings.public_url).scheme not in ("http", "https"):
         raise ValueError("public_url must be an http(s) URL")
+    if settings.private_ceo_model and not is_local(settings.private_ceo_model):
+        raise ValueError(f"private_ceo_model must be a local model (ollama_chat/...), got {settings.private_ceo_model}")
+    if settings.private_egress not in ("block", "allow"):
+        raise ValueError(f"private_egress must be 'block' or 'allow', got {settings.private_egress!r}")
+    if settings.private_mode not in ("obfuscate", "block"):
+        raise ValueError(f"private_mode must be 'obfuscate' or 'block', got {settings.private_mode!r}")
+    if settings.obfuscate_with not in ("patterns+model", "patterns"):
+        raise ValueError(f"obfuscate_with must be 'patterns+model' or 'patterns', got {settings.obfuscate_with!r}")
+    if settings.obfuscate_model and not is_local(settings.obfuscate_model):
+        raise ValueError(f"obfuscate_model must be a local model (ollama_chat/...), got {settings.obfuscate_model}")
+    has_local = bool(settings.private_ceo_model or settings.obfuscate_model or is_local(settings.ceo_model)
+                     or any(is_local(m) for m in settings.models))
+    patterns_only = settings.private_mode == "obfuscate" and settings.obfuscate_with == "patterns"
+    if settings.private_by_default and not (has_local or patterns_only):
+        raise ValueError("private_by_default needs a local model: add one to models or set private_ceo_model")
+    named = set(settings.models) | {f"a2a/{p.name}" for p in settings.a2a_peers}
+    for difficulty, models in settings.routing:
+        if unknown_models := sorted(set(models) - named):
+            raise ValueError(f"routing.{difficulty} names models that are not in models or a2a_peers: "
+                             f"{unknown_models}")
     return settings

@@ -149,6 +149,12 @@ svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; s
 .field:focus-within { border-color: var(--accent); }
 .field textarea { flex: 1; min-height: 28px; max-height: 40vh; padding: 4px 0; border: 0; outline: 0; background: none; resize: none; line-height: 1.5; }
 .field textarea::placeholder { color: var(--faint); }
+.lock { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: none; color: var(--faint); }
+.lock:hover { color: var(--ink); }
+.lock[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.lock:disabled { cursor: default; }
+.lock svg { width: 18px; height: 18px; stroke-width: 2; }
+.chat-row .open .lk { width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; color: var(--accent); stroke-width: 2.4; }
 .send { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--ink); color: var(--bg); }
 .send:disabled { background: var(--sunk); color: var(--faint); cursor: default; }
 .send svg { width: 18px; height: 18px; stroke-width: 2.2; }

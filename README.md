@@ -104,6 +104,67 @@ overspending, for policy experiments). `max_usd` caps real API spend for the who
 `allow_local_agents` and `allow_cloud_agents` are v1's mode switches. Each user request has one deadline
 (`task_timeout`) that every agent it reaches must meet; firing an agent or closing a conversation stops its work.
 
+## Hiring by difficulty
+
+A hiring agent says how hard a job is instead of picking a model: `hire_agent(..., difficulty="easy" | "medium" |
+"hard")`. The hub turns that into the models the hire may run on, best first, and hires the first one that fits: an
+easy job tries small local models, then cheap cloud ones; a medium job large local models, then cheap cloud ones; a
+hard job the dearest cloud models, then large local ones. Set your own order per difficulty with `routing`, e.g.
+`routing: {hard: [gpt-4.1, ollama_chat/gemma4:12b]}`. The list keeps only what the modes allow and what the hire's
+privacy and pool allow: a hirer holding private data gets local models first (only local ones with
+`private_mode=block`), and a hire with `budget_usd: 0` gets local models only. A worker that fails or answers empty
+moves up its list and gets the message again, up to `max_escalations` times per message (2 by default), shown in the
+chat's activity; a worker holding private data never moves to a cloud model. Naming a `model` still works.
+
+## Private data
+
+Some data is private: what `read_file` and `memory` return, memories that `memory_autoinject` adds, results of MCP
+servers configured with `labels: [private]`, and everything you say in a private chat. HASHIRU labels it `private`,
+follows it through every message and hire, and enforces one rule in code (R3 from HASHIRU-lite, *private stays
+local*): a cloud or remote model never sees private data as it is.
+
+**Obfuscation** (`private_mode=obfuscate`, the default). Before private text reaches a cloud or remote agent (in a
+message, a reply, a hire prompt or a tool result), HASHIRU finds its sensitive values with
+[Presidio](https://microsoft.github.io/presidio/)'s pattern recognizers (contact details, card, account and ID
+numbers, IPs, URLs, dates, plus API keys and private keys) and a local model (names, places, employers, health and
+money details), and replaces them: identifiers with placeholders such as `⟦PERSON_1⟧`, the same one for the same value
+throughout the chat, and amounts, dates, ages and health details with vague descriptions ("a six-figure amount"), so
+the cloud model can still reason about them. When a reply comes back to you, a local agent or a local tool, the
+placeholders are restored: you see the real names, and only your machine knows them. If the local model cannot
+answer, that text is refused rather than sent. `obfuscate_with=patterns` uses Presidio alone (no model call, but
+names are not found). Obfuscation is best effort: a detail that neither the patterns nor the model recognize goes
+through as written.
+
+**Blocking** (`private_mode=block`). Cloud and remote agents never see private data at all: it is refused to them, a
+cloud CEO cannot use `memory` or `read_file`, and a private chat's CEO moves to a local model (`private_ceo_model`; by
+default `ceo_model` if it is local, else the first local model in `models`). Without a local model for the detector,
+`obfuscate` falls back to this.
+
+In both modes an agent holding private data may not call a tool that sends data off the machine: `get_website`,
+`arxiv_search`, `create_tool`, created tools, and MCP servers unless their config says `egress: false`
+(`private_egress=allow` lifts this). Refusals are `policy` events in the trace and show in the chat's activity.
+
+To make a chat private, click the lock beside the message box, send `x-hashiru-private: 1` with
+`/v1/chat/completions`, set `hashiru_private: true` in an A2A message's metadata, or pass `private: true` to the MCP
+`ask` tool; `private_by_default=true` makes every chat private. A chat stays private from then on, also when its
+conversation closes and the client continues it. The hub remembers private chats only until it restarts, so clients
+should send the flag with every message (the chat page does). A chat also becomes private when a local agent shows you
+private data with `deliver_to_user`, since the chat's history now holds it.
+
+What R3 does not cover:
+
+- **Tool creation.** Created tools run as you, unsandboxed, and can read your files and send them anywhere, so R3
+  does not hold once `tool_creation` is on.
+- **Where "local" runs.** Local means served by the Ollama at `ollama_url`. If that is another machine, local models
+  and the private data they see run there (the hub logs a warning). Ollama's `-cloud` tags count as cloud models.
+- **Servers that store data.** An MCP server marked `egress: false` that keeps what it is given (notes, a graph) can
+  hand private data to a later reader; give it `labels: [private]` too.
+- **Who "you" is.** Whoever holds the API key counts as the user: a client of the OpenAI-compatible API, the A2A
+  agent or the MCP server, including another hub that hires this one, gets answers that private data went into.
+- **Coarse labels.** Once an agent has seen private data, everything it sends afterwards counts as private, except
+  the exact replies `done` and `failed` (which reveal one bit).
+- **What obfuscation misses.** Detection is best effort; use `private_mode=block` where nothing may leave.
+
 ## Remote agents over A2A
 
 List other A2A agents under `a2a_peers` and managers can hire them as workers (`a2a/<name>`), paid from their

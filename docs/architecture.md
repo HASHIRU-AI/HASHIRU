@@ -60,6 +60,9 @@ flowchart LR
   and send each new message to that session's CEO, as the user.
 - **A session** is one hiring tree: a CEO, the agents it hired and theirs, a ledger of pools, and a trace file.
   Each agent is mounted as its own A2A app at `/s/{session}/agents/{name}/`, with its own Agent Card.
+- **Hiring by difficulty** (`router.py`): a hiring agent says how hard a job is; the router picks the model from
+  the `routing` order (or one built from `models`), within the modes, the hire's privacy and its pool, and moves a
+  failing worker up that list.
 - **The CEO and managers** run a tool loop: an LLM turn, then every tool call it asked for, in parallel, until
   it replies (at most `max_turns`). **Workers** answer with one LLM call and no tools.
 - **Tools** are served at `/mcp`. Managers reach them with their own bearer token, so the hub knows who is calling
@@ -155,6 +158,13 @@ rebuilt from a trace alone (`ledger.replay`), so budget rules can be checked aft
   stay out of them. Their results are labeled `untrusted` in the trace unless you say otherwise.
 - **Remote agents** are pinned to the configured URL: the endpoint a peer's card names is ignored, so a card
   cannot redirect your credentials. Their replies are labeled `untrusted`.
+- **Private data** (R3, *private stays local*) never reaches a cloud or remote model as it is. Where text moves
+  (messages, replies, hire prompts, tool results, memory recall), `privacy.cross` obfuscates it on the way to the
+  cloud (`obfuscation/`: Presidio patterns and a local model find the values, the session's vault swaps them for
+  placeholders or generalizations) and restores it on the way back; with `private_mode=block`, or if detection fails,
+  it refuses instead. An agent holding private data cannot call tools that leave the machine. A private chat stays
+  private, also when its conversation is reopened. Refusals are `policy` events in the trace; the README lists what R3
+  does not cover.
 - **Created tools** run in their own `uv` environment without HASHIRU's environment variables, but as your user.
   That isolates dependencies, not the machine, which is why `tool_creation` is off by default.
 

@@ -27,6 +27,8 @@
     theme: store.get("hashiru.theme", "auto"),
     busy: false,
     controller: null,
+    info: null,           // /v1/hashiru/info
+    draftPrivate: false,  // the lock, before a new chat's first message
     agentsTimer: 0,
   };
 
@@ -71,6 +73,7 @@
     [...state.chats].sort((a, b) => b.updated - a.updated).forEach((c) => {
       const row = el("div", `chat-row${c.id === state.current ? " current" : ""}`);
       const open = el("button", "open", c.title || "New chat");
+      if (c.private) open.insertAdjacentHTML("afterbegin", LOCK);
       open.type = "button";
       open.title = c.title || "";
       open.addEventListener("click", () => { openChat(c.id); closeSide(); });
@@ -84,11 +87,50 @@
     });
   }
 
+  // ---- private chats ----
+  const LOCK = '<svg class="lk" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+  const FINE = "Agents can make mistakes, and cloud models spend real money. Check the agents panel.";
+  const isPrivate = () => { const c = chat(); return c ? Boolean(c.private) : state.draftPrivate; };
+
+  // The lock, the header and the fine print. A chat that went private stays private (the hub keeps it so), so its
+  // lock cannot be turned off. When the hub obfuscates, cloud models see a private chat with names and details hidden;
+  // when it blocks, only local models see it.
+  function renderPrivacy() {
+    const on = isPrivate();
+    const c = chat();
+    const lock = $("private");
+    const info = state.info;
+    const obfuscating = Boolean(info && info.private_mode === "obfuscate");
+    const noLocal = Boolean(info) && !obfuscating && !info.private_ceo_model;
+    lock.setAttribute("aria-pressed", String(on));
+    lock.disabled = state.busy || Boolean(c && c.private) || noLocal;
+    lock.title = noLocal ? "This hub has no local model, so its chats cannot be private"
+      : obfuscating ? (on ? "Private chat: cloud models see it only obfuscated"
+        : "Make this chat private: hide names and details from cloud models")
+        : (on ? "Private chat: only local models see it" : "Make this chat private: local models only");
+    $("fine").textContent = !on ? FINE : obfuscating
+      ? "Private chat: names and other details are hidden from cloud models."
+      : "Private chat: only local models on this machine see it.";
+    if (!info) return;
+    const model = (on && !obfuscating && info.private_ceo_model) || info.ceo_model;
+    $("model-sub").textContent = `CEO ${model.replace(/^ollama(_chat)?\//, "")} · ` +
+      (!on ? `${usd(info.budget_usd)} per chat` : obfuscating ? "private, obfuscated" : "private, local only");
+  }
+
+  function togglePrivate() {
+    const c = chat();
+    if (state.busy || (c && c.private)) return;
+    if (c) { c.private = true; save(); renderChats(); }  // from the next message on, for good
+    else state.draftPrivate = !state.draftPrivate;
+    renderPrivacy();
+  }
+
   function openChat(id) {
     if (state.busy) return;
     state.current = id;
     renderChats();
     renderThread();
+    renderPrivacy();
     $("events").replaceChildren();
     refreshAgents();
     $("input").focus();
@@ -129,6 +171,7 @@
   }
 
   function workKind(event) {
+    if (event.kind === "tool" && event.failed) return "err";
     if (event.kind === "tool" && event.name === "hire_agent") return "hire";
     if (event.kind === "tool" && event.name === "fire_agent") return "fire";
     if (event.kind === "msg") return "msg";
@@ -227,7 +270,7 @@
     let c = chat();
     if (!c) {
       c = { id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, title: text.slice(0, 60),
-            session: null, messages: [], updated: Date.now() };
+            session: null, messages: [], updated: Date.now(), private: state.draftPrivate };
       state.chats.unshift(c);
       state.current = c.id;
     }
@@ -255,9 +298,10 @@
     const started = performance.now();
     try {
       const sessionHeader = c.session ? { "X-Hashiru-Session": c.session } : {};
+      const privateHeader = c.private ? { "X-Hashiru-Private": "1" } : {};
       const res = await api("/v1/chat/completions", {
         method: "POST", signal: state.controller.signal,
-        headers: Object.assign({ "Content-Type": "application/json" }, sessionHeader),
+        headers: Object.assign({ "Content-Type": "application/json" }, sessionHeader, privateHeader),
         body: JSON.stringify({ model: "hashiru", stream: true, messages: sent }),
       });
       c.session = res.headers.get("x-hashiru-session") || c.session;
@@ -300,6 +344,7 @@
 
   function setComposer() {
     const input = $("input");
+    renderPrivacy();
     $("send").hidden = state.busy;
     $("stop").hidden = !state.busy;
     $("send").disabled = !input.value.trim();
@@ -346,6 +391,7 @@
       return;
     }
     if (chat() !== c) return;
+    if (data.private && !c.private) { c.private = true; save(); renderChats(); renderPrivacy(); }  // e.g. by default
     const live = data.agents.filter((a) => a.live && a.name !== "ceo").length;
     count.textContent = String(live);
     count.hidden = !live;
@@ -406,8 +452,9 @@
 
   async function loadInfo() {
     try {
-      const info = await (await api("/v1/hashiru/info")).json();
-      $("model-sub").textContent = `CEO ${info.ceo_model.replace(/^ollama(_chat)?\//, "")} · ${usd(info.budget_usd)} per chat`;
+      state.info = await (await api("/v1/hashiru/info")).json();
+      if (!chat() && state.info.private_by_default) state.draftPrivate = true;  // never undo a click made before
+      renderPrivacy();
     } catch (err) {
       if (err.status === 401) { $("model-sub").textContent = "API key needed"; openSettings(); }
     }
@@ -437,7 +484,13 @@
       send(text);
     });
     $("stop").addEventListener("click", () => state.controller && state.controller.abort());
-    $("new-chat").addEventListener("click", () => { if (!state.busy) { state.current = null; renderChats(); renderThread(); refreshAgents(); closeSide(); input.focus(); } });
+    $("new-chat").addEventListener("click", () => {
+      if (state.busy) return;
+      state.current = null;
+      state.draftPrivate = Boolean(state.info && state.info.private_by_default);
+      renderChats(); renderThread(); renderPrivacy(); refreshAgents(); closeSide(); input.focus();
+    });
+    $("private").addEventListener("click", togglePrivate);
     $("toggle-agents").addEventListener("click", () => toggleAgents($("agents").hidden));
     $("close-agents").addEventListener("click", () => toggleAgents(false));
     $("open-side").addEventListener("click", openSide);

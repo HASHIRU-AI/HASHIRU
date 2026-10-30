@@ -49,6 +49,11 @@ class Gateway:
     def labels(self) -> dict[str, list[str]]:
         return {name: list(server.labels) for name, (server, _) in self.routes.items()}
 
+    def egress(self) -> set[str]:
+        """Tools of servers that may send data off the machine: all of them, unless a server's config says
+        egress: false (a local server that only reads or computes here)."""
+        return {name for name, (server, _) in self.routes.items() if server.egress}
+
     async def start(self) -> None:
         """Connect to every configured server at once. One that fails is logged and skipped, never fatal."""
         async with self._lock:

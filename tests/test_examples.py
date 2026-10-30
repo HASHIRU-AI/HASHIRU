@@ -182,4 +182,5 @@ def test_the_examples_pin_the_versions_hashiru_is_tested_with(name):
 def test_the_example_config_wires_the_examples():
     settings = load_settings([], config_file=str(EXAMPLES / "hashiru.yaml"))
     assert {"clock", "fetch"} <= {s.name for s in settings.mcp_servers}
+    assert {s.name: s.egress for s in settings.mcp_servers} == {"fetch": True, "clock": False}
     assert [p.name for p in settings.a2a_peers] == ["calc"]

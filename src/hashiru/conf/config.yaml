@@ -26,6 +26,8 @@ tool_call_timeout: 60      # seconds one call to a created tool may take
 # Third-party MCP servers, offered to agents as <server>__<tool>. Usually set in your own config file
 # (HASHIRU_CONFIG=my.yaml or --config my.yaml); see examples/hashiru.yaml.
 #   name: {command: uvx, args: [mcp-server-fetch], env: {KEY: value}, labels: [untrusted]}
+#   name: {command: ..., labels: [private], egress: false}   # egress: false = it never sends data off the machine;
+#                                                            # one that stores data should also be labeled private
 #   name: {url: https://example.com/mcp, headers: {Authorization: Bearer ...}}
 mcp_servers: {}
 memory_db: ${data_dir}/memory.sqlite3  # shared, persistent memory; '' gives each session its own copy of memory.json
@@ -41,6 +43,12 @@ allow_cloud_agents: true      # cloud models and remote A2A peers
 # Remote A2A agents managers may hire as a2a/<name> (always workers, always billed in dollars).
 #   name: {url: https://example.com/agent/, headers: {Authorization: Bearer ...}, price_usd_per_message: 0.01}
 a2a_peers: {}
+# Hiring by difficulty: a hiring agent says how hard a job is (easy, medium, hard) and the hub picks the model. Each
+# difficulty lists models to try, best first; one it does not list is ordered from models: easy tries small local
+# models, then cheap cloud ones; medium large local, then cheap cloud; hard the dearest cloud, then large local.
+#   routing: {hard: [gpt-4.1, ollama_chat/gemma4:12b]}
+routing: {}
+max_escalations: 2            # a worker that fails or answers empty moves up its list this many times per message
 turn_reserve_usd: 0.01        # with enforce_budget, a cloud manager keeps this much for its own turns when it hires
 # Serving (`hashiru serve`): a chat page at /, an OpenAI-compatible API at /v1, the CEO as an A2A agent at /a2a
 # (card at /.well-known/agent-card.json and /a2a/.well-known/agent-card.json) and HASHIRU as an MCP server
@@ -50,3 +58,18 @@ public_url: ${oc.env:HASHIRU_PUBLIC_URL,''}  # where others reach this hub (the 
 max_sessions: 16              # open conversations; when full, the least recently used idle one is closed
 session_ttl: 3600             # seconds an idle conversation (and everyone it hired) stays open
 frame_ancestors: ${oc.env:HASHIRU_FRAME_ANCESTORS,"'none'"}  # who may embed the chat page in a frame
+# Private data (R3, private stays local): results of read_file and memory, recalled memories, servers labeled
+# private, and everything the user says in a private chat reach only local models and the user. A chat becomes
+# private when the client asks (chat page lock, x-hashiru-private header, A2A metadata hashiru_private, MCP ask
+# private=true) and stays private; its CEO moves to private_ceo_model.
+private_ceo_model: ${oc.env:HASHIRU_PRIVATE_CEO_MODEL,''}  # default: ceo_model if local, else the first local model
+private_egress: block            # block (or any value but allow): agents holding private data cannot call tools
+                                 # that leave the machine. R3 does not hold with tool_creation on (see README)
+private_by_default: ${oc.decode:${oc.env:HASHIRU_PRIVATE_BY_DEFAULT,'false'}}  # every chat private
+# How private data reaches cloud models. obfuscate: names, contact details, numbers and secrets become placeholders
+# (⟦PERSON_1⟧) and amounts, dates, ages and health details vague descriptions, restored when replies come back;
+# found by Presidio's patterns and a local model. block: cloud models never see it (a private chat's CEO moves to
+# private_ceo_model). If obfuscation cannot run (no local model for the detector) or misses, it blocks instead.
+private_mode: ${oc.env:HASHIRU_PRIVATE_MODE,obfuscate}
+obfuscate_with: patterns+model     # or patterns: Presidio only (no model call, but names are not found)
+obfuscate_model: ''                # local model for the detector; default as private_ceo_model

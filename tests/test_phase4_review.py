@@ -13,7 +13,8 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from hashiru import runtime, tools
+from hashiru import hub as hub_module
+from hashiru import runtime
 from hashiru.config import A2APeer, load_settings
 from hashiru.hub import Hub
 from hashiru.peers import COST_KEY, DEADLINE_KEY, BoundedTaskStore, Price, send
@@ -196,7 +197,7 @@ def test_two_local_hires_cannot_both_take_the_last_memory(tmp_path, monkeypatch)
     hub.ollama.sizes = sizes
     session = hub.new_session("t", trace=False)
     loaded = lambda: sum(a.gpu_mb for a in session.ledger.agents.values() if a.live)  # noqa: E731
-    monkeypatch.setattr(tools, "free_mb", lambda: 1000 - loaded())
+    monkeypatch.setattr(hub_module, "free_mb", lambda: 1000 - loaded())
     hub.ollama.load = lambda model: asyncio.sleep(0.05, result=600)
 
     async def both():

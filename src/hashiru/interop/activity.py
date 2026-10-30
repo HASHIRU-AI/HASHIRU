@@ -11,6 +11,7 @@ from hashiru.session import USER
 __all__ = ["describe", "public_event"]
 
 CLIP = 240
+RULE_NAMES = {"R3": "private stays local"}
 PUBLIC_KEYS = ("seq", "ts", "kind", "agent", "to", "name", "tier", "model", "cost_usd", "labels")
 
 
@@ -66,6 +67,12 @@ def describe(e: dict[str, Any]) -> str | None:
         return f"{agent}: {clip(e.get('error', ''))}"
     if kind == "recall":
         return f"added {len(e.get('results', []))} saved memories to your message"
+    if kind == "escalate":
+        return f"{agent} moved from {e.get('from_model')} to {e.get('to_model')} after: {clip(e.get('why', ''))}"
+    if kind == "policy":
+        rule = e.get("rule", "")
+        name = RULE_NAMES.get(rule)
+        return f"{rule} ({name}): {clip(e.get('why', ''))}" if name else f"{rule}: {clip(e.get('why', ''))}"
     return None
 
 
@@ -74,6 +81,8 @@ def public_event(e: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {k: e[k] for k in PUBLIC_KEYS if k in e}
     if e["kind"] == "llm":
         out["tool_calls"] = list(e.get("tool_calls", []))
+    if e["kind"] == "tool" and isinstance(e.get("result"), dict) and "error" in e["result"]:
+        out["failed"] = True  # e.g. a hire that did not happen: not counted as one
     line = describe(e)
     if line:
         out["line"] = line
