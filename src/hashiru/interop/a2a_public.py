@@ -3,7 +3,8 @@ under the endpoint, at /a2a/.well-known/agent-card.json.
 
 Each A2A context is one conversation, so hires last between messages in a context. Progress arrives as `working`
 status updates (one per activity line, the event in the message metadata); the reply completes the task and reports
-its cost through the HASHIRU cost extension (`hashiru_cost_usd`).
+its cost through the HASHIRU cost extension (`hashiru_cost_usd`). A reply that asks for the user's approval carries
+the questions as `hashiru_approval` in its metadata; the next message in the context answers them.
 """
 import contextlib
 from importlib.metadata import PackageNotFoundError, version
@@ -35,10 +36,11 @@ from hashiru.peers import COST_KEY, BoundedTaskStore, Price, begin, cost_extensi
 if TYPE_CHECKING:
     from hashiru.hub import Hub
 
-__all__ = ["A2A_PATH", "PRIVATE_KEY", "PublicExecutor", "a2a_routes", "public_card"]
+__all__ = ["A2A_PATH", "APPROVAL_KEY", "PRIVATE_KEY", "PublicExecutor", "a2a_routes", "public_card"]
 
 A2A_PATH = "/a2a"
 PRIVATE_KEY = "hashiru_private"  # message metadata: true makes the conversation private from this message on
+APPROVAL_KEY = "hashiru_approval"  # reply metadata: the approvals the reply asks for
 CARD_UNDER_ENDPOINT = f"{A2A_PATH}/.well-known/agent-card.json"
 try:
     VERSION = version("hashiru")
@@ -93,7 +95,8 @@ class PublicExecutor(AgentExecutor):
         async with contextlib.aclosing(turn) as events:
             async for item in events:
                 if item["kind"] == "answer":
-                    await finish(context, event_queue, item["text"], {COST_KEY: item["cost_usd"]}, updater)
+                    asks = {APPROVAL_KEY: item["approval"]} if item.get("approval") else {}
+                    await finish(context, event_queue, item["text"], {COST_KEY: item["cost_usd"]} | asks, updater)
                 elif line := describe(item):
                     await updater.update_status(TaskState.TASK_STATE_WORKING, message=updater.new_agent_message(
                         [new_text_part(line)], metadata={"hashiru_event": public_event(item)}))

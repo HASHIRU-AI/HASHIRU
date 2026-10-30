@@ -102,6 +102,10 @@ svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; s
 .msg.ceo > .avatar img { display: block; width: 100%; height: 100%; }
 .msg .error { padding: 10px 14px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-size: 14.5px; }
 .msg .meta { font: 12px/1.4 var(--f-mono); color: var(--faint); }
+.msg.ceo > .approve { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.approve .btn:not(.primary):hover { border-color: var(--accent); }
+.approve .btn:disabled { opacity: 0.5; cursor: default; }
+.approve .hint { font-size: 13px; color: var(--faint); }
 
 /* the agents' work during one turn */
 .work { border-left: 2px solid var(--line); padding-left: 12px; font-size: 14px; color: var(--muted); }
@@ -119,6 +123,7 @@ svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; s
 .work li.fire::before { background: var(--bad); }
 .work li.msg::before { background: var(--cloud); }
 .work li.err { color: var(--bad); }
+.work li.ask::before { background: var(--ok); }
 
 /* rendered markdown */
 .md { overflow-wrap: anywhere; min-width: 0; }

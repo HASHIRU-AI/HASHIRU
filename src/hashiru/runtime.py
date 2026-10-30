@@ -19,6 +19,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
 
+from hashiru import approvals
 from hashiru.ledger import AgentRecord
 from hashiru.peers import DEADLINE_KEY, send, serve_request
 from hashiru.privacy import MISSED, cross, may_hold, refuse, tool_refusal, where
@@ -127,6 +128,8 @@ async def ask_agent(hub: "Hub", session: Session, me: str, name: str, text: str,
         return f"error: {name!r} is not a live agent you hired"
     if not text.strip():
         return "error: the message is empty"
+    if me == USER:  # a new turn: its spending (approve_turn_usd) and its questions' deadline start here
+        session.approvals.new_turn(sum(a.spent for a in session.ledger.agents.values()), deadline_for(hub))
     trace, task, asked = session.trace, session.id, text
     me_rec = session.ledger.get(me)
     my_tier = me_rec.tier if me_rec else USER
@@ -281,7 +284,7 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
                                       {"role": "user", "content": text}]
     if rec.role == "worker":
         for attempt in range(2):
-            if refused := spent_out(hub, session, rec):
+            if refused := spent_out(hub, session, rec) or await approvals.turn(hub, session, rec):
                 return refused
             msg, _, _ = await think(hub, session, rec, messages, None)
             if (msg.content or "").strip() or not still_on(hub, session, rec):
@@ -299,7 +302,7 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
         for _ in range(hub.settings.max_turns):
             if not still_on(hub, session, rec):
                 return "failed"
-            if refused := spent_out(hub, session, rec):
+            if refused := spent_out(hub, session, rec) or await approvals.turn(hub, session, rec):
                 return refused
             # Re-read every turn: a tool created (or deleted) on the last turn is visible on this one.
             tools = [to_openai(t) for t in (await mcp.list_tools()).tools if allowed(rec, t.name)]
