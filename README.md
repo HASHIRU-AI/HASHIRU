@@ -104,6 +104,40 @@ overspending, for policy experiments). `max_usd` caps real API spend for the who
 `allow_local_agents` and `allow_cloud_agents` are v1's mode switches. Each user request has one deadline
 (`task_timeout`) that every agent it reaches must meet; firing an agent or closing a conversation stops its work.
 
+## Private data
+
+Some data must never reach a cloud model: what `read_file` and `memory` return, memories that `memory_autoinject`
+adds, results of MCP servers configured with `labels: [private]`, and everything you say in a private chat. HASHIRU
+labels that data `private`, follows it through every message and hire, and enforces one rule in code (R3 from
+HASHIRU-lite, *private stays local*): private data reaches only local models and you. A cloud or remote agent is
+refused it, whether in a message, a reply, a hire prompt or a tool result, and an agent holding it may not call a
+tool that sends data off the machine: `get_website`, `arxiv_search`, `create_tool`, created tools, and MCP servers
+unless their config says `egress: false` (`private_egress=allow` lifts this). Refusals are `policy` events in the
+trace and show in the chat's activity.
+
+To make a chat private, click the lock beside the message box, send `x-hashiru-private: 1` with
+`/v1/chat/completions`, set `hashiru_private: true` in an A2A message's metadata, or pass `private: true` to the MCP
+`ask` tool; `private_by_default=true` makes every chat private. A private chat's CEO runs on `private_ceo_model`
+(by default `ceo_model` if it is local, else the first local model in `models`), and the chat stays private from
+then on, also when its conversation closes and the client continues it. The hub remembers private chats only until it
+restarts, so clients should send the flag with every message (the chat page does). A chat also becomes private when a
+local agent shows you private data with `deliver_to_user`, since the chat's history now holds it. A cloud CEO cannot
+use `memory` or `read_file`, and a local agent's reply that carries private data is withheld from it: to work with
+private data, make the chat private.
+
+What R3 does not cover:
+
+- **Tool creation.** Created tools run as you, unsandboxed, and can read your files and send them anywhere, so R3
+  does not hold once `tool_creation` is on.
+- **Where "local" runs.** Local means served by the Ollama at `ollama_url`. If that is another machine, local models
+  and the private data they see run there (the hub logs a warning). Ollama's `-cloud` tags count as cloud models.
+- **Servers that store data.** An MCP server marked `egress: false` that keeps what it is given (notes, a graph) can
+  hand private data to a later reader; give it `labels: [private]` too.
+- **Who "you" is.** Whoever holds the API key counts as the user: a client of the OpenAI-compatible API, the A2A
+  agent or the MCP server, including another hub that hires this one, gets answers that private data went into.
+- **Coarse labels.** Once an agent has seen private data, everything it sends afterwards counts as private, except
+  the exact replies `done` and `failed` (which reveal one bit).
+
 ## Remote agents over A2A
 
 List other A2A agents under `a2a_peers` and managers can hire them as workers (`a2a/<name>`), paid from their

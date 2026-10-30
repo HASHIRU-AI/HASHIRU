@@ -33,7 +33,9 @@ cost.
 
 **An MCP server** is any program that speaks MCP over stdio or streamable HTTP. Add it under `mcp_servers`; its
 tools reach agents as `<server>__<tool>`. A local server gets MCP's minimal environment plus only the `env` you
-list, and its results are labeled `untrusted` in the trace unless you set `labels`. Raise the SDK's `ToolError`
+list, and its results are labeled `untrusted` in the trace unless you set `labels`. It counts as sending data off
+the machine, so an agent holding private data may not call it, unless you set `egress: false` (for a local server
+only; one that stores what it is given should also have `labels: [private]`). Raise the SDK's `ToolError`
 for failures the agent should read; any other exception reaches it only as "Error executing tool".
 
 **An A2A agent** is hireable once the hub knows its price: declare `per_message_usd` (or token prices) through the

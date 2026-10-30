@@ -155,6 +155,11 @@ rebuilt from a trace alone (`ledger.replay`), so budget rules can be checked aft
   stay out of them. Their results are labeled `untrusted` in the trace unless you say otherwise.
 - **Remote agents** are pinned to the configured URL: the endpoint a peer's card names is ignored, so a card
   cannot redirect your credentials. Their replies are labeled `untrusted`.
+- **Private data** (R3, *private stays local*) reaches only local models and the user. The runtime and the hub
+  refuse it to cloud and remote agents where text moves (messages, replies, hire prompts, tool results, memory
+  recall), and an agent holding it cannot call tools that leave the machine. A private chat, or one whose history
+  received private data through a delivery, runs on a local CEO and stays private, also when its conversation is
+  reopened. Refusals are `policy` events in the trace (`privacy.py`); the README lists what R3 does not cover.
 - **Created tools** run in their own `uv` environment without HASHIRU's environment variables, but as your user.
   That isolates dependencies, not the machine, which is why `tool_creation` is off by default.
 
