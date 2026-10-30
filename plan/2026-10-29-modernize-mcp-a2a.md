@@ -1,6 +1,6 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5, 7, 8a, 8a′, 8b and 8c done on `develop`, 8c′ (plan and act modes) on `feature/plan-mode`; 8d–8e next; Phase 6 waits for HASHIRU-lite (after
+Status: Phases 0–5, 7, 8a, 8a′, 8b, 8c and 8c′ done on `develop`; 8d–8e next; Phase 6 waits for HASHIRU-lite (after
 2026-12-03).
 Date: 2026-10-29
 
