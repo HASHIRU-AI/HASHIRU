@@ -1,6 +1,6 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5, 7, 8a, 8a′, 8b and 8c done on `develop`; 8d–8e next; Phase 6 waits for HASHIRU-lite (after
+Status: Phases 0–5, 7, 8a, 8a′, 8b and 8c done on `develop`, 8c′ (plan and act modes) on `feature/plan-mode`; 8d–8e next; Phase 6 waits for HASHIRU-lite (after
 2026-12-03).
 Date: 2026-10-29
 
@@ -20,6 +20,7 @@ Date: 2026-10-29
 | 10 | Who judges difficulty | **The hiring agent declares it** (`difficulty`); track records correct it over time. No separate classifier |
 | 11 | How private data reaches cloud models (2026-10-29) | **Obfuscated, by default**: placeholders for identifiers, restored on the way back, and local generalizations for values whose meaning matters (both). `private_mode=block` keeps the strict rule |
 | 12 | What finds the sensitive values | **Presidio**'s pattern recognizers (on a blank spaCy pipeline: no NER model download) plus secret patterns, and a local model for names, places, health and money details |
+| 13 | Plan and act modes (2026-10-29) | **Plan mode is enforced in code**, not only prompted (Claude Code's plan mode was found to be mostly a prompt): the CEO is offered, and may call, only tools that declare MCP's `readOnlyHint` (plus memory search) and `propose_plan`. **The plan's numbers come from the hub** (router, ledger, Ollama sizes), and **approving the plan approves its hires** |
 
 ## 1. Requirements restatement
 
@@ -418,6 +419,43 @@ MCP servers configured with `labels: [private]`) and propagates labels through m
       hosts show it to the person rather than their model.
     - [ ] A question that expired leaves its conversation waiting until the next message, which then gets the rest
       of the old turn rather than starting a new one.
+- **8c′. Plan and act modes (1–2 days).** — DONE 2026-10-29 on `feature/plan-mode`
+  - [x] Recon: Cline (Plan is read-only, Act acts; manual switch, context carries over, a model per mode), Claude Code
+    (plan mode writes a plan file; approve with auto or manual edits, or keep planning; per Armin Ronacher's teardown
+    mostly an injected prompt with the write tools still present), Cursor (research, clarifying questions, an
+    editable Markdown plan with to-dos, then Build), Roo Code (Architect is read-only, Code has every tool), Aider
+    (architect and editor models), and the research line (plan-and-execute, ReWOO, LLMCompiler; a replanner fixes a
+    plan that fails). In HASHIRU the side effects are hires, reservations, loaded models and messages, so plan mode
+    withholds those.
+  - [x] `planning.py`: in plan mode the CEO gets `PLAN_RULES` and only the tools that declare `readOnlyHint`
+    (`check_usage`, `get_website`, `arxiv_search`, `read_file`; a configured MCP server's tools pass theirs through
+    the gateway) plus `memory` for search and list, and `propose_plan`. `runtime.dispatch` refuses every other call,
+    `ask_agent` included, whatever the model was offered. `propose_plan` previews each hire as `hire_agent` would
+    make it now (name, role, the router's first model that fits in memory, reservation, memory a local model needs)
+    and the totals against the CEO's pool (with `turn_reserve_usd` for a cloud CEO) and free memory, and lists what
+    a hire would hit (a taken or reserved name, a bad role, an unknown model, no difficulty, the pool) so the CEO can
+    fix it. Nothing is hired or reserved.
+  - [x] The turn: a message's own `/plan` or `/act` wins, then the client's mode, then "plan while a plan waits",
+    then `default_mode` (`act`). A planning turn's answer is the CEO's reply, the plan as a table and "Reply
+    **approve** ...", and the plan waits in the session. `approve` (or yes, ok) carries it out: the CEO is told the
+    planned hires, and `Approvals.planned` approves each one once if the CEO makes it by the same name and model with
+    no bigger budget (a `planned` approval event). Anything else is feedback for another planning turn; act mode
+    drops the plan. A cloud CEO's placeholders are restored in the plan the user sees; the CEO keeps its own copy.
+  - [x] Interfaces: the chat page's Plan switch (per chat; approving returns it to `default_mode`) and an Approve
+    plan button; `x-hashiru-mode` on `/v1` (400 for anything but plan or act), `hashiru_mode` in A2A message
+    metadata, `mode` for MCP `ask`; answers carry `hashiru.plan`, `hashiru_plan` and `plan`. `hashiru chat` plans with
+    `/plan ...` and acts on `approve`; `hashiru ask "/plan ..."` prints the plan. `/v1/hashiru/info` reports
+    `default_mode`. Activity lines for a proposal and for a planned approval. README screenshot (scripted models).
+  - [x] Tests: `test_planning.py` (16) and a browser test. 22 mutations of the new checks (the dispatch refusal, the
+    tool filter, the prompt, each approval condition, the mode rules, unmasking, the pool, name and hiring checks, the
+    annotations, each interface, both CLI paths) are each caught.
+  - Follow-ups:
+    - [ ] A model per mode (Cline, Roo, Aider): a stronger cloud CEO to plan, a cheaper or local one to act. Needs
+      care with private chats, whose CEO must stay local.
+    - [ ] Replanning in act mode: when a planned hire fails, stop and show the user a revised plan instead of
+      improvising (the replanner of plan-and-execute).
+    - [ ] A plan covers the CEO's own hires only. Managers' hires inside their reserved pools, and the turn's spend
+      (`approve_turn_usd`), still ask as before; the plan cannot estimate token spend inside a reservation.
 - **8d. A local detector for sensitive messages (2 days).**
   - [ ] Patterns for personal data and secrets (emails, phone numbers, card numbers, government IDs, API keys,
     private keys) mark a message private before any model sees it. Optional: a small local model as a second
