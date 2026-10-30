@@ -63,6 +63,10 @@ flowchart LR
 - **Hiring by difficulty** (`router.py`): a hiring agent says how hard a job is; the router picks the model from
   the `routing` order (or one built from `models`), within the modes, the hire's privacy and its pool, and moves a
   failing worker up that list.
+- **Model recon** (`catalog.py`, `recon.py`): `hashiru models` lists what this machine can use (Ollama's pulled
+  models that call tools; cloud models in LiteLLM's map whose provider key is set) with a tier from price or size,
+  and `MODELS=auto` turns the picks into `models` and `routing` before the Hub is built (`recon.settle`). Only
+  `--refresh` (LiteLLM's public map) and `--check` (each provider's model list) use the network.
 - **Approvals** (`approvals.py`): a big cloud reservation, a big local model to load, or a turn that has spent its
   threshold pauses the agent that would spend. The conversation answers with the question and keeps the turn
   waiting; the user's next message decides it, and the paused work goes on (or is told no).

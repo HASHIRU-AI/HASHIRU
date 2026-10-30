@@ -39,6 +39,7 @@ uv run hashiru serve                            # chat at http://127.0.0.1:9200
 uv run hashiru ask "Hire one worker on a local model and ask it to say hello."
 uv run hashiru chat                             # the same, turn by turn in the terminal
 cp .env.example .env                            # for cloud models: set CEO_MODEL, MODELS and a provider key
+uv run --env-file .env hashiru models           # what this machine can use, and what MODELS=auto would pick
 uv run --env-file .env hashiru serve budget_usd=1.0   # key=value overrides src/hashiru/conf/config.yaml
 uv run pytest -q                                # no API keys or Ollama needed
 uv run --with playwright pytest tests/test_ui_browser.py   # optional: the chat page in your installed Chrome
@@ -120,6 +121,38 @@ privacy and pool allow: a hirer holding private data gets local models first (on
 `private_mode=block`), and a hire with `budget_usd: 0` gets local models only. A worker that fails or answers empty
 moves up its list and gets the message again, up to `max_escalations` times per message (2 by default), shown in the
 chat's activity; a worker holding private data never moves to a cloud model. Naming a `model` still works.
+
+## Which models you can use (`hashiru models`, `MODELS=auto`)
+
+`hashiru models` shows the models this machine can use right now: every model Ollama has pulled that calls tools, and
+every cloud chat model in [LiteLLM's model map](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
+whose provider key is set in the environment (run it with `uv run --env-file .env`). Each one gets a tier from its
+price per million output tokens (under $2 easy, under $10 medium, else hard) or, for a local model, its size (under
+8B easy, under 30B medium, else hard), with its context window, prices and whether it reasons. The list leaves out
+what an agent cannot use: models that cannot call tools, embedding, audio, search, realtime and other special-purpose
+models, fine-tunes, floating `-latest` and `-exp` names, models LiteLLM prices at $0 or has retired, and dated
+snapshots whose alias is there too.
+
+```bash
+uv run --env-file .env hashiru models            # the picks (*); --all lists every usable model
+uv run --env-file .env hashiru models --refresh  # download LiteLLM's newest map first (new models, new prices)
+uv run --env-file .env hashiru models --check    # ask each provider which models your key can use
+MODELS=auto uv run --env-file .env hashiru serve  # hire from the picks, with routing built from their tiers
+```
+
+With `MODELS=auto` the hub hires from every usable local model and, per provider and tier, the best
+`auto_per_tier` (1) cloud models costing at most `auto_max_usd` ($30) per million output tokens: reasoning models
+first, then the cheapest (easy, medium) or the dearest (hard). `routing` is built from the tiers: a job tries its own
+tier, then the ones above (so a failing worker moves up), then the ones below; leave `routing` out with `auto`, or
+name your models to set it yourself. `hashiru serve` prints what it picked. The CEO's model stays yours to name.
+
+Only `--refresh` and `--check` use the network: the first downloads a public JSON file, the second calls each
+provider's model list with your key (nothing runs, nothing is billed); both write `model_catalog.json`. Starting the
+hub reads that file, the environment and Ollama, and a refreshed map also prices models you name yourself. Keys are
+looked for only for providers that take one API key from the environment (OpenAI, Anthropic, Gemini, Groq, Mistral,
+DeepSeek, xAI, OpenRouter, Together, Fireworks and a few more; `recon.KEYED`); for Bedrock, Vertex AI, Azure and the
+like, name the models in `MODELS`. (LiteLLM's own key check for GitHub Copilot starts a GitHub login and waits, so it
+is never asked.)
 
 ## Approvals before a big spend
 
@@ -298,6 +331,7 @@ src/hashiru/
   privacy.py, obfuscation/, router.py, approvals.py   private stays local, masking, hiring by difficulty, approvals
   planning.py            plan and act modes
   program.py, plangraph.py   an approved plan's steps, compiled and run as a LangGraph graph
+  catalog.py, recon.py   which models this machine can use, their tiers, and MODELS=auto (`hashiru models`)
   interop/               the chat page's API: OpenAI-compatible /v1, public A2A agent, public MCP server
   ui/                    the chat page (static files, no build step)
   conf/config.yaml       every setting, with comments

@@ -24,7 +24,7 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 
 from hashiru.auth import AuthGate, token_of
-from hashiru.config import LOOPBACK, A2APeer, Settings
+from hashiru.config import AUTO, LOOPBACK, A2APeer, Settings
 from hashiru.gateway import Gateway
 from hashiru.interop import Conversations, mount
 from hashiru.ledger import AgentRecord, free_mb
@@ -34,6 +34,7 @@ from hashiru.obfuscation import Detector, Obfuscator
 from hashiru.ollama import Ollama, tag
 from hashiru.peers import PEER_PREFIX, BoundedTaskStore, PeerExecutor, Price, cost_extension, model_price
 from hashiru.privacy import EGRESS, RULE, holds_private, may_hold, refuse
+from hashiru.recon import use_cached_map
 from hashiru.router import Router
 from hashiru.runtime import CEO_PROMPT, Executor
 from hashiru.session import USER, Session
@@ -49,6 +50,9 @@ LABEL = re.compile(r"[a-z0-9_]{1,32}")
 
 class Hub:
     def __init__(self, settings: Settings, llm: LLM | None = None, ollama: Ollama | None = None) -> None:
+        if settings.models == AUTO:
+            raise ValueError("models=auto must be settled first (hashiru.recon.settle)")
+        use_cached_map(settings.model_catalog, [*settings.models, settings.ceo_model])  # a refresh's newer prices
         if settings.prices_file:
             register_prices(Path(settings.prices_file))
         check_priced([*settings.models, settings.ceo_model])

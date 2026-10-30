@@ -39,6 +39,16 @@ class Ollama:
     async def unload(self, model: str) -> None:
         await self.request("/api/generate", {"model": tag(model), "keep_alive": 0, "stream": False})
 
+    async def describe(self) -> dict[str, dict[str, Any]]:
+        """Every pulled model by tag: its capabilities, details (parameter_size), context length and size."""
+        out = {}
+        for t in (await self.request("/api/tags"))["models"]:
+            shown = await self.request("/api/show", {"model": t["name"]})
+            info = {k: v for k, v in (shown.get("model_info") or {}).items() if k.endswith(".context_length")}
+            out[t["name"]] = {"capabilities": shown.get("capabilities"), "details": shown.get("details") or {},
+                              "model_info": info, "size": t.get("size")}
+        return out
+
     async def sizes(self) -> dict[str, int]:
         """Size in MB of each configured local model, from /api/tags."""
         if not self.local:

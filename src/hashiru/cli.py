@@ -3,6 +3,7 @@
   hashiru ask "Summarize ..." [key=value ...]   one request to a fresh session's CEO
   hashiru chat [key=value ...]                  talk to the CEO turn by turn (Ctrl-D, Ctrl-C or /quit ends)
   hashiru serve [key=value ...]                 the chat page, OpenAI-compatible API, A2A agent and MCP server
+  hashiru models [--refresh] [--check] [--all]  the models this machine can use, and what models=auto picks
 
 key=value pairs are Hydra overrides of hashiru/conf/config.yaml, e.g. budget_usd=1.0.
 Keys for cloud models come from the environment: run with `uv run --env-file .env hashiru ...`.
@@ -17,9 +18,10 @@ from typing import Any
 
 from hydra.errors import HydraException
 
-from hashiru import planning
+from hashiru import planning, recon
 from hashiru.approvals import Answer, Decision, Request
-from hashiru.config import Settings, load_settings
+from hashiru.catalog import Card
+from hashiru.config import AUTO, DIFFICULTIES, Settings, load_settings
 from hashiru.hub import Hub
 from hashiru.interop.conversations import with_history
 from hashiru.privacy import holds_private
@@ -57,7 +59,7 @@ def attend(session: Session) -> None:
 
 
 async def ask(settings: Settings, text: str) -> None:
-    hub = Hub(settings)
+    hub = Hub(await recon.settle(settings))
     async with hub.serving():
         session = hub.new_session("ask")
         attend(session)
@@ -75,7 +77,7 @@ async def ask(settings: Settings, text: str) -> None:
 
 async def chat(settings: Settings) -> None:
     """The whole chat is one session and one trace; hires last between turns."""
-    hub = Hub(settings)
+    hub = Hub(await recon.settle(settings))
     async with hub.serving():
         session = hub.new_session("chat")
         attend(session)
@@ -121,6 +123,8 @@ async def chat(settings: Settings) -> None:
 
 async def serve(settings: Settings) -> None:
     """Serve until Ctrl-C or SIGTERM, then close every conversation (firing agents, unloading models)."""
+    picked = settings.models == AUTO
+    settings = await recon.settle(settings)
     hub = Hub(settings)
     async with hub.serving():
         stop = asyncio.Event()
@@ -130,6 +134,7 @@ async def serve(settings: Settings) -> None:
                 loop.add_signal_handler(sig, stop.set)
         url = settings.base_url
         print(f"HASHIRU is serving (Ctrl-C stops it). CEO: {settings.ceo_model}, ${settings.budget_usd} per chat.\n"
+              f"  models          {', '.join(settings.models)}{' (auto)' if picked else ''}\n"
               f"  chat page       {url}/\n"
               f"  OpenAI API      {url}/v1   (model \"hashiru\")\n"
               f"  A2A agent       {url}/.well-known/agent-card.json\n"
@@ -141,6 +146,58 @@ async def serve(settings: Settings) -> None:
                            return_when=asyncio.FIRST_COMPLETED)
         stopped.cancel()
         print("stopping: closing conversations", flush=True)
+
+
+def context(tokens: int | None) -> str:
+    if not tokens:
+        return "?"
+    return f"{tokens / 1e6:.1f}".removesuffix(".0") + "M" if tokens >= 1_000_000 else f"{tokens // 1000}k"
+
+
+def row(card: Card, picked: bool, width: int) -> str:
+    where = f"local {card.size_b:g}B" if card.local and card.size_b else "local" if card.local else card.provider
+    usd = ("-", "-") if card.local else (f"{card.in_usd:.2f}", f"{card.out_usd:.2f}")
+    note = ", ".join(filter(None, ["vision" if card.vision else "",
+                                   f"deprecated {card.deprecated}" if card.deprecated else ""]))
+    return (f"{'*' if picked else ' '} {card.tier:<6} {card.model:<{width}} {where:<18} "
+            f"{'yes' if card.reasoning else '':<9} {context(card.context):>7} {usd[0]:>8} {usd[1]:>8}  {note}").rstrip()
+
+
+def report(settings: Settings, found: recon.Survey, everything: bool) -> str:
+    """The models this machine can use, as `hashiru models` prints them."""
+    chosen = {c.model for c in found.picks}
+    shown = sorted(found.cards if everything else found.picks,
+                   key=lambda c: (DIFFICULTIES.index(c.tier), not c.local, c.out_usd, c.size_b or 0.0, c.model))
+    width = max([len(c.model) for c in shown] + [5])
+    checked = f" (checked: {', '.join(sorted(found.listed))})" if found.listed else ""
+    lines = [f"Model map: {found.source}" + ("" if found.source.startswith("refreshed")
+                                              else " (--refresh downloads the newest)"),
+             f"Keys set for: {', '.join(found.keyed) or 'no cloud provider (put keys in .env)'}{checked}",
+             "Every model below calls tools; * marks what MODELS=auto hires from.", "",
+             f"  {'tier':<6} {'model':<{width}} {'where':<18} {'reasoning':<9} {'context':>7} {'$/M in':>8} "
+             f"{'$/M out':>8}  note", *(row(c, c.model in chosen, width) for c in shown)]
+    if not everything and (rest := len(found.cards) - len(found.picks)):
+        lines.append(f"\n{rest} more usable models: --all lists them.")
+    if settings.models != AUTO:
+        lines.append(f"MODELS is {', '.join(settings.models)}; MODELS=auto would hire from the * models instead.")
+    if settings.ceo_model not in {c.model for c in found.cards}:
+        lines.append(f"The CEO model {settings.ceo_model} is not among the usable models (not pulled, no key for its "
+                     "provider, or it cannot call tools).")
+    return "\n".join([*lines, *found.notes])
+
+
+async def models(settings: Settings, refresh: bool, check: bool, everything: bool) -> None:
+    """What this machine can use now, and what models=auto picks: after a refresh of LiteLLM's map and a check of
+    the keys with their providers, when asked."""
+    if refresh:
+        print(f"Refreshed LiteLLM's model map: {await recon.refresh(settings.model_catalog)} models")
+    found = await recon.survey(settings)
+    if check:
+        for provider, names in (await recon.check(settings.model_catalog, found.keyed)).items():
+            print(f"{provider} lists {len(names)} model{'s' * (len(names) != 1)}" if names
+                  else f"{provider} listed nothing: its key may be wrong")
+        found = await recon.survey(settings)
+    print(report(settings, found, everything))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -162,6 +219,12 @@ def main(argv: list[str] | None = None) -> None:
     serve_cmd = sub.add_parser("serve", help="serve the chat page and the public APIs")
     serve_cmd.add_argument("overrides", nargs="*", help="Hydra overrides, e.g. port=9300")
     serve_cmd.add_argument("--config", help="YAML config file (default: $HASHIRU_CONFIG)")
+    models_cmd = sub.add_parser("models", help="show the models this machine can use and what models=auto picks")
+    models_cmd.add_argument("overrides", nargs="*", help="Hydra overrides, e.g. auto_per_tier=2")
+    models_cmd.add_argument("--config", help="YAML config file (default: $HASHIRU_CONFIG)")
+    models_cmd.add_argument("--refresh", action="store_true", help="download LiteLLM's newest model map first")
+    models_cmd.add_argument("--check", action="store_true", help="ask each keyed provider which models it lists")
+    models_cmd.add_argument("--all", action="store_true", dest="everything", help="every usable model, not the picks")
     args = parser.parse_args(argv)
     try:
         settings = load_settings(args.overrides, args.config)
@@ -169,7 +232,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(f"hashiru: {str(exc).splitlines()[0] if str(exc) else type(exc).__name__}")
     try:
         commands = {"ask": lambda: ask(settings, args.text), "chat": lambda: chat(settings),
-                    "serve": lambda: serve(settings)}
+                    "serve": lambda: serve(settings),
+                    "models": lambda: models(settings, args.refresh, args.check, args.everything)}
         asyncio.run(commands[args.command]())
     except (ValueError, RuntimeError) as exc:
         sys.exit(f"hashiru: {exc}")
