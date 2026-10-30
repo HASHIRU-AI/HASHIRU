@@ -23,10 +23,11 @@ from hashiru.interop.conversations import Busy, Conversation, History, ShuttingD
 if TYPE_CHECKING:
     from hashiru.hub import Hub
 
-__all__ = ["MODEL", "SESSION_HEADER", "OpenAIRoutes", "error", "parse_messages"]
+__all__ = ["MODEL", "PRIVATE_HEADER", "SESSION_HEADER", "OpenAIRoutes", "error", "parse_messages", "wants_private"]
 
 MODEL = "hashiru"
 SESSION_HEADER = "x-hashiru-session"  # optional: the conversation a request continues (the chat page sends it)
+PRIVATE_HEADER = "x-hashiru-private"  # optional, 1 or true: the conversation is private from this message on
 MAX_BODY = 2_000_000
 
 
@@ -66,6 +67,11 @@ def text_of(content: Any) -> str:
         return "\n".join(str(p.get("text", "")) for p in content
                          if isinstance(p, dict) and p.get("type") in ("text", "input_text"))
     return ""
+
+
+def wants_private(value: str) -> bool:
+    """Whether a PRIVATE_HEADER value turns privacy on."""
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
 
 def parse_messages(messages: Any) -> tuple[History, str, str]:
@@ -115,7 +121,9 @@ class OpenAIRoutes:
         s = self.hub.settings
         return JSONResponse({"ceo_model": s.ceo_model, "models": self.hub.hireable(), "budget_usd": s.budget_usd,
                              "max_usd": s.max_usd, "tool_creation": s.tool_creation, "allow_hiring": s.allow_hiring,
-                             "open_sessions": len(self.hub.conversations.open_), "max_sessions": s.max_sessions})
+                             "open_sessions": len(self.hub.conversations.open_), "max_sessions": s.max_sessions,
+                             "private_by_default": s.private_by_default,
+                             "private_ceo_model": self.hub.private_ceo_model()})
 
     async def session(self, request: Request) -> Response:
         """GET: the conversation's agents and pools. DELETE: close it (fires its agents, stops its work)."""
@@ -135,7 +143,8 @@ class OpenAIRoutes:
                 raise Problem(400, "the body must be a JSON object")
             past, said, instructions = parse_messages(body.get("messages"))
             conv = await self._conversation(past, request.headers.get(SESSION_HEADER, ""))
-            turn = self.hub.conversations.ask(conv, said, instructions)
+            turn = self.hub.conversations.ask(conv, said, instructions,
+                                              private=wants_private(request.headers.get(PRIVATE_HEADER, "")))
         except Problem as p:
             return error(p.status, str(p), p.code)
         except ShuttingDown as exc:

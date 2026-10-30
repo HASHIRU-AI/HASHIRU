@@ -20,6 +20,7 @@ from hydra.errors import HydraException
 from hashiru.config import Settings, load_settings
 from hashiru.hub import Hub
 from hashiru.interop.conversations import with_history
+from hashiru.privacy import holds_private
 from hashiru.runtime import ask_agent
 from hashiru.session import USER
 
@@ -37,7 +38,8 @@ async def ask(settings: Settings, text: str) -> None:
     async with hub.serving():
         session = hub.new_session("ask")
         try:
-            reply = await ask_agent(hub, session, USER, "ceo", hub.recall(session, text))
+            why = await hub.make_private(session) if settings.private_by_default else None
+            reply = f"error: {why}" if why else await ask_agent(hub, session, USER, "ceo", hub.recall(session, text))
         finally:
             await hub.close_session(session)
     print("\n".join([*deliveries(session.trace.events), f"[ceo -> you] {reply}", f"trace: {session.trace.path}"]))
@@ -48,7 +50,10 @@ async def chat(settings: Settings) -> None:
     hub = Hub(settings)
     async with hub.serving():
         session = hub.new_session("chat")
-        print(f"Chatting with the CEO ({settings.ceo_model}). Ctrl-D, Ctrl-C or /quit to end.\n"
+        if settings.private_by_default and (why := await hub.make_private(session)):
+            await hub.close_session(session)
+            raise SystemExit(f"error: {why}")
+        print(f"Chatting with the CEO ({session.ledger.agents['ceo'].model}). Ctrl-D, Ctrl-C or /quit to end.\n"
               f"trace: {session.trace.path}")
         history: list[tuple[str, str]] = []
         try:
@@ -64,6 +69,9 @@ async def chat(settings: Settings) -> None:
                     break
                 if not text:
                     continue
+                if holds_private(session, USER) and (why := await hub.make_private(session)):
+                    print(f"[ceo -> you] error: {why}")  # a private delivery made the chat private, and it cannot be
+                    break
                 seen = len(session.trace.events)
                 reply = await ask_agent(hub, session, USER, "ceo",
                                         with_history(session, history, hub.recall(session, text)))

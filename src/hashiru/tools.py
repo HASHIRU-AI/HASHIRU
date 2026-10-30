@@ -12,8 +12,8 @@ from mcp.server.mcpserver import Context, MCPServer
 from hashiru.ledger import AgentRecord, free_mb
 from hashiru.llm import is_local
 from hashiru.memory import MAX_KEY_CHARS
-from hashiru.ollama import tag
 from hashiru.peers import PEER_PREFIX, fetch_card, pin, price_of
+from hashiru.privacy import holds_private, may_hold, refuse
 from hashiru.session import USER, Session
 from hashiru.web import fetch_page, search_arxiv
 
@@ -95,6 +95,10 @@ class Tools:
         peer = self.hub.peer(model)
         if peer is not None and role != "worker":
             return {"error": "a remote agent can only be hired as a worker"}
+        tier = "local" if is_local(model) else "remote" if peer else "cloud"
+        if holds_private(session, boss.name) and not may_hold(tier):  # R3: the hire prompt would carry private data
+            return {"error": refuse(session, boss.name, "hire", f"{boss.name} holds private data and may hire only "
+                                                                f"local agents, not {model}")}
         price, card = 0.0, None
         if peer is not None:
             try:  # fetched once, and pinned: requests go only to the configured URL, whatever the card says
@@ -110,10 +114,8 @@ class Tools:
         scope = tuple(sorted(set(tools))) if tools is not None else None
         if is_local(model):
             async with self.hub.memory_lock:  # check free memory, reserve and load as one step
-                if settings.enforce_budget and not self.hub.in_use(model):
-                    need, free = (await self.hub.ollama.sizes()).get(tag(model), 0), free_mb()
-                    if need > free:
-                        return {"error": f"{model} needs {need} MB of memory and only {free} MB is free"}
+                if why := await self.hub.fits(model):
+                    return {"error": why}
                 rec = self._reserve(session, boss, name, role, "local", model, prompt, budget_usd, scope, price)
                 if isinstance(rec, dict):
                     return rec
@@ -132,8 +134,7 @@ class Tools:
                 # agent and unloads its model once the load lock is free; it must not be mounted.
                 return {"error": f"{name} was fired while {model} was loading"}
         else:
-            rec = self._reserve(session, boss, name, role, "remote" if peer else "cloud", model, prompt, budget_usd,
-                                scope, price)
+            rec = self._reserve(session, boss, name, role, tier, model, prompt, budget_usd, scope, price)
             if isinstance(rec, dict):
                 return rec
         if card is not None:

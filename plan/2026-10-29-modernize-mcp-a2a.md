@@ -301,20 +301,43 @@ tree, and its privacy routing follows where data has flowed. Decisions 7–10 ab
 machine unless the user approves. HASHIRU already labels data `private` (from `read_file`, `memory`, recall, and
 MCP servers configured with `labels: [private]`) and propagates labels through messages; Phase 8 enforces them.
 
-- **8a. Enforce sensitivity (4–5 days).**
-  - [ ] One check at the hub's chokepoints: a message, reply, hire prompt or delivery that carries `private` is
-    refused when its receiver is a cloud agent or a remote A2A peer (the sender gets an error saying why), and a
-    tool result labeled `private` is withheld from a cloud caller. Memory recall is not injected into a cloud CEO.
-  - [ ] External sinks: an agent holding `private` may not call tools that send data off the machine
-    (`get_website`, `arxiv_search`, MCP servers reached by `url`, created tools), unless the setting
-    `private_egress` says otherwise. Local stdio MCP servers stay allowed.
-  - [ ] The front door: the user can mark a chat private (chat page toggle; `x-hashiru-private: 1` on `/v1`;
-    request metadata on A2A; an `ask` argument on MCP). A private turn runs on a local CEO (`private_ceo_model`,
-    default the largest local model in `models`), and a conversation stays private from its first private turn
-    on, because its history now holds private text.
-  - [ ] The trace records every refusal (`policy` events) so leaks can be audited, and later benchmarked as zero.
-  - [ ] Write the check as a rule table compatible with lite's R1–R5 naming, so Phase 6 extends it instead of
-    forking it.
+- **8a. Enforce sensitivity (4–5 days).** — DONE 2026-10-29 on `feature/sensitivity`
+  - [x] `privacy.py` holds R3 (lite's rule number and wording, *private stays local*); the runtime and the hub call
+    it at their chokepoints. A message or hire prompt that carries `private` is refused when its receiver is a
+    cloud agent or a remote A2A peer, a reply that carries it is withheld from a cloud hirer, a tool that returns
+    private data (`read_file`, `memory`, servers labeled private) is refused to a cloud caller before it runs, a
+    private label a tool attaches to its own result withholds that result, a delivery that carries private data
+    makes the user (and so the chat) private, and memory recall is not injected into a cloud CEO. As in lite, a
+    cloud agent cannot use `memory` or `read_file` at all.
+  - [x] External sinks: an agent holding `private` may not call `get_website`, `arxiv_search`, `create_tool`, created
+    tools, or a configured MCP server, unless `private_egress=allow`. Departure from the plan: *every* configured
+    server counts, not only `url` ones, because a local stdio server can still reach the web (`mcp-server-fetch`
+    does); a server whose config says `egress: false` (e.g. the example clock server) stays usable.
+  - [x] The front door: the chat page's lock, `x-hashiru-private: 1` on `/v1`, `hashiru_private: true` in A2A
+    message metadata, `private: true` on MCP `ask`, and `private_by_default` (also for the CLI). A private turn labels
+    the user `private` for the rest of the session, so the conversation stays private, and moves a cloud CEO to
+    `private_ceo_model`. Departure: the default is `ceo_model` if it is local, else the *first* local model in
+    `models` (not the largest), so the choice is predictable; the switch makes the same free-memory check as a local
+    hire (`Hub.fits`). Without a local model the turn answers why, no model sees the message, and the conversation
+    stays open. Private A2A contexts and private chat histories are remembered (bounded, in memory) after their
+    conversations close, so a client continuing one stays private. Session state and `/v1/hashiru/info` report
+    privacy so the page can show it; the page's lock is off when the hub has no local model. "Local" now excludes
+    Ollama's `-cloud` tags, and the hub warns when `ollama_url` is not this machine.
+  - [x] Every refusal, and a chat going private (or failing to), is a `policy` event (`rule`, `agent`, `action`,
+    `why`; `model` and `tier` when the CEO moves), and has an activity line in the chat.
+  - [x] Tests first (`test_privacy.py`, `test_privacy_interop.py`, a browser test of the lock), all seen failing
+    before the code; three older tests that expected a cloud CEO to hold private data ("recorded, not blocked") now
+    use a local CEO. The page's lock was written before its browser test, so it was checked by mutation instead:
+    removing the header makes the test fail.
+  - [x] Code review (independent reviewer, with fake-LLM probes): 3 R3 bypasses, all fixed with tests. HIGH: text a
+    local agent delivered reached a cloud CEO in the next turn's history; HIGH: privacy was lost when a conversation
+    closed and the client continued it (A2A context, resent OpenAI history); MED: Ollama `-cloud` tags counted as
+    local. Also fixed: a failed switch left the conversation busy for 90 minutes (and could fill every slot); the
+    page offered the lock with no local model; `private_ceo_model` was ignored when the CEO was already local;
+    settings built in code failed open; refusals had no activity line. Documented rather than fixed: R3 does not hold
+    with `tool_creation` on (created tools run unsandboxed: Phase 9's container backend), an Ollama on another
+    machine, stateful `egress: false` servers, and API-key holders counting as the user. 11 mutations of the new
+    checks are each caught by a test.
 - **8b. Declarative hiring and the router (3–4 days).**
   - [ ] `hire_agent(..., difficulty="easy|medium|hard")`; `model` becomes optional. Sensitivity is inherited
     from the hirer's labels, never chosen by the model.

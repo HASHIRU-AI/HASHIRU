@@ -11,10 +11,12 @@ from hydra import compose, initialize_config_module
 from hydra.core.override_parser.overrides_parser import OverridesParser
 from omegaconf import DictConfig, OmegaConf
 
+from hashiru.llm import is_local
+
 __all__ = ["A2APeer", "McpServer", "Settings", "load_settings"]
 
 SERVER_NAME = re.compile(r"[a-z][a-z0-9_]{0,23}")
-SERVER_KEYS = {"command", "args", "env", "url", "headers", "labels"}
+SERVER_KEYS = {"command", "args", "env", "url", "headers", "labels", "egress"}
 PEER_KEYS = {"url", "headers", "price_usd_per_message", "labels"}
 POSITIVE = ("task_timeout", "tool_start_timeout", "tool_call_timeout", "mcp_start_timeout", "session_ttl",
             "max_sessions", "ollama_num_ctx")
@@ -34,6 +36,7 @@ class McpServer:
     url: str = ""
     headers: tuple[tuple[str, str], ...] = ()   # sent to an HTTP server, e.g. Authorization
     labels: tuple[str, ...] = ("untrusted",)    # what its results carry in the trace
+    egress: bool = True                         # may send data off the machine (so private data may not reach it)
 
 
 @dataclass(frozen=True)
@@ -85,6 +88,9 @@ class Settings:
     max_sessions: int = 16  # open conversations from the chat page, the OpenAI API, A2A and MCP clients
     session_ttl: float = 3600.0  # seconds an idle conversation stays open with its hires
     frame_ancestors: str = "'none'"  # CSP frame-ancestors for the chat page
+    private_ceo_model: str = ""  # a private chat's CEO; default ceo_model if local, else the first local model
+    private_egress: str = "block"  # "block": agents holding private data cannot call tools that leave the machine
+    private_by_default: bool = False  # every chat is private: local models only, from its first message
 
     @property
     def internal_url(self) -> str:
@@ -138,9 +144,15 @@ def _servers(value: Any) -> tuple[McpServer, ...]:
         labels = tuple(str(label) for label in labels)
         if not set(labels) <= LABELS:
             raise ValueError(f"{where}.labels may only use {sorted(LABELS)}")
+        egress = spec.get("egress", True)
+        if not isinstance(egress, bool):
+            raise ValueError(f"{where}.egress must be true or false")
+        if url and not egress:
+            raise ValueError(f"{where}: egress: false cannot hold for a server reached by url (it receives what "
+                             "you send it)")
         servers.append(McpServer(name, command, tuple(str(a) for a in args),
                                  _pairs(spec.get("env"), f"{where}.env"), url,
-                                 _pairs(spec.get("headers"), f"{where}.headers"), labels))
+                                 _pairs(spec.get("headers"), f"{where}.headers"), labels, egress))
     return tuple(servers)
 
 
@@ -240,4 +252,11 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
         raise ValueError(f"listening on {settings.host} needs an api_key (set HASHIRU_API_KEY)")
     if settings.public_url and urlsplit(settings.public_url).scheme not in ("http", "https"):
         raise ValueError("public_url must be an http(s) URL")
+    if settings.private_ceo_model and not is_local(settings.private_ceo_model):
+        raise ValueError(f"private_ceo_model must be a local model (ollama_chat/...), got {settings.private_ceo_model}")
+    if settings.private_egress not in ("block", "allow"):
+        raise ValueError(f"private_egress must be 'block' or 'allow', got {settings.private_egress!r}")
+    if settings.private_by_default and not (settings.private_ceo_model or is_local(settings.ceo_model)
+                                            or any(is_local(m) for m in settings.models)):
+        raise ValueError("private_by_default needs a local model: add one to models or set private_ceo_model")
     return settings

@@ -25,6 +25,7 @@ from a2a.types import (
     StringList,
     TaskState,
 )
+from google.protobuf.json_format import MessageToDict
 from starlette.routing import Route
 
 from hashiru.interop.activity import describe, public_event
@@ -34,9 +35,10 @@ from hashiru.peers import COST_KEY, BoundedTaskStore, Price, begin, cost_extensi
 if TYPE_CHECKING:
     from hashiru.hub import Hub
 
-__all__ = ["A2A_PATH", "PublicExecutor", "a2a_routes", "public_card"]
+__all__ = ["A2A_PATH", "PRIVATE_KEY", "PublicExecutor", "a2a_routes", "public_card"]
 
 A2A_PATH = "/a2a"
+PRIVATE_KEY = "hashiru_private"  # message metadata: true makes the conversation private from this message on
 CARD_UNDER_ENDPOINT = f"{A2A_PATH}/.well-known/agent-card.json"
 try:
     VERSION = version("hashiru")
@@ -82,7 +84,9 @@ class PublicExecutor(AgentExecutor):
         convs, key = self.hub.conversations, context.context_id or ""
         try:
             conv = convs.for_context(key) or await convs.open("a2a", context=key)
-            turn = convs.ask(conv, text, deadline=deadline_of(self.hub, context))
+            metadata = MessageToDict(context.message.metadata) if context.message else {}
+            turn = convs.ask(conv, text, deadline=deadline_of(self.hub, context),
+                             private=metadata.get(PRIVATE_KEY) is True)
         except Busy as exc:
             await updater.failed(updater.new_agent_message([new_text_part(f"failed: {exc}")]))
             return

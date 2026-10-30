@@ -13,6 +13,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from hashiru.privacy import holds_private
 from hashiru.runtime import DEADLINE, ask_agent
 from hashiru.session import USER, Session
 
@@ -25,6 +26,7 @@ __all__ = ["Busy", "Conversation", "Conversations", "History", "ShuttingDown", "
 History = list[tuple[str, str]]  # (what the user said, what they were shown)
 FOLDED = (("<think>", "</think>"), ("<details", "</details>"))  # reasoning blocks chat apps fold into replies
 KEEPALIVE = 15.0  # seconds without events before ask() yields an "idle" event
+PRIVATE_MEMORY = 4096  # private A2A contexts, and private chat histories, remembered after their conversations close
 
 
 class Busy(RuntimeError):
@@ -99,6 +101,7 @@ class Conversation:
     used: float = field(default_factory=time.monotonic)
     context: str = ""  # the A2A context it answers, if an A2A client opened it
     head: str = ""     # fingerprint(history), kept current
+    private: bool = False  # private from its next turn on: asked for, or reopened for a context or chat that was
 
     @property
     def id(self) -> str:
@@ -116,6 +119,11 @@ class Conversations:
         self._contexts: dict[str, str] = {}   # A2A context id -> conversation id
         self._closing: set[asyncio.Task[None]] = set()
         self._opening = asyncio.Lock()        # makes room and opens one conversation at a time
+        # Private A2A contexts and the fingerprints of private chats' histories, remembered after their conversations
+        # close (expiry, eviction, an error), so a client continuing one does not silently land in the cloud.
+        # In memory only: clients should send the private flag with every message (the chat page does).
+        self._private_contexts: dict[str, None] = {}
+        self._private_heads: dict[str, None] = {}
 
     def get(self, cid: str) -> Conversation | None:
         return self.open_.get(cid)
@@ -145,19 +153,22 @@ class Conversations:
                     raise Busy(f"all {len(self.open_)} conversations are busy; try again shortly")
                 await self.close(min(idle, key=lambda c: c.used))
             past = list(history or [])
-            conv = Conversation(self.hub.new_session(label), past, context=context, head=fingerprint(past))
+            conv = Conversation(self.hub.new_session(label), past, context=context, head=fingerprint(past),
+                                private=self.was_private(past, context))
             self.open_[conv.id] = conv
             if context:
                 self._contexts[context] = conv.id
             return conv
 
-    def ask(self, conv: Conversation, text: str, instructions: str = "",
-            deadline: float | None = None) -> AsyncGenerator[dict[str, Any]]:
+    def ask(self, conv: Conversation, text: str, instructions: str = "", deadline: float | None = None,
+            private: bool = False) -> AsyncGenerator[dict[str, Any]]:
         """Send one user message to the CEO. Yields the turn's trace events as they happen ({"kind": "idle"} after
         KEEPALIVE quiet seconds), then {"kind": "answer", "text": what the user is shown, "cost_usd": ...}.
 
         The conversation is claimed at once (Busy if it already is), so two requests cannot both start a turn.
-        `deadline` (Unix time) can only shorten task_timeout. Consumers iterate it under contextlib.aclosing: if they
+        `deadline` (Unix time) can only shorten task_timeout. `private` (or private_by_default) makes the conversation
+        private from this message on: local models only (Hub.make_private); if that is impossible the answer says why
+        and no model sees the message. Consumers iterate it under contextlib.aclosing: if they
         stop before the answer, the turn is stopped and the conversation closed. A reply that is an error also closes
         it: the CEO's run may still be going, and a new turn would race it.
         """
@@ -166,11 +177,38 @@ class Conversations:
         if conv.id not in self.open_:
             raise Busy("this conversation has been closed")
         conv.busy, conv.used = True, time.monotonic()
-        return self._turn(conv, text, instructions, deadline)
+        return self._turn(conv, text, instructions, deadline, private)
 
-    async def _turn(self, conv: Conversation, text: str, instructions: str,
-                    deadline: float | None) -> AsyncGenerator[dict[str, Any]]:
+    def was_private(self, past: History, context: str = "") -> bool:
+        """Whether a conversation opened for this A2A context, or this chat history, continues a private one."""
+        if context in self._private_contexts:
+            return True
+        return bool(self._private_heads) and any(fingerprint(past[:i]) in self._private_heads
+                                                 for i in range(1, len(past) + 1))
+
+    def _mark_private(self, conv: Conversation) -> None:
+        conv.private = True
+        for store, key in ((self._private_contexts, conv.context), (self._private_heads, conv.head)):
+            if key:
+                store.pop(key, None)
+                store[key] = None
+                while len(store) > PRIVATE_MEMORY:
+                    del store[next(iter(store))]  # the oldest
+
+    async def _turn(self, conv: Conversation, text: str, instructions: str, deadline: float | None,
+                    private: bool) -> AsyncGenerator[dict[str, Any]]:
         session, queue = conv.session, asyncio.Queue[dict[str, Any]]()
+        if private or conv.private or self.hub.settings.private_by_default or holds_private(session, USER):
+            try:  # the user's words (or, after a delivery, the history) are private: the CEO must be local
+                why = await self.hub.make_private(session)
+            except BaseException:
+                conv.busy, conv.used = False, time.monotonic()  # never leave the conversation claimed
+                raise
+            if why:  # nothing ran, so the conversation stays open for a message that need not be private
+                conv.busy, conv.used = False, time.monotonic()
+                yield {"kind": "answer", "text": f"error: {why}", "reply": f"error: {why}", "cost_usd": 0.0}
+                return
+            self._mark_private(conv)
         start = len(session.trace.events)
         stop_listening = session.trace.listen(queue.put_nowait)
         prompt = self.hub.recall(session, text)
@@ -216,6 +254,8 @@ class Conversations:
         if self._heads.get(conv.head) == conv.id:  # another conversation with the same history may own it now
             del self._heads[conv.head]
         conv.head = fingerprint(conv.history)
+        if conv.private or holds_private(conv.session, USER):  # e.g. a delivery this turn made it private
+            self._mark_private(conv)
         if conv.id in self.open_:  # closed during the turn (DELETE, end_session, sweep): nothing to find
             self._heads[conv.head] = conv.id
 
@@ -267,6 +307,7 @@ class Conversations:
                    "spent_usd": round(a.spent, 6), "left_usd": round(left[a.name], 6), "gpu_mb": a.gpu_mb}
                   for a in ledger.agents.values()]
         return {"session": conv.id, "busy": conv.busy, "turns": len(conv.history), "budget_usd": s.budget_usd,
+                "private": holds_private(conv.session, USER),
                 "spent_usd": round(sum(a.spent for a in ledger.agents.values()), 6),
                 "wallet": {"max_usd": self.hub.wallet.max_usd, "spent_usd": round(self.hub.wallet.spent, 6)},
                 "agents": agents}

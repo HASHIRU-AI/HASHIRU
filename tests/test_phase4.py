@@ -8,7 +8,8 @@ import pytest
 from a2a_peer import peer
 from conftest import FakeOllama, ctx, make_settings
 
-from hashiru import runtime, tools
+from hashiru import hub as hub_module
+from hashiru import runtime
 from hashiru.config import A2APeer, load_settings
 from hashiru.hub import Hub
 from hashiru.peers import COST_EXTENSION, COST_KEY, DEADLINE_KEY, Price, fetch_card, price_of, send
@@ -45,7 +46,7 @@ def test_without_enforcement_hires_only_record_overspending(tmp_path, ollama):
 
 
 def test_a_local_model_must_fit_in_free_memory(hub, session, monkeypatch):
-    monkeypatch.setattr(tools, "free_mb", lambda: 10)  # "tiny" needs 50 MB
+    monkeypatch.setattr(hub_module, "free_mb", lambda: 10)  # "tiny" needs 50 MB
     assert "needs 50 MB" in hire(hub, session, model="ollama_chat/tiny")["error"]
     session.ledger.add("other", "worker", "local", "ollama_chat/tiny", "p", "ceo", 1, 0.0)  # already loaded
     assert "hired" in hire(hub, session, model="ollama_chat/tiny")

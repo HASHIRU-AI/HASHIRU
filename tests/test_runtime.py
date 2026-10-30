@@ -42,6 +42,8 @@ def test_agents_can_only_ask_their_own_hires(hub, session):
 
 
 def test_ask_agent_traces_and_moves_labels(hub, session, monkeypatch):
+    ceo = session.ledger.agents["ceo"]
+    ceo.tier, ceo.model = "local", "ollama_chat/tiny"  # a local CEO may hold private data (a cloud one: test_privacy)
     session.ledger.add("m1", "manager", "local", "ollama_chat/tiny", "notes", "ceo", 1, 0.0)
 
     async def fake_send(hub_, session_, me, name, text):
@@ -50,8 +52,8 @@ def test_ask_agent_traces_and_moves_labels(hub, session, monkeypatch):
     monkeypatch.setattr(runtime, "a2a_send", fake_send)
     assert asyncio.run(runtime.ask_agent(hub, session, "ceo", "m1", "summarize my notes")) == "your notes say X"
     assert [(m["agent"], m["to"], m["to_tier"], m["labels"]) for m in msgs(session)] == [
-        ("ceo", "m1", "local", []), ("m1", "ceo", "cloud", ["private"])]
-    assert session.trace.labels("ceo", session.id) == {"private"}  # recorded, not blocked (no policy layer yet)
+        ("ceo", "m1", "local", []), ("m1", "ceo", "local", ["private"])]
+    assert session.trace.labels("ceo", session.id) == {"private"}
 
 
 def test_executor_reports_the_real_cause_inside_an_exception_group(hub, session, monkeypatch):

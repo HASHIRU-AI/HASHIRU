@@ -34,7 +34,8 @@ class Wallet:
 
 
 def is_local(model: str) -> bool:
-    return model.startswith(("ollama_chat/", "ollama/"))
+    """Served by Ollama on this machine. Ollama's -cloud tags (e.g. gpt-oss:120b-cloud) run on ollama.com: cloud."""
+    return model.startswith(("ollama_chat/", "ollama/")) and not model.endswith("-cloud")
 
 
 def has_price(model: str) -> bool:
