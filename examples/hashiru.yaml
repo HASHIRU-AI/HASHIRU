@@ -16,10 +16,12 @@ mcp_servers:
     command: uv
     args: [run, examples/clock_mcp_server.py]
     labels: []                              # computed locally, not read from outside: nothing to label
+    egress: false                           # sends nothing off the machine, so agents holding private data may use it
   # files:                                  # read-only access to one folder, labeled private
   #   command: npx
   #   args: [-y, "@modelcontextprotocol/server-filesystem", /path/to/notes]
   #   labels: [private]
+  #   egress: false                         # it only reads here: agents holding private data may keep using it
   # search:                                 # a hosted server over streamable HTTP
   #   url: https://example.com/mcp
   #   headers: {Authorization: "Bearer ${oc.env:SEARCH_API_KEY}"}

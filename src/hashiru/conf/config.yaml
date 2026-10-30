@@ -26,6 +26,8 @@ tool_call_timeout: 60      # seconds one call to a created tool may take
 # Third-party MCP servers, offered to agents as <server>__<tool>. Usually set in your own config file
 # (HASHIRU_CONFIG=my.yaml or --config my.yaml); see examples/hashiru.yaml.
 #   name: {command: uvx, args: [mcp-server-fetch], env: {KEY: value}, labels: [untrusted]}
+#   name: {command: ..., labels: [private], egress: false}   # egress: false = it never sends data off the machine;
+#                                                            # one that stores data should also be labeled private
 #   name: {url: https://example.com/mcp, headers: {Authorization: Bearer ...}}
 mcp_servers: {}
 memory_db: ${data_dir}/memory.sqlite3  # shared, persistent memory; '' gives each session its own copy of memory.json
@@ -50,3 +52,11 @@ public_url: ${oc.env:HASHIRU_PUBLIC_URL,''}  # where others reach this hub (the 
 max_sessions: 16              # open conversations; when full, the least recently used idle one is closed
 session_ttl: 3600             # seconds an idle conversation (and everyone it hired) stays open
 frame_ancestors: ${oc.env:HASHIRU_FRAME_ANCESTORS,"'none'"}  # who may embed the chat page in a frame
+# Private data (R3, private stays local): results of read_file and memory, recalled memories, servers labeled
+# private, and everything the user says in a private chat reach only local models and the user. A chat becomes
+# private when the client asks (chat page lock, x-hashiru-private header, A2A metadata hashiru_private, MCP ask
+# private=true) and stays private; its CEO moves to private_ceo_model.
+private_ceo_model: ${oc.env:HASHIRU_PRIVATE_CEO_MODEL,''}  # default: ceo_model if local, else the first local model
+private_egress: block            # block (or any value but allow): agents holding private data cannot call tools
+                                 # that leave the machine. R3 does not hold with tool_creation on (see README)
+private_by_default: ${oc.decode:${oc.env:HASHIRU_PRIVATE_BY_DEFAULT,'false'}}  # every chat private (local only)

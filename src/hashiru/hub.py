@@ -11,6 +11,7 @@ import time
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import uvicorn
@@ -23,14 +24,15 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 
 from hashiru.auth import AuthGate, token_of
-from hashiru.config import A2APeer, Settings
+from hashiru.config import LOOPBACK, A2APeer, Settings
 from hashiru.gateway import Gateway
 from hashiru.interop import Conversations, mount
-from hashiru.ledger import AgentRecord
+from hashiru.ledger import AgentRecord, free_mb
 from hashiru.llm import LLM, Wallet, check_priced, is_local, register_prices
 from hashiru.memory import MemoryStore, open_memory, words
-from hashiru.ollama import Ollama
+from hashiru.ollama import Ollama, tag
 from hashiru.peers import PEER_PREFIX, BoundedTaskStore, PeerExecutor, Price, cost_extension, model_price
+from hashiru.privacy import EGRESS, RULE, holds_private, may_hold, refuse
 from hashiru.runtime import CEO_PROMPT, Executor
 from hashiru.session import USER, Session
 from hashiru.tools import Tools
@@ -51,7 +53,11 @@ class Hub:
         self.settings = settings
         self.wallet = Wallet(settings.max_usd)
         self.llm = llm or LLM(settings.ollama_url, self.wallet, settings.ollama_num_ctx)
-        self.ollama = ollama or Ollama(settings.ollama_url, settings.models, settings.ollama_num_ctx)
+        known = (*settings.models, settings.ceo_model, settings.private_ceo_model)  # Ollama sizes its local ones
+        self.ollama = ollama or Ollama(settings.ollama_url, known, settings.ollama_num_ctx)
+        if (urlsplit(settings.ollama_url).hostname or "") not in LOOPBACK:
+            log.warning("ollama_url %s is not this machine: local models, and the private data they see, run there",
+                        settings.ollama_url)
         self.sessions: dict[str, Session] = {}
         self._tokens: dict[str, tuple[str, str]] = {}  # token -> (session id, caller name)
         self._model_locks: dict[str, asyncio.Lock] = {}
@@ -215,16 +221,73 @@ class Hub:
         """`text` plus the saved memories that best match it, when memory_autoinject is on (v1's behavior).
 
         Clients call this on the user's own words, before adding chat history. The CEO then holds private data,
-        so its label set records that, and a 'recall' event records what was added.
+        so its label set records that, and a 'recall' event records what was added. A cloud CEO gets nothing (R3).
         """
         if not self.settings.memory_autoinject or not words(text):  # no words: nothing to match on
             return text
         if not (hits := session.memory.search(text, limit)):
             return text
+        if not may_hold(session.ledger.agents["ceo"].tier):
+            refuse(session, "ceo", "recall", "saved memories are private and the CEO runs on a cloud model")
+            return text
         session.trace.emit("recall", task=session.id, agent="ceo", query=text[:200], results=hits)
         session.trace.receive("ceo", session.id, sorted({PRIVATE} | {lbl for h in hits for lbl in h["labels"]}))
         lines = "\n".join(f"- {h['key']}: {h['text']}" for h in hits)
         return f"{text}\n\nSaved memories that may be relevant:\n{lines}"
+
+    def egress(self) -> set[str]:
+        """Tools that may send data off this machine, which an agent holding private data may not call (R3): the web
+        tools, tool creation, created tools (they may fetch anything) and configured MCP servers not marked
+        egress: false."""
+        return set(EGRESS) | self.toolsmith.names() | self.gateway.egress()
+
+    def private_ceo_model(self) -> str | None:
+        """The local model a private chat's CEO runs on: private_ceo_model, else ceo_model if it is local, else the
+        first local model in models."""
+        s = self.settings
+        if s.private_ceo_model:
+            return s.private_ceo_model
+        return s.ceo_model if is_local(s.ceo_model) else next((m for m in s.models if is_local(m)), None)
+
+    async def fits(self, model: str) -> str | None:
+        """Why a local model would not fit in free memory now, or None. Callers hold memory_lock. A model that a live
+        agent already uses is loaded, so it fits."""
+        if not self.settings.enforce_budget or self.in_use(model):
+            return None
+        need, free = (await self.ollama.sizes()).get(tag(model), 0), free_mb()
+        return f"{model} needs {need} MB of memory and only {free} MB is free" if need > free else None
+
+    async def make_private(self, session: Session) -> str | None:
+        """Make the rest of this session private: everything the user says carries `private`, so the CEO must run on
+        private_ceo_model and moves to it (also after a delivery made the user private while the CEO was in the
+        cloud). Returns why that is impossible, or None. Calling it again changes nothing."""
+        ceo, target = session.ledger.agents["ceo"], self.private_ceo_model()
+        if holds_private(session, USER) and ceo.model == target:
+            return None
+        if target is None:
+            return self._private_failed(session, "this hub has no local model for private chats: add one to models "
+                                                 "or set private_ceo_model")
+        if not is_local(target):
+            return self._private_failed(session, f"private_ceo_model {target} is not a local model")
+        if ceo.model != target:
+            try:
+                async with self.memory_lock:  # the same check a local hire makes
+                    if why := await self.fits(target):
+                        return self._private_failed(session, f"{why}, so this chat cannot go private")
+                    ceo.model, ceo.tier = target, "local"
+            except httpx.HTTPError as exc:
+                return self._private_failed(session, f"could not reach Ollama to check memory for {target}: {exc}")
+            self.unmount(session, "ceo")
+            self.mount(session, ceo)  # its card names the new model
+        session.trace.receive(USER, session.id, [PRIVATE])
+        session.trace.emit("policy", task=session.id, agent="ceo", rule=RULE, action="private", model=ceo.model,
+                           tier=ceo.tier, why=f"the chat is private from here on; the CEO runs on {ceo.model}")
+        return None
+
+    @staticmethod
+    def _private_failed(session: Session, why: str) -> str:
+        session.trace.emit("policy", task=session.id, agent="ceo", rule=RULE, action="private_failed", why=why)
+        return why
 
     def external(self) -> set[str]:
         """Tools whose error text comes from outside the hub, so their errors keep their labels too."""

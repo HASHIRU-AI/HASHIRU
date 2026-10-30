@@ -11,6 +11,7 @@ from hashiru.session import USER
 __all__ = ["describe", "public_event"]
 
 CLIP = 240
+RULE_NAMES = {"R3": "private stays local"}
 PUBLIC_KEYS = ("seq", "ts", "kind", "agent", "to", "name", "tier", "model", "cost_usd", "labels")
 
 
@@ -66,6 +67,10 @@ def describe(e: dict[str, Any]) -> str | None:
         return f"{agent}: {clip(e.get('error', ''))}"
     if kind == "recall":
         return f"added {len(e.get('results', []))} saved memories to your message"
+    if kind == "policy":
+        rule = e.get("rule", "")
+        name = RULE_NAMES.get(rule)
+        return f"{rule} ({name}): {clip(e.get('why', ''))}" if name else f"{rule}: {clip(e.get('why', ''))}"
     return None
 
 
