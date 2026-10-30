@@ -114,7 +114,8 @@ class Gateway:
             refused = (f"the name {name} is taken" if name in taken else check_published(description, schema))
             if not refused:
                 try:
-                    register_proxy(self.hub.mcp, name, description, schema, self.call)
+                    # its annotations too: a tool that declares readOnlyHint is usable in plan mode
+                    register_proxy(self.hub.mcp, name, description, schema, self.call, tool.annotations)
                 except Exception as exc:  # one odd schema must not take the rest of the server down
                     refused = str(exc)
             if refused:

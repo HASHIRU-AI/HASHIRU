@@ -12,6 +12,7 @@ from conftest import FakeOllama, make_settings
 from test_approvals import HireLLM
 from test_interop import PORT, TeamLLM
 from test_obfuscation import ObfLLM
+from test_planning import PlanLLM
 from test_privacy_interop import ModelLLM
 
 from hashiru.hub import Hub
@@ -219,4 +220,30 @@ def test_a_question_shows_approve_and_deny_and_a_click_answers_it(browser, tmp_p
         assert page.locator(".approve").count() == 0                       # answered: the buttons are gone
         assert page.locator(".msg.you .body").nth(1).inner_text() == "approve"
         assert page.get_attribute("#input", "placeholder") == "Message HASHIRU" and errors == []
+        page.close()
+
+
+def test_the_plan_switch_shows_a_plan_and_approving_it_carries_it_out(browser, tmp_path):
+    settings = make_settings(tmp_path, port=PORT, approve_hire_usd=0.2)
+    hub = Hub(settings, llm=PlanLLM(), ollama=FakeOllama())  # type: ignore[arg-type]
+    with serving(hub):
+        page = browser.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(hub.settings.internal_url)
+        page.click("#plan")
+        pressed, placeholder = page.get_attribute("#plan", "aria-pressed"), page.get_attribute("#input", "placeholder")
+        page.fill("#input", "say hello")
+        page.keyboard.press("Enter")
+        page.wait_for_selector(".msg.ceo .approve .btn.primary", timeout=15_000)
+        cells = page.locator(".msg.ceo .md table td").all_inner_texts()
+        button = page.inner_text(".approve .btn.primary")
+        page.click(".approve .btn.primary")
+        second = page.locator(".msg.ceo").nth(1)
+        second.locator(".meta").wait_for(state="attached", timeout=15_000)
+        assert pressed == "true" and placeholder == "Describe the task: the CEO plans before it hires"
+        assert cells[:4] == ["w1", "worker", "gpt-4.1-mini", "$0.30"] and button == "Approve plan"
+        assert second.locator(".md").inner_text().strip() == "w1 says hello"  # no approval asked: it was planned
+        assert page.locator(".approve").count() == 0 and page.get_attribute("#plan", "aria-pressed") == "false"
+        assert errors == []
         page.close()

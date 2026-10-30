@@ -4,7 +4,9 @@ The model is "hashiru" and its answers come from the CEO. With stream=true, the 
 happens as `reasoning_content` deltas (most chat apps show these as the model's thinking); what agents deliver
 straight to the user and the CEO's reply arrive as `content`. Responses and chunks also carry a `hashiru` object
 (the session id, each chunk's event, the cost) that other clients ignore. An answer that asks for the user's approval
-also carries `hashiru.approval`, the questions; the next user message answers them.
+also carries `hashiru.approval`, the questions; the next user message answers them. A request can pick plan or act
+mode with MODE_HEADER (or the message can start with /plan or /act); an answer that proposes a plan carries
+`hashiru.plan`, and the next user message approves or revises it.
 """
 import asyncio
 import contextlib
@@ -20,16 +22,18 @@ from starlette.routing import Route
 
 from hashiru.interop.activity import describe, public_event
 from hashiru.interop.conversations import Busy, Conversation, History, ShuttingDown, delivered
+from hashiru.planning import MODES
 
 if TYPE_CHECKING:
     from hashiru.hub import Hub
 
-__all__ = ["MODEL", "PRIVATE_HEADER", "SESSION_HEADER", "OpenAIRoutes", "asking", "error", "parse_messages",
-           "wants_private"]
+__all__ = ["MODEL", "MODE_HEADER", "PRIVATE_HEADER", "SESSION_HEADER", "OpenAIRoutes", "asking", "error", "mode_of",
+           "parse_messages", "wants_private"]
 
 MODEL = "hashiru"
 SESSION_HEADER = "x-hashiru-session"  # optional: the conversation a request continues (the chat page sends it)
 PRIVATE_HEADER = "x-hashiru-private"  # optional, 1 or true: the conversation is private from this message on
+MODE_HEADER = "x-hashiru-mode"  # optional, plan or act: this message's mode (hashiru.planning)
 MAX_BODY = 2_000_000
 
 
@@ -72,8 +76,17 @@ def text_of(content: Any) -> str:
 
 
 def asking(answer: dict[str, Any]) -> dict[str, Any]:
-    """The approvals an answer asks for, if it asks for any."""
-    return {"approval": answer["approval"]} if answer.get("approval") else {}
+    """The approvals an answer asks for and the plan it proposes, if any."""
+    return ({"approval": answer["approval"]} if answer.get("approval") else {}) | (
+        {"plan": answer["plan"]} if "plan" in answer else {})
+
+
+def mode_of(value: str) -> str | None:
+    """A MODE_HEADER value: plan, act, or None when it is absent."""
+    mode = value.strip().lower()
+    if mode and mode not in MODES:
+        raise Problem(400, f"{MODE_HEADER} must be plan or act, got {value!r}", "invalid_mode")
+    return mode or None
 
 
 def wants_private(value: str) -> bool:
@@ -129,7 +142,7 @@ class OpenAIRoutes:
         return JSONResponse({"ceo_model": s.ceo_model, "models": self.hub.hireable(), "budget_usd": s.budget_usd,
                              "max_usd": s.max_usd, "tool_creation": s.tool_creation, "allow_hiring": s.allow_hiring,
                              "open_sessions": len(self.hub.conversations.open_), "max_sessions": s.max_sessions,
-                             "private_by_default": s.private_by_default,
+                             "private_by_default": s.private_by_default, "default_mode": s.default_mode,
                              "private_mode": "obfuscate" if self.hub.obfuscating() else "block",
                              "private_ceo_model": self.hub.private_ceo_model()})
 
@@ -150,8 +163,9 @@ class OpenAIRoutes:
             if not isinstance(body, dict):
                 raise Problem(400, "the body must be a JSON object")
             past, said, instructions = parse_messages(body.get("messages"))
+            mode = mode_of(request.headers.get(MODE_HEADER, ""))
             conv = await self._conversation(past, request.headers.get(SESSION_HEADER, ""))
-            turn = self.hub.conversations.ask(conv, said, instructions,
+            turn = self.hub.conversations.ask(conv, said, instructions, mode=mode,
                                               private=wants_private(request.headers.get(PRIVATE_HEADER, "")))
         except Problem as p:
             return error(p.status, str(p), p.code)

@@ -13,7 +13,8 @@ __all__ = ["describe", "public_event"]
 CLIP = 240
 RULE_NAMES = {"R3": "private stays local"}
 APPROVALS = {"asked": "waiting for your approval", "approved": "you approved", "denied": "you did not approve",
-             "expired": "not approved in time", "unattended": "nobody can approve here, so not"}
+             "expired": "not approved in time", "unattended": "nobody can approve here, so not",
+             "planned": "approved with your plan"}
 PUBLIC_KEYS = ("seq", "ts", "kind", "agent", "to", "name", "tier", "model", "cost_usd", "labels")
 
 
@@ -50,6 +51,11 @@ def _tool(e: dict[str, Any]) -> str | None:
                 f"{result.get('free_mb')} MB free")
     if name == "deliver_to_user":
         return f"{agent} sent you a message"
+    if name == "propose_plan":
+        hires, problems = len(result.get("hires", [])), len(result.get("problems", []))
+        flagged = f" ({problems} problem{'s' * (problems != 1)})" if problems else ""
+        return (f"{agent} proposed a plan: {hires} hire{'s' * (hires != 1)}, {money(result.get('total_usd'))} "
+                f"reserved{flagged}")
     return f"{agent} called {name}({_args(args)})"
 
 

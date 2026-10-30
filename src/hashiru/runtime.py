@@ -22,6 +22,7 @@ from mcp.shared.exceptions import MCPError
 from hashiru import approvals
 from hashiru.ledger import AgentRecord
 from hashiru.peers import DEADLINE_KEY, send, serve_request
+from hashiru.planning import PLAN_RULES, PROPOSE_TOOL, propose, readable, refusal
 from hashiru.privacy import MISSED, cross, may_hold, refuse, tool_refusal, where
 from hashiru.router import escalate
 from hashiru.session import USER, Session
@@ -70,11 +71,13 @@ def empty(rec: AgentRecord) -> str:
     return f"failed: {rec.name} gave an empty answer{hint}"
 
 
-def system_prompt(rec: AgentRecord) -> str:
-    """Workers get only their hirer's prompt; the CEO and managers also get their pool and the rules."""
+def system_prompt(rec: AgentRecord, planning: bool = False) -> str:
+    """Workers get only their hirer's prompt; the CEO and managers also get their pool and the rules (and, in plan
+    mode, the planning rules)."""
     if rec.role == "worker":
         return rec.prompt
-    return f"You are {rec.name}; your pool is '{rec.name}'.\n{RULES}\n\nYour job: {rec.prompt}"
+    rules = f"{RULES}\n\n{PLAN_RULES}" if planning else RULES
+    return f"You are {rec.name}; your pool is '{rec.name}'.\n{rules}\n\nYour job: {rec.prompt}"
 
 
 def to_openai(tool: Any) -> dict[str, Any]:
@@ -216,16 +219,29 @@ async def call_tool(session: Session, mcp: Any, me: str, name: str, args: dict[s
 
 async def dispatch(hub: "Hub", session: Session, mcp: Any, me: str, call: Any,
                    turn: int | None = None) -> dict[str, Any]:
-    """Route one LLM tool call to ask_agent (A2A) or an MCP tool."""
+    """Route one LLM tool call to ask_agent (A2A), propose_plan or an MCP tool. While the session plans, every call
+    that is not reading is refused here (planning.refusal), whatever the model was offered."""
     try:
         args = json.loads(call.function.arguments or "{}")
     except json.JSONDecodeError:
         return {"error": "tool arguments were not valid JSON"}
     if not isinstance(args, dict):
         return {"error": "tool arguments must be a JSON object"}
-    if not allowed(session.ledger.agents[me], call.function.name):
-        return {"error": f"{call.function.name} is not one of your tools"}
-    if call.function.name == "ask_agent":
+    rec, name = session.ledger.agents[me], call.function.name
+    if not allowed(rec, name):
+        return {"error": f"{name} is not one of your tools"}
+    if session.planning:
+        if name == "propose_plan":
+            result = await propose(hub, session, me, args)
+            session.trace.emit("tool", task=session.id, agent=me, tier=rec.tier, name=name, turn=turn, args=args,
+                               arg_labels=session.trace.outgoing(me, session.id, json.dumps(args)), result=result,
+                               labels=[])
+            return result
+        if refused := await refusal(hub, name, args):
+            return {"error": refused}
+    elif name == "propose_plan":
+        return {"error": "propose_plan is only for plan mode"}
+    if name == "ask_agent":
         return {"reply": await ask_agent(hub, session, me, str(args.get("name", "")), str(args.get("text", "")))}
     egress = set() if hub.settings.private_egress == "allow" else hub.egress()  # an unknown value blocks
     return await call_tool(session, mcp, me, call.function.name, args, turn, hub.sources(), hub.external(), egress,
@@ -280,7 +296,8 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
     rec = session.ledger.agents[name]
     if not still_on(hub, session, rec):
         return "failed"
-    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt(rec)},
+    planning = session.planning  # a turn plans or acts throughout
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt(rec, planning)},
                                       {"role": "user", "content": text}]
     if rec.role == "worker":
         for attempt in range(2):
@@ -305,8 +322,9 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
             if refused := spent_out(hub, session, rec) or await approvals.turn(hub, session, rec):
                 return refused
             # Re-read every turn: a tool created (or deleted) on the last turn is visible on this one.
-            tools = [to_openai(t) for t in (await mcp.list_tools()).tools if allowed(rec, t.name)]
-            tools += [ASK_TOOL] if allowed(rec, "ask_agent") else []
+            tools = [to_openai(t) for t in (await mcp.list_tools()).tools
+                     if allowed(rec, t.name) and (readable(t) or not planning)]
+            tools += [PROPOSE_TOOL] if planning else [ASK_TOOL] if allowed(rec, "ask_agent") else []
             msg, calls, turn = await think(hub, session, rec, messages, tools)
             if not calls:
                 if (msg.content or "").strip():

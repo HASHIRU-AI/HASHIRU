@@ -7,7 +7,7 @@ Resource: `hashiru://sessions/{session}`, a conversation's agents and pools.
 """
 import contextlib
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
@@ -44,12 +44,15 @@ class PublicMCP:
                                               transport_security=security)
         self.routes: list[BaseRoute] = list(app.routes)
 
-    async def ask(self, ctx: Context, text: str, session: str = "", private: bool = False) -> dict[str, Any]:
+    async def ask(self, ctx: Context, text: str, session: str = "", private: bool = False,
+                  mode: Literal["", "plan", "act"] = "") -> dict[str, Any]:
         """Ask HASHIRU's CEO, which hires and directs agents within a budget, and wait for its answer.
 
         Pass the session from an earlier answer to continue that conversation; leave it empty to start a new one.
         private=true keeps this message and the rest of the conversation on local models. If the answer asks for
         approval (a big hire or spend), show it to the user and pass their reply as the next text in this session.
+        mode="plan" asks for a plan first: the CEO only reads and proposes, the answer carries the plan, and the user's
+        "approve" (as the next text) carries it out; mode="act" leaves plan mode.
         """
         convs = self.hub.conversations
         conv = convs.get(session) if session else None
@@ -59,7 +62,7 @@ class PublicMCP:
             return {"error": "text is empty"}
         try:
             conv = conv or await convs.open("mcp")
-            turn = convs.ask(conv, text, private=private)
+            turn = convs.ask(conv, text, private=private, mode=mode or None)
         except Busy as exc:
             return {"error": str(exc)}
         step, answer = 0, {}

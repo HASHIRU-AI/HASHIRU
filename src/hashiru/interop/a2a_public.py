@@ -32,6 +32,7 @@ from starlette.routing import Route
 from hashiru.interop.activity import describe, public_event
 from hashiru.interop.conversations import Busy
 from hashiru.peers import COST_KEY, BoundedTaskStore, Price, begin, cost_extension, deadline_of, finish
+from hashiru.planning import MODES
 
 if TYPE_CHECKING:
     from hashiru.hub import Hub
@@ -41,6 +42,8 @@ __all__ = ["A2A_PATH", "APPROVAL_KEY", "PRIVATE_KEY", "PublicExecutor", "a2a_rou
 A2A_PATH = "/a2a"
 PRIVATE_KEY = "hashiru_private"  # message metadata: true makes the conversation private from this message on
 APPROVAL_KEY = "hashiru_approval"  # reply metadata: the approvals the reply asks for
+MODE_KEY = "hashiru_mode"  # message metadata: "plan" or "act", this message's mode (hashiru.planning)
+PLAN_KEY = "hashiru_plan"  # reply metadata: the plan the reply proposes, waiting for the next message
 CARD_UNDER_ENDPOINT = f"{A2A_PATH}/.well-known/agent-card.json"
 try:
     VERSION = version("hashiru")
@@ -87,15 +90,17 @@ class PublicExecutor(AgentExecutor):
         try:
             conv = convs.for_context(key) or await convs.open("a2a", context=key)
             metadata = MessageToDict(context.message.metadata) if context.message else {}
+            mode = metadata.get(MODE_KEY)
             turn = convs.ask(conv, text, deadline=deadline_of(self.hub, context),
-                             private=metadata.get(PRIVATE_KEY) is True)
+                             private=metadata.get(PRIVATE_KEY) is True, mode=mode if mode in MODES else None)
         except Busy as exc:
             await updater.failed(updater.new_agent_message([new_text_part(f"failed: {exc}")]))
             return
         async with contextlib.aclosing(turn) as events:
             async for item in events:
                 if item["kind"] == "answer":
-                    asks = {APPROVAL_KEY: item["approval"]} if item.get("approval") else {}
+                    asks = ({APPROVAL_KEY: item["approval"]} if item.get("approval") else {}) | (
+                        {PLAN_KEY: item["plan"]} if "plan" in item else {})
                     await finish(context, event_queue, item["text"], {COST_KEY: item["cost_usd"]} | asks, updater)
                 elif line := describe(item):
                     await updater.update_status(TaskState.TASK_STATE_WORKING, message=updater.new_agent_message(
