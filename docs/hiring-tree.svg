@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 470" width="820" height="470" role="img" aria-labelledby="t d">
+  <title id="t">HASHIRU's hiring tree</title>
+  <desc id="d">You talk to the CEO, which holds a $0.50 pool. It hires a manager ($0.20), a worker on a local model ($0.10 and 3.5 GB of memory) and a remote A2A agent ($0.001 a message); the manager hires a worker on a cloud model ($0.05). Hires and messages go over A2A; the CEO and managers call tools over MCP.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6c695c"/>
+    </marker>
+    <clipPath id="face"><circle cx="410" cy="146" r="38"/></clipPath>
+    <style>
+      .card { fill: #fffefa; stroke: #dbd8ca; stroke-width: 1.2; }
+      .title { font: 600 14.5px -apple-system, BlinkMacSystemFont, "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; fill: #1e1d18; }
+      .sub { font: 12.5px -apple-system, BlinkMacSystemFont, "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; fill: #6c695c; }
+      .ceo { font: 600 18px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; fill: #1e1d18; letter-spacing: 0.06em; }
+      .money { font: 12.5px "SF Mono", Menlo, Consolas, monospace; fill: #5f5e1c; }
+      .hire { fill: none; stroke: #6c695c; stroke-width: 1.4; marker-end: url(#arrow); }
+      .mcp { fill: none; stroke: #6c695c; stroke-width: 1.4; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect x="1" y="1" width="818" height="468" rx="16" fill="#f6f5ef" stroke="#dbd8ca"/>
+
+  <!-- you -->
+  <rect class="card" x="215" y="22" width="390" height="54" rx="27"/>
+  <text class="title" x="410" y="45" text-anchor="middle">You</text>
+  <text class="sub" x="410" y="64" text-anchor="middle">the chat page, OpenAI-style apps, MCP hosts, A2A clients</text>
+  <path class="hire" d="M410,76 L410,102"/>
+
+  <!-- the CEO -->
+  <circle cx="410" cy="146" r="41" fill="#e8e7cf" stroke="#5f5e1c" stroke-width="2"/>
+  <image x="372" y="108" width="76" height="76" clip-path="url(#face)" href="data:image/png;base64,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"/>
+  <text class="ceo" x="410" y="210" text-anchor="middle">CEO</text>
+  <text class="money" x="410" y="228" text-anchor="middle">$0.50 pool</text>
+
+  <!-- tools -->
+  <rect class="card" x="30" y="114" width="240" height="64" rx="12"/>
+  <text class="title" x="150" y="141" text-anchor="middle">Tools, over MCP</text>
+  <text class="sub" x="150" y="161" text-anchor="middle">built-in · MCP servers · created</text>
+  <path class="mcp" d="M367,146 L272,146"/>
+
+  <!-- the CEO's hires -->
+  <path class="hire" d="M394,236 C330,250 230,252 200,266"/>
+  <path class="hire" d="M410,236 L410,266"/>
+  <path class="hire" d="M426,236 C490,250 590,252 620,266"/>
+
+  <rect class="card" x="30" y="268" width="240" height="64" rx="12"/>
+  <text class="title" x="150" y="295" text-anchor="middle">Manager</text>
+  <text class="money" x="150" y="315" text-anchor="middle">$0.20 · uses tools, may hire</text>
+
+  <rect class="card" x="290" y="268" width="240" height="64" rx="12"/>
+  <text class="title" x="410" y="295" text-anchor="middle">Worker, local model</text>
+  <text class="money" x="410" y="315" text-anchor="middle">$0.10 + 3.5 GB of memory</text>
+
+  <rect class="card" x="550" y="268" width="240" height="64" rx="12"/>
+  <text class="title" x="670" y="295" text-anchor="middle">Remote A2A agent</text>
+  <text class="money" x="670" y="315" text-anchor="middle">$0.001 a message</text>
+
+  <!-- the manager's tools and hire -->
+  <path class="mcp" d="M80,268 L80,180"/>
+  <path class="hire" d="M150,332 L150,378"/>
+  <rect class="card" x="30" y="380" width="240" height="64" rx="12"/>
+  <text class="title" x="150" y="407" text-anchor="middle">Worker, cloud model</text>
+  <text class="money" x="150" y="427" text-anchor="middle">$0.05</text>
+
+  <!-- legend -->
+  <path class="hire" d="M560,398 L604,398"/>
+  <text class="sub" x="616" y="402">hires and messages (A2A)</text>
+  <path class="mcp" d="M560,424 L604,424"/>
+  <text class="sub" x="616" y="428">tool calls (MCP)</text>
+</svg>

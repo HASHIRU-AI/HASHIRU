@@ -8,17 +8,11 @@ app_port: 7860
 pinned: false
 ---
 
+<p align="center"><img src="HASHIRU_LOGO.png" alt="HASHIRU" width="120"></p>
+
 # HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization
 
-```mermaid
-flowchart LR
-  you["You: the chat page, OpenAI-style apps,<br/>MCP hosts, A2A clients"] --> ceo["CEO<br/>$0.50"]
-  ceo -->|"hires (A2A)"| m1["manager<br/>$0.20"]
-  ceo -->|"hires (A2A)"| w1["worker, local model<br/>$0.10 + 3.5 GB"]
-  ceo -->|"hires (A2A)"| peer["remote A2A agent<br/>$0.001 a message"]
-  m1 -->|"hires (A2A)"| w2["worker, cloud model<br/>$0.05"]
-  ceo & m1 -->|MCP| tools["tools: built-in,<br/>MCP servers, created"]
-```
+<p align="center"><img src="docs/hiring-tree.svg" width="820" alt="You talk to the CEO, which holds a $0.50 pool. It hires a manager ($0.20), a worker on a local model ($0.10 and 3.5 GB of memory) and a remote A2A agent ($0.001 a message); the manager hires a worker on a cloud model ($0.05). Hires and messages go over A2A; the CEO and managers call tools over MCP."></p>
 
 HASHIRU is a budget-aware multi-agent system. A CEO agent splits your request into subtasks and hires
 **managers** (which use tools and may hire) and **workers** (which answer once) on local and cloud models. Each
