@@ -1,7 +1,7 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5 and 7 done on `develop`; Phase 8 (routing by sensitivity and complexity) planned; Phase 6 waits
-for HASHIRU-lite (after 2026-12-03).
+Status: Phases 0–5, 7, 8a, 8a′ and 8b done on `develop`; 8c–8e next; Phase 6 waits for HASHIRU-lite (after
+2026-12-03).
 Date: 2026-10-29
 
 ## 0. Decisions so far
@@ -362,19 +362,29 @@ MCP servers configured with `labels: [private]`) and propagates labels through m
     endpoint, checked to route to localhost): the CEO received "a thank-you note to ⟦PERSON_1⟧ (⟦EMAIL_1⟧) for my
     ⟦MONEY_1⟧ grant application", a local worker got the real values, its reply went back masked, and the user saw
     the restored note (213 s, $0).
-  - Follow-ups (the independent review was stopped early, at the user's request): Presidio's URL recognizer uses
-    `tldextract`, which fetched the public suffix list from publicsuffix.org on first use (no chat text is sent; pin
-    it to the bundled snapshot); in the real run the 4B detector gave the amount a placeholder instead of a
-    generalization; the activity's hire count includes a failed hire; the `obfuscated` label spreads to local agents
-    in the agents panel. Rerun the review before the next release.
-- **8b. Declarative hiring and the router (3–4 days).**
-  - [ ] `hire_agent(..., difficulty="easy|medium|hard")`; `model` becomes optional. Sensitivity is inherited
-    from the hirer's labels, never chosen by the model.
-  - [ ] `router.py`: a config table maps each difficulty to an ordered list of models; the router takes the first
-    one that the sensitivity rule, `allow_*` modes, the hirer's pool (estimated price) and free memory all allow.
-    An explicit `model` is checked against the same constraints. The routing decision is traced.
-  - [ ] Escalation: a worker that fails or answers empty is re-hired one step up its list, within the
-    sensitivity bound (a private task moves to a bigger local model, never to the cloud) and the same pool.
+  - Follow-ups (the independent review was stopped early, at the user's request):
+    - [x] Presidio's email recognizer calls `tldextract`, whose default extractor downloaded the public suffix list
+      from publicsuffix.org on first use (no chat text was sent). Detection now uses the bundled list; a test fails if
+      detection opens a socket.
+    - [x] The activity's hire count included a failed hire: failed tool calls carry `failed` to clients.
+    - [x] The `obfuscated` label spread to local agents and the user: local receivers hold real values only.
+    - [ ] In the real run the 4B detector gave the amount a placeholder instead of a generalization; try a larger
+      local detector model.
+    - [ ] Rerun an independent review before a release (skipped by request: reviews ran 12–15 minutes).
+- **8b. Declarative hiring and the router (3–4 days).** — DONE 2026-10-29 on `feature/routing`
+  - [x] `hire_agent(..., difficulty="easy|medium|hard")`; `model`, `prompt` and `budget_usd` became optional
+    (positional calls still work; a missing budget is $0, which means local models only). Sensitivity is inherited
+    from the hirer's labels, never chosen by the model. The result names the model chosen.
+  - [x] `router.py`: `routing` maps a difficulty to an ordered list of models; a difficulty it does not list is
+    ordered from `models` (easy: small local, then cheap cloud; medium: large local, then cheap cloud; hard: dearest
+    cloud, then large local). The list keeps what the modes, the hirer's privacy (local only in block mode, local
+    first when obfuscating) and its pool (no cloud on $0) allow; the hire takes the first model that fits in memory
+    and loads. Departure: an explicit `model` is checked as before (modes, privacy, memory), not re-routed.
+  - [x] Escalation: a worker hired by difficulty that fails or answers empty moves to the next model on its list
+    that it may use (a worker holding private data never moves to the cloud; a cloud model needs money left; a local
+    one must fit and load) and gets the message again, up to `max_escalations` (2) times; an `escalate` event and an
+    activity line record it.
+  - [x] Tests: `test_router.py` (8). 10 mutations of the new checks and the follow-up fixes are each caught.
 - **8c. Approvals (2–3 days).**
   - [ ] When a private task has no local model left, or a hire or a turn would exceed thresholds
     (`approve_hire_usd`, `approve_turn_usd`), the turn stops and asks. In-band first, so every interface works: the

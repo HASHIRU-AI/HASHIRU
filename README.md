@@ -104,6 +104,18 @@ overspending, for policy experiments). `max_usd` caps real API spend for the who
 `allow_local_agents` and `allow_cloud_agents` are v1's mode switches. Each user request has one deadline
 (`task_timeout`) that every agent it reaches must meet; firing an agent or closing a conversation stops its work.
 
+## Hiring by difficulty
+
+A hiring agent says how hard a job is instead of picking a model: `hire_agent(..., difficulty="easy" | "medium" |
+"hard")`. The hub turns that into the models the hire may run on, best first, and hires the first one that fits: an
+easy job tries small local models, then cheap cloud ones; a medium job large local models, then cheap cloud ones; a
+hard job the dearest cloud models, then large local ones. Set your own order per difficulty with `routing`, e.g.
+`routing: {hard: [gpt-4.1, ollama_chat/gemma4:12b]}`. The list keeps only what the modes allow and what the hire's
+privacy and pool allow: a hirer holding private data gets local models first (only local ones with
+`private_mode=block`), and a hire with `budget_usd: 0` gets local models only. A worker that fails or answers empty
+moves up its list and gets the message again, up to `max_escalations` times per message (2 by default), shown in the
+chat's activity; a worker holding private data never moves to a cloud model. Naming a `model` still works.
+
 ## Private data
 
 Some data is private: what `read_file` and `memory` return, memories that `memory_autoinject` adds, results of MCP
