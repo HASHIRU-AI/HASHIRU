@@ -1,8 +1,7 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5, 7, 8a, 8a′, 8b, 8c and 8c′ done on `develop`; 8c″ (plan graphs) done on `feature/plan-graph`;
-8b′ (model recon) done on `feature/model-recon` (branched from it); 8d–8e next; Phase 6 waits for HASHIRU-lite (after
-2026-12-03).
+Status: Phases 0–5, 7, 8a, 8a′, 8b, 8b′, 8c, 8c′ and 8c″ done and merged into `main` (2026-10-30); 8d–8e next;
+Phase 6 waits for HASHIRU-lite (after 2026-12-03).
 Date: 2026-10-29
 
 ## 0. Decisions so far
