@@ -34,6 +34,7 @@ from hashiru.obfuscation import Detector, Obfuscator
 from hashiru.ollama import Ollama, tag
 from hashiru.peers import PEER_PREFIX, BoundedTaskStore, PeerExecutor, Price, cost_extension, model_price
 from hashiru.privacy import EGRESS, RULE, holds_private, may_hold, refuse
+from hashiru.router import Router
 from hashiru.runtime import CEO_PROMPT, Executor
 from hashiru.session import USER, Session
 from hashiru.tools import Tools
@@ -77,6 +78,7 @@ class Hub:
             open_memory(settings.memory_db, Path(settings.data_dir)) if settings.memory_db else None)
         self.app = self.mcp.streamable_http_app(host=settings.host)
         self._obfuscator = self._make_obfuscator()
+        self.router = Router(self)
         self.conversations = Conversations(self)
         self.public_mcp = mount(self)
         self.asgi = AuthGate(self.app, self)

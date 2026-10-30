@@ -142,3 +142,9 @@ def test_serving_settings():
         load_settings(["public_url=ftp://x"])
     with pytest.raises(ValueError, match="max_sessions"):
         load_settings(["max_sessions=0"])
+
+
+def test_a_failed_tool_call_is_marked_failed_for_clients():
+    failed = {"kind": "tool", "agent": "ceo", "name": "hire_agent", "args": {}, "result": {"error": "no"}}
+    assert public_event(failed)["failed"] is True
+    assert "failed" not in public_event(failed | {"result": {"hired": "w1"}})
