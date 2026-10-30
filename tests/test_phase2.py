@@ -230,7 +230,7 @@ def test_a_limited_manager_cannot_hire_its_way_out_of_its_limits(hub, session):
 # ---- regressions from the Phase 2 code review ----
 
 def fake_tool(name, schema=None, description="d"):
-    return SimpleNamespace(name=name, description=description,
+    return SimpleNamespace(name=name, description=description, annotations=None,
                            input_schema=schema or {"type": "object", "properties": {"x": {"type": "string"}}})
 
 

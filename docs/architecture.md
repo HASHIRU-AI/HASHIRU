@@ -63,9 +63,22 @@ flowchart LR
 - **Hiring by difficulty** (`router.py`): a hiring agent says how hard a job is; the router picks the model from
   the `routing` order (or one built from `models`), within the modes, the hire's privacy and its pool, and moves a
   failing worker up that list.
+- **Model recon** (`catalog.py`, `recon.py`): `hashiru models` lists what this machine can use (Ollama's pulled
+  models that call tools; cloud models in LiteLLM's map whose provider key is set) with a tier from price or size,
+  and `MODELS=auto` turns the picks into `models` and `routing` before the Hub is built (`recon.settle`). Only
+  `--refresh` (LiteLLM's public map) and `--check` (each provider's model list) use the network.
 - **Approvals** (`approvals.py`): a big cloud reservation, a big local model to load, or a turn that has spent its
   threshold pauses the agent that would spend. The conversation answers with the question and keeps the turn
   waiting; the user's next message decides it, and the paused work goes on (or is told no).
+- **Plan mode** (`planning.py`): a planning turn offers the CEO only the tools that declare MCP's `readOnlyHint` (and
+  memory search) plus `propose_plan`, and `runtime.perform` refuses every other call. `propose_plan` previews each
+  hire through the router and the ledger without reserving anything. The plan waits in the session; the user's
+  `approve` starts an act turn in which the planned hires need no further approval (`Approvals.planned`).
+- **Plan graphs** (`program.py`, `plangraph.py`): the plan's steps (who gets which task, after which results) compile
+  into hire, step, fire and answer nodes, with a join wherever a step needs several results, and the approved plan
+  runs as a LangGraph graph inside the CEO's run. `runtime.PlanRunner` acts as the CEO: `perform` for `hire_agent`
+  and `fire_agent`, `ask_agent` for each step, one tool-less CEO turn for the answer. LangGraph runs in supersteps
+  (the ready nodes together, then the next ones). LangSmith tracing is held off for the run.
 - **The CEO and managers** run a tool loop: an LLM turn, then every tool call it asked for, in parallel, until
   it replies (at most `max_turns`). **Workers** answer with one LLM call and no tools.
 - **Tools** are served at `/mcp`. Managers reach them with their own bearer token, so the hub knows who is calling
@@ -170,6 +183,9 @@ rebuilt from a trace alone (`ledger.replay`), so budget rules can be checked aft
   does not cover.
 - **Created tools** run in their own `uv` environment without HASHIRU's environment variables, but as your user.
   That isolates dependencies, not the machine, which is why `tool_creation` is off by default.
+
+A configured MCP server's `readOnlyHint` is trusted: a server that marks a writing tool read-only can act during
+planning.
 
 Known limits: one `api_key` is one trust domain (key holders can reach each other's conversations by id); the
 Auth0 login of v1 was not ported; with several agents spending at once, `max_usd` can be exceeded by the calls already

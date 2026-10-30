@@ -7,6 +7,9 @@ session that is shown the chat so far as text.
 
 When work waits for the user's approval (hashiru.approvals), the turn's answer is the question and the turn waits in
 its conversation; the user's next message answers the question and gets the rest of the turn.
+
+A turn plans or acts (hashiru.planning): a planning turn's answer shows the plan and carries it as "plan", and the
+plan waits in the session for the user's next message.
 """
 import asyncio
 import contextlib
@@ -17,6 +20,7 @@ from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from hashiru import planning
 from hashiru.approvals import Decision, question
 from hashiru.privacy import holds_private
 from hashiru.runtime import DEADLINE, ask_agent
@@ -182,7 +186,7 @@ class Conversations:
             return conv
 
     def ask(self, conv: Conversation, text: str, instructions: str = "", deadline: float | None = None,
-            private: bool = False) -> AsyncGenerator[dict[str, Any]]:
+            private: bool = False, mode: str | None = None) -> AsyncGenerator[dict[str, Any]]:
         """Send one user message to the CEO. Yields the turn's trace events as they happen ({"kind": "idle"} after
         KEEPALIVE quiet seconds), then {"kind": "answer", "text": what the user is shown, "cost_usd": ...}.
 
@@ -191,7 +195,9 @@ class Conversations:
         private from this message on: local models only (Hub.make_private); if that is impossible the answer says why
         and no model sees the message. When work waits for the user's approval, the answer asks for it (and carries
         "approval": the questions) and the turn waits: the next message decides (Decision.of) and gets the rest of
-        the turn, so it is not sent to the CEO. Consumers iterate it under contextlib.aclosing: if they
+        the turn, so it is not sent to the CEO. `mode` ("plan" or "act", else as planning.begin decides) is the
+        client's mode for this message; a planning turn's answer carries "plan", the plan that now waits for the
+        user (whose "approve" carries it out). Consumers iterate it under contextlib.aclosing: if they
         stop before the answer, the turn is stopped and the conversation closed. A reply that is an error also closes
         it: the CEO's run may still be going, and a new turn would race it.
         """
@@ -199,8 +205,10 @@ class Conversations:
             raise Busy("this conversation is still answering the last message")
         if conv.id not in self.open_:
             raise Busy("this conversation has been closed")
+        if mode not in (None, *planning.MODES):
+            raise ValueError(f"mode must be one of {planning.MODES}, got {mode!r}")
         conv.busy, conv.used = True, time.monotonic()
-        return self._turn(conv, text, instructions, deadline, private)
+        return self._turn(conv, text, instructions, deadline, private, mode)
 
     def was_private(self, past: History, context: str = "") -> bool:
         """Whether a conversation opened for this A2A context, or this chat history, continues a private one."""
@@ -219,7 +227,7 @@ class Conversations:
                     del store[next(iter(store))]  # the oldest
 
     async def _turn(self, conv: Conversation, text: str, instructions: str, deadline: float | None,
-                    private: bool) -> AsyncGenerator[dict[str, Any]]:
+                    private: bool, mode: str | None) -> AsyncGenerator[dict[str, Any]]:
         session = conv.session
         if conv.waiting is not None:  # this message answers the approvals the last answer asked for
             turn, conv.waiting = conv.waiting, None
@@ -233,7 +241,7 @@ class Conversations:
                 yield refused
                 return
             try:
-                turn = self._start(conv, text, instructions, deadline)
+                turn = self._start(conv, text, instructions, deadline, mode)
             except BaseException:
                 conv.busy, conv.used = False, time.monotonic()
                 raise
@@ -256,13 +264,14 @@ class Conversations:
             self._mark_private(conv)
         return None
 
-    def _start(self, conv: Conversation, text: str, instructions: str, deadline: float | None) -> Turn:
+    def _start(self, conv: Conversation, text: str, instructions: str, deadline: float | None,
+               mode: str | None) -> Turn:
         """Send the user's message to the CEO, listening to the trace from here on."""
         session, queue = conv.session, asyncio.Queue[dict[str, Any]]()
         mark = len(session.trace.events)
         stop = session.trace.listen(queue.put_nowait)
         try:
-            prompt = self.hub.recall(session, text)
+            prompt = planning.begin(self.hub, session, text, mode)
             if instructions:
                 prompt = f"The user's chat app adds these instructions:\n{instructions}\n\n{prompt}"
             limit = time.time() + self.hub.settings.task_timeout
@@ -296,8 +305,8 @@ class Conversations:
                     turn.asked, conv.waiting, waiting = [q.id for q in questions], turn, True
                     yield self._answer(conv, turn, question(questions), [q.public() for q in questions])
                     return
-            reply = turn.run.result()
-            answer = self._answer(conv, turn, reply)
+            reply, plan = planning.end(session, turn.run.result())
+            answer = self._answer(conv, turn, reply, plan=plan)
             answered = True
             if reply.startswith("error: "):
                 self.close_soon(conv)
@@ -310,15 +319,15 @@ class Conversations:
                     turn.run.cancel()
                     self.close_soon(conv)
 
-    def _answer(self, conv: Conversation, turn: Turn, reply: str,
-                approval: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    def _answer(self, conv: Conversation, turn: Turn, reply: str, approval: list[dict[str, str]] | None = None,
+                plan: dict[str, Any] | None = None) -> dict[str, Any]:
         """The answer to the part of the turn since turn.mark (what agents delivered first), now in the history."""
         events = conv.session.trace.events[turn.mark:]
         shown = "\n\n".join([*filter(None, map(delivered, events)), reply])
         cost = sum(e.get("cost_usd", 0.0) for e in events if e["kind"] == "llm")
         self._remember(conv, turn.said, shown)
         return {"kind": "answer", "text": shown, "reply": reply, "cost_usd": round(cost, 8)} | (
-            {"approval": approval} if approval else {})
+            {"approval": approval} if approval else {}) | ({"plan": plan} if plan is not None else {})
 
     def _remember(self, conv: Conversation, said: str, shown: str) -> None:
         conv.history.append((said, shown))

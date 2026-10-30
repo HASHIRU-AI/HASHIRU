@@ -159,6 +159,11 @@ svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; s
 .lock[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .lock:disabled { cursor: default; }
 .lock svg { width: 18px; height: 18px; stroke-width: 2; }
+.mode { display: flex; align-items: center; gap: 5px; height: 36px; padding: 0 11px 0 9px; border: 0; border-radius: 18px; background: none; color: var(--faint); font-size: 13px; font-weight: 600; }
+.mode:hover { color: var(--ink); }
+.mode[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.mode:disabled { cursor: default; }
+.mode svg { width: 16px; height: 16px; stroke-width: 2; }
 .chat-row .open .lk { width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; color: var(--accent); stroke-width: 2.4; }
 .send { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--ink); color: var(--bg); }
 .send:disabled { background: var(--sunk); color: var(--faint); cursor: default; }

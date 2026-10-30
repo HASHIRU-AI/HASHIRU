@@ -39,6 +39,7 @@ uv run hashiru serve                            # chat at http://127.0.0.1:9200
 uv run hashiru ask "Hire one worker on a local model and ask it to say hello."
 uv run hashiru chat                             # the same, turn by turn in the terminal
 cp .env.example .env                            # for cloud models: set CEO_MODEL, MODELS and a provider key
+uv run --env-file .env hashiru models           # what this machine can use, and what MODELS=auto would pick
 uv run --env-file .env hashiru serve budget_usd=1.0   # key=value overrides src/hashiru/conf/config.yaml
 uv run pytest -q                                # no API keys or Ollama needed
 uv run --with playwright pytest tests/test_ui_browser.py   # optional: the chat page in your installed Chrome
@@ -121,6 +122,38 @@ privacy and pool allow: a hirer holding private data gets local models first (on
 moves up its list and gets the message again, up to `max_escalations` times per message (2 by default), shown in the
 chat's activity; a worker holding private data never moves to a cloud model. Naming a `model` still works.
 
+## Which models you can use (`hashiru models`, `MODELS=auto`)
+
+`hashiru models` shows the models this machine can use right now: every model Ollama has pulled that calls tools, and
+every cloud chat model in [LiteLLM's model map](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
+whose provider key is set in the environment (run it with `uv run --env-file .env`). Each one gets a tier from its
+price per million output tokens (under $2 easy, under $10 medium, else hard) or, for a local model, its size (under
+8B easy, under 30B medium, else hard), with its context window, prices and whether it reasons. The list leaves out
+what an agent cannot use: models that cannot call tools, embedding, audio, search, realtime and other special-purpose
+models, fine-tunes, floating `-latest` and `-exp` names, models LiteLLM prices at $0 or has retired, and dated
+snapshots whose alias is there too.
+
+```bash
+uv run --env-file .env hashiru models            # the picks (*); --all lists every usable model
+uv run --env-file .env hashiru models --refresh  # download LiteLLM's newest map first (new models, new prices)
+uv run --env-file .env hashiru models --check    # ask each provider which models your key can use
+MODELS=auto uv run --env-file .env hashiru serve  # hire from the picks, with routing built from their tiers
+```
+
+With `MODELS=auto` the hub hires from every usable local model and, per provider and tier, the best
+`auto_per_tier` (1) cloud models costing at most `auto_max_usd` ($30) per million output tokens: reasoning models
+first, then the cheapest (easy, medium) or the dearest (hard). `routing` is built from the tiers: a job tries its own
+tier, then the ones above (so a failing worker moves up), then the ones below; leave `routing` out with `auto`, or
+name your models to set it yourself. `hashiru serve` prints what it picked. The CEO's model stays yours to name.
+
+Only `--refresh` and `--check` use the network: the first downloads a public JSON file, the second calls each
+provider's model list with your key (nothing runs, nothing is billed); both write `model_catalog.json`. Starting the
+hub reads that file, the environment and Ollama, and a refreshed map also prices models you name yourself. Keys are
+looked for only for providers that take one API key from the environment (OpenAI, Anthropic, Gemini, Groq, Mistral,
+DeepSeek, xAI, OpenRouter, Together, Fireworks and a few more; `recon.KEYED`); for Bedrock, Vertex AI, Azure and the
+like, name the models in `MODELS`. (LiteLLM's own key check for GitHub Copilot starts a GitHub login and waits, so it
+is never asked.)
+
 ## Approvals before a big spend
 
 Three kinds of spending wait for you:
@@ -146,6 +179,52 @@ works; in a private chat a cloud hirer hears them obfuscated.
 A question nobody answers by the turn's deadline is denied, and so is every question when nobody can answer
 (`hashiru ask` in a script). Set a threshold to 0 to never ask. Whoever sends the next message decides: over the
 APIs, that is whoever holds the API key, including another hub that hired this one (its agents may approve).
+
+## Plan before acting
+
+In plan mode the CEO researches the request and proposes a plan, but hires nobody and spends nothing on agents. It
+may use only tools that read: `check_usage`, `get_website`, `arxiv_search`, `read_file`, `memory` (search and list)
+and the tools of MCP servers that declare them read-only (`readOnlyHint`, taken at the server's word). Everything
+else (hiring, firing, messaging agents, `deliver_to_user`, saving memories, created tools) is refused in code, not
+just discouraged in the prompt. The plan names each hire with a role, a difficulty or a model, a budget and a task,
+and the hub previews each one as `hire_agent` would make it now: the model the router picks, what it reserves and the
+memory a local model takes, with the totals checked against the CEO's pool. The numbers come from the hub, not the
+model.
+
+The plan also gives the work as steps: each step sends one agent a task, and `after` names the steps whose results
+it needs (they are added to its message). Without steps, each hire gets its own task once. A step may also go to an
+agent hired in an earlier turn.
+
+The reply shows the plan as a table and waits. `approve` (or yes, ok) carries it out, and the planned hires (same
+name and model, no bigger budget) need no further approval; a hire outside the plan, a big escalation or a turn's
+spending still asks. Anything else is feedback, and the CEO revises the plan.
+
+**An approved plan runs as a graph.** The hub compiles the steps into a [LangGraph](https://github.com/langchain-ai/langgraph)
+graph and adds the nodes the CEO would otherwise have to remember: a hire for each planned agent (all at once, as the
+plan's totals were checked together), each step once every step it needs is done (in parallel where they can), a
+fire after each hire's last step (its unspent money goes back and a local model is unloaded), and the CEO's answer,
+one turn with every step's result. A step whose hire was refused fails, a step that needs a failed or skipped step is
+skipped, and the rest still run; the answer says what happened. Every hire, message and fire goes through the same
+paths as the CEO's own calls, so private data, budgets, escalation and approvals work as before, and each step's end
+is a `step` event in the trace with an activity line. Steps that wait for each other, or name an agent or a step that
+does not exist, are problems the CEO sees in `propose_plan`'s answer; a plan that does not compile is carried out by
+the CEO as before. The plan carries its graph as Mermaid (`graph`, next to `steps`). `plan_execution=ceo` (or
+`HASHIRU_PLAN_EXECUTION=ceo`) keeps the CEO in charge of carrying out the plan. LangSmith tracing stays off for these
+graphs whatever the environment says, because it would send step results off the machine.
+
+<p align="center"><img src="docs/screenshots/plan.png" width="820" alt="The chat page in plan mode. The user asked to hire one worker to say hello; the CEO replied 'I will hire w1 to say hello.' with a table: w1, worker, gpt-4.1-mini, reserves $0.30, memory none, task Say hello. Below it: Reserves $0.30 of the $0.50 left in the CEO's pool, an Approve plan button, and the Plan switch on in the message box. The Agents panel shows only the CEO."></p>
+<p align="center"><sub>A plan waiting for approval (scripted models): nothing is hired yet.</sub></p>
+
+- **The chat page:** the Plan switch beside the message box. Approving a plan turns it off.
+- **Any client:** start a message with `/plan` or `/act`, e.g. `/plan compare these two papers`.
+- **The APIs:** `x-hashiru-mode: plan` (or `act`) with `/v1/chat/completions`, `hashiru_mode` in an A2A message's
+  metadata, `mode` for MCP `ask`. A proposed plan comes back as `hashiru.plan`, `hashiru_plan` and `plan`.
+- **`hashiru chat`:** `/plan ...`, then `approve`. `hashiru ask "/plan ..."` prints the plan and stops.
+
+Without a mode, a message continues planning while a plan waits, and a new request starts in `default_mode` (`act`;
+`plan` plans every new request first). `/act` or act mode leaves plan mode and drops the plan. Planning costs the CEO's
+own turns, and the plan shows reservations, not what each agent will spend within them. A plan covers the CEO's own
+hires; a manager's hires within its pool ask as before.
 
 ## Private data
 
@@ -250,6 +329,9 @@ src/hashiru/
   toolsmith/             tool creation
   peers.py               remote A2A agents and the cost extension
   privacy.py, obfuscation/, router.py, approvals.py   private stays local, masking, hiring by difficulty, approvals
+  planning.py            plan and act modes
+  program.py, plangraph.py   an approved plan's steps, compiled and run as a LangGraph graph
+  catalog.py, recon.py   which models this machine can use, their tiers, and MODELS=auto (`hashiru models`)
   interop/               the chat page's API: OpenAI-compatible /v1, public A2A agent, public MCP server
   ui/                    the chat page (static files, no build step)
   conf/config.yaml       every setting, with comments

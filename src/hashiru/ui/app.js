@@ -29,6 +29,7 @@
     controller: null,
     info: null,           // /v1/hashiru/info
     draftPrivate: false,  // the lock, before a new chat's first message
+    draftMode: "act",     // the Plan switch, before a new chat's first message
     agentsTimer: 0,
   };
 
@@ -125,12 +126,38 @@
     renderPrivacy();
   }
 
+  // ---- plan mode ----
+  // With Plan on, the CEO only reads and proposes a plan (each hire, its model and what it reserves); nothing is hired
+  // until the user approves. Approving returns the chat to the hub's default mode, as the hub does.
+  const YES = new Set(["approve", "approved", "yes", "y", "ok", "okay", "allow", "go ahead"]);
+  const approves = (text) => YES.has(text.toLowerCase().replace(/[^\p{L}\p{N}_\s]/gu, " ").split(/\s+/).filter(Boolean).join(" "));
+  const defaultMode = () => (state.info && state.info.default_mode) || "act";
+  const modeOf = () => { const c = chat(); return c ? c.mode || defaultMode() : state.draftMode; };
+
+  function renderMode() {
+    const on = modeOf() === "plan";
+    const button = $("plan");
+    button.setAttribute("aria-pressed", String(on));
+    button.disabled = state.busy;
+    button.title = on ? "Plan mode: the CEO only reads and proposes a plan; nothing is hired until you approve it"
+      : "Plan first: the CEO proposes a plan and waits for your approval";
+  }
+
+  function toggleMode() {
+    if (state.busy) return;
+    const next = modeOf() === "plan" ? "act" : "plan";
+    const c = chat();
+    if (c) { c.mode = next; save(); } else state.draftMode = next;
+    setComposer();
+  }
+
   function openChat(id) {
     if (state.busy) return;
     state.current = id;
     renderChats();
     renderThread();
     renderPrivacy();
+    renderMode();
     $("events").replaceChildren();
     refreshAgents();
     $("input").focus();
@@ -193,6 +220,18 @@
     return row;
   }
 
+  // A plan waits for the user: the next message approves it or says what to change.
+  const awaitsPlan = (m) => Boolean(m && m.meta && m.meta.plan && !m.meta.answered);
+  function planView() {
+    const row = el("div", "approve");
+    const yes = el("button", "btn primary", "Approve plan");
+    yes.type = "button";
+    yes.disabled = state.busy;
+    yes.addEventListener("click", () => send("approve"));
+    row.append(yes, el("span", "hint", "or reply with what to change"));
+    return row;
+  }
+
   function messageView(m, live) {
     if (m.role === "user") {
       const node = el("div", "msg you");
@@ -235,6 +274,7 @@
       if (meta.cost !== undefined) bits.push(`${usd(meta.cost)} this turn`);
       if (bits.length) node.append(el("div", "meta", bits.join(" · ")));
       if (awaitsAnswer(m)) node.append(approveView());
+      else if (awaitsPlan(m)) node.append(planView());
     }
     return node;
   }
@@ -285,7 +325,7 @@
     let c = chat();
     if (!c) {
       c = { id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, title: text.slice(0, 60),
-            session: null, messages: [], updated: Date.now(), private: state.draftPrivate };
+            session: null, messages: [], updated: Date.now(), private: state.draftPrivate, mode: state.draftMode };
       state.chats.unshift(c);
       state.current = c.id;
     }
@@ -293,6 +333,10 @@
     const sent = history(c).concat([{ role: "user", content: text }]);
     const asked = c.messages[c.messages.length - 1];
     if (awaitsAnswer(asked)) asked.meta.answered = true;  // this message answers it
+    if (awaitsPlan(asked)) {
+      asked.meta.answered = true;
+      if (approves(text)) c.mode = defaultMode();  // the plan is carried out: plan mode is over
+    }
     c.messages.push({ role: "user", content: text }, reply);
     c.updated = Date.now();
     save();
@@ -316,9 +360,10 @@
     try {
       const sessionHeader = c.session ? { "X-Hashiru-Session": c.session } : {};
       const privateHeader = c.private ? { "X-Hashiru-Private": "1" } : {};
+      const modeHeader = { "X-Hashiru-Mode": c.mode || defaultMode() };
       const res = await api("/v1/chat/completions", {
         method: "POST", signal: state.controller.signal,
-        headers: Object.assign({ "Content-Type": "application/json" }, sessionHeader, privateHeader),
+        headers: Object.assign({ "Content-Type": "application/json" }, sessionHeader, privateHeader, modeHeader),
         body: JSON.stringify({ model: "hashiru", stream: true, messages: sent }),
       });
       c.session = res.headers.get("x-hashiru-session") || c.session;
@@ -335,6 +380,7 @@
         if (delta.content) reply.content += delta.content;
         if (extra.cost_usd !== undefined) reply.meta.cost = extra.cost_usd;
         if (extra.approval) reply.meta.approval = extra.approval;
+        if (extra.plan) reply.meta.plan = extra.plan;
         later();
       });
     } catch (err) {
@@ -363,9 +409,12 @@
   function setComposer() {
     const input = $("input");
     const c = chat();
-    input.placeholder = c && awaitsAnswer(c.messages[c.messages.length - 1])
-      ? "Approve, or say what to do instead" : "Message HASHIRU";
+    const last = c && c.messages[c.messages.length - 1];
+    input.placeholder = awaitsAnswer(last) ? "Approve, or say what to do instead"
+      : awaitsPlan(last) ? "Approve the plan, or say what to change"
+        : modeOf() === "plan" ? "Describe the task: the CEO plans before it hires" : "Message HASHIRU";
     renderPrivacy();
+    renderMode();
     $("send").hidden = state.busy;
     $("stop").hidden = !state.busy;
     $("send").disabled = !input.value.trim();
@@ -475,7 +524,8 @@
     try {
       state.info = await (await api("/v1/hashiru/info")).json();
       if (!chat() && state.info.private_by_default) state.draftPrivate = true;  // never undo a click made before
-      renderPrivacy();
+      if (!chat() && state.info.default_mode === "plan") state.draftMode = "plan";
+      setComposer();
     } catch (err) {
       if (err.status === 401) { $("model-sub").textContent = "API key needed"; openSettings(); }
     }
@@ -509,9 +559,11 @@
       if (state.busy) return;
       state.current = null;
       state.draftPrivate = Boolean(state.info && state.info.private_by_default);
-      renderChats(); renderThread(); renderPrivacy(); refreshAgents(); closeSide(); input.focus();
+      state.draftMode = defaultMode();
+      renderChats(); renderThread(); setComposer(); refreshAgents(); closeSide(); input.focus();
     });
     $("private").addEventListener("click", togglePrivate);
+    $("plan").addEventListener("click", toggleMode);
     $("toggle-agents").addEventListener("click", () => toggleAgents($("agents").hidden));
     $("close-agents").addEventListener("click", () => toggleAgents(false));
     $("open-side").addEventListener("click", openSide);

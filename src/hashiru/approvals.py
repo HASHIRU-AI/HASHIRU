@@ -98,12 +98,22 @@ class Approvals:
         self.turn_base = 0.0               # dollars the session had spent when the turn began
         self.turn_steps = 1                # the turn may spend approve_turn_usd times this before asking again
         self.turn_denied = False
+        self.planned: dict[str, tuple[str, float]] = {}  # the CEO's hires in an approved plan: name -> (model, usd)
         self._pending: dict[str, tuple[Request, asyncio.Future[Decision]]] = {}  # by key
         self._shown: set[str] = set()
         self._ids = itertools.count(1)
 
     def new_turn(self, spent: float, deadline: float) -> None:
         self.turn_base, self.turn_steps, self.turn_denied, self.deadline = spent, 1, False, deadline
+
+    def in_plan(self, boss: str, name: str, model: str, budget_usd: float) -> bool:
+        """Whether the user approved this hire with a plan: the CEO's, by the same name and model, reserving no more.
+        It covers one hire."""
+        planned = self.planned.get(name) if boss == "ceo" else None
+        if planned is None or planned[0] != model or budget_usd > planned[1] + 1e-9:
+            return False
+        del self.planned[name]
+        return True
 
     def show(self) -> list[Request]:
         """The questions not shown to the user yet, now marked shown."""
@@ -197,8 +207,13 @@ async def load(hub: "Hub", session: "Session", agent: str, model: str, what: str
 
 async def hire(hub: "Hub", session: "Session", boss: "AgentRecord", name: str, model: str,
                budget_usd: float) -> dict[str, Any] | None:
-    """Ask before a big hire: None if it may go ahead, else the error the hirer gets."""
+    """Ask before a big hire: None if it may go ahead, else the error the hirer gets. A hire in a plan the user
+    approved goes ahead without asking again."""
     what = f"{boss.name} wants to hire {name} on {model}"
+    if session.approvals.in_plan(boss.name, name, model, budget_usd):
+        session.trace.emit("approval", task=session.id, id="plan", action="planned", approval="plan", agent=boss.name,
+                           what=f"{what} with {dollars(budget_usd)} reserved")
+        return None
     if is_local(model):
         decision = await load(hub, session, boss.name, model, what)
         return None if decision is None or decision.approved else refusal(decision, what)

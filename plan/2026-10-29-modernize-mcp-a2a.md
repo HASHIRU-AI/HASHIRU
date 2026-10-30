@@ -1,7 +1,7 @@
 # Plan: HASHIRU v2 on MCP (tools) and A2A (agents)
 
-Status: Phases 0–5, 7, 8a, 8a′, 8b and 8c done on `develop`; 8d–8e next; Phase 6 waits for HASHIRU-lite (after
-2026-12-03).
+Status: Phases 0–5, 7, 8a, 8a′, 8b, 8b′, 8c, 8c′ and 8c″ done and merged into `main` (2026-10-30); 8d–8e next;
+Phase 6 waits for HASHIRU-lite (after 2026-12-03).
 Date: 2026-10-29
 
 ## 0. Decisions so far
@@ -20,6 +20,9 @@ Date: 2026-10-29
 | 10 | Who judges difficulty | **The hiring agent declares it** (`difficulty`); track records correct it over time. No separate classifier |
 | 11 | How private data reaches cloud models (2026-10-29) | **Obfuscated, by default**: placeholders for identifiers, restored on the way back, and local generalizations for values whose meaning matters (both). `private_mode=block` keeps the strict rule |
 | 12 | What finds the sensitive values | **Presidio**'s pattern recognizers (on a blank spaCy pipeline: no NER model download) plus secret patterns, and a local model for names, places, health and money details |
+| 13 | Plan and act modes (2026-10-29) | **Plan mode is enforced in code**, not only prompted (Claude Code's plan mode was found to be mostly a prompt): the CEO is offered, and may call, only tools that declare MCP's `readOnlyHint` (plus memory search) and `propose_plan`. **The plan's numbers come from the hub** (router, ledger, Ollama sizes), and **approving the plan approves its hires** |
+| 14 | How an approved plan runs (2026-10-30) | **Compiled into a LangGraph graph** (user's choice): the plan's steps become hire, step, fire and answer nodes and the hub runs them as the CEO, through the CEO's own calls. Decision 1 still holds for the agents' own loops; LangGraph runs only approved plans, pinned exactly, with LangSmith tracing held off |
+| 15 | Where the model list comes from (2026-10-30) | **What this machine can use, classified from LiteLLM's map** (`hashiru models`, `MODELS=auto`): Ollama's pulled models that call tools plus cloud models whose provider key is set, tiered by output price or size; the user's `models` still wins. The network only on `--refresh` and `--check` |
 
 ## 1. Requirements restatement
 
@@ -385,6 +388,31 @@ MCP servers configured with `labels: [private]`) and propagates labels through m
     one must fit and load) and gets the message again, up to `max_escalations` (2) times; an `escalate` event and an
     activity line record it.
   - [x] Tests: `test_router.py` (8). 10 mutations of the new checks and the follow-up fixes are each caught.
+- **8b′. Model recon (1 day).** — DONE 2026-10-30 on `feature/model-recon`; plan in `plan/2026-10-30-model-recon.md`
+  - [x] `catalog.py` classifies: a cloud model counts when LiteLLM's map lists it as a chat model that calls tools,
+    priced above $0, not retired, its provider keyed, and not a special-purpose or floating name; a dated snapshot
+    gives way to its alias. A local model counts when Ollama reports `tools` (and it is not a `-cloud` tag or
+    embedding-only). Tiers: output $/M under 2 easy, under 10 medium; local params under 8B easy, under 30B medium.
+    Picks per provider and tier (`auto_per_tier`, under `auto_max_usd`): reasoning first, cheapest for easy and
+    medium, dearest for hard. Routing: own tier, then up, then down.
+  - [x] `recon.py`: `refresh` (LiteLLM's public map, validated: costs must be numbers >= 0, at least 100 models, else
+    the old file stays), `check` (each keyed provider's model list; an empty list means the key failed and drops that
+    provider's picks; dated ids match aliases), `survey`, `settle` (`MODELS=auto` → `models` and `routing` before the
+    Hub; `routing` with `auto` is a config error). The Hub prices its own models from a refreshed map.
+    `hashiru models [--refresh] [--check] [--all]`; `serve` prints its models.
+  - [x] Found while building: LiteLLM's `validate_environment` is not always an environment lookup. For
+    `github_copilot` it starts GitHub's device login and polls (it hung `hashiru models`), and for providers whose
+    keys it does not know (bedrock_converse, vertex_ai-language-models, hyperbolic, ...) it answers yes. Keys are now
+    asked only for 21 plain API-key providers (`recon.KEYED`, each checked: no socket, a millisecond); a test surveys
+    the real bundled map with sockets blocked. Registering the whole refreshed map with LiteLLM took 0.6 s and logged
+    a warning per entry, so the Hub registers only the models it uses.
+  - [x] Tests: `test_catalog.py` (24). 34 mutations of the rules, the cache checks, the CLI and the settling are each
+    caught.
+  - Follow-ups:
+    - [ ] A refresh button on the chat page and `/v1/hashiru/models`.
+    - [ ] Track records (8e) reorder the auto routing by how models actually did.
+    - [ ] `ceo_model=auto`, once the picks have been seen in real runs.
+    - [ ] One real `--refresh` and `--check` with the user's keys (not run: needs their keys and their say-so).
 - **8c. Approvals (2–3 days).** — DONE 2026-10-29 on `feature/approvals`
   - [x] `approvals.py`: big spends of dollars (api) and of memory (gpu) wait for the user. A cloud or remote hire
     reserving `approve_hire_usd` ($0.25) or more; a hire or an escalation loading a local model of `approve_hire_mb`
@@ -418,6 +446,71 @@ MCP servers configured with `labels: [private]`) and propagates labels through m
       hosts show it to the person rather than their model.
     - [ ] A question that expired leaves its conversation waiting until the next message, which then gets the rest
       of the old turn rather than starting a new one.
+- **8c′. Plan and act modes (1–2 days).** — DONE 2026-10-29 on `feature/plan-mode`
+  - [x] Recon: Cline (Plan is read-only, Act acts; manual switch, context carries over, a model per mode), Claude Code
+    (plan mode writes a plan file; approve with auto or manual edits, or keep planning; per Armin Ronacher's teardown
+    mostly an injected prompt with the write tools still present), Cursor (research, clarifying questions, an
+    editable Markdown plan with to-dos, then Build), Roo Code (Architect is read-only, Code has every tool), Aider
+    (architect and editor models), and the research line (plan-and-execute, ReWOO, LLMCompiler; a replanner fixes a
+    plan that fails). In HASHIRU the side effects are hires, reservations, loaded models and messages, so plan mode
+    withholds those.
+  - [x] `planning.py`: in plan mode the CEO gets `PLAN_RULES` and only the tools that declare `readOnlyHint`
+    (`check_usage`, `get_website`, `arxiv_search`, `read_file`; a configured MCP server's tools pass theirs through
+    the gateway) plus `memory` for search and list, and `propose_plan`. `runtime.dispatch` refuses every other call,
+    `ask_agent` included, whatever the model was offered. `propose_plan` previews each hire as `hire_agent` would
+    make it now (name, role, the router's first model that fits in memory, reservation, memory a local model needs)
+    and the totals against the CEO's pool (with `turn_reserve_usd` for a cloud CEO) and free memory, and lists what
+    a hire would hit (a taken or reserved name, a bad role, an unknown model, no difficulty, the pool) so the CEO can
+    fix it. Nothing is hired or reserved.
+  - [x] The turn: a message's own `/plan` or `/act` wins, then the client's mode, then "plan while a plan waits",
+    then `default_mode` (`act`). A planning turn's answer is the CEO's reply, the plan as a table and "Reply
+    **approve** ...", and the plan waits in the session. `approve` (or yes, ok) carries it out: the CEO is told the
+    planned hires, and `Approvals.planned` approves each one once if the CEO makes it by the same name and model with
+    no bigger budget (a `planned` approval event). Anything else is feedback for another planning turn; act mode
+    drops the plan. A cloud CEO's placeholders are restored in the plan the user sees; the CEO keeps its own copy.
+  - [x] Interfaces: the chat page's Plan switch (per chat; approving returns it to `default_mode`) and an Approve
+    plan button; `x-hashiru-mode` on `/v1` (400 for anything but plan or act), `hashiru_mode` in A2A message
+    metadata, `mode` for MCP `ask`; answers carry `hashiru.plan`, `hashiru_plan` and `plan`. `hashiru chat` plans with
+    `/plan ...` and acts on `approve`; `hashiru ask "/plan ..."` prints the plan. `/v1/hashiru/info` reports
+    `default_mode`. Activity lines for a proposal and for a planned approval. README screenshot (scripted models).
+  - [x] Tests: `test_planning.py` (16) and a browser test. 22 mutations of the new checks (the dispatch refusal, the
+    tool filter, the prompt, each approval condition, the mode rules, unmasking, the pool, name and hiring checks, the
+    annotations, each interface, both CLI paths) are each caught.
+  - Follow-ups:
+    - [ ] A model per mode (Cline, Roo, Aider): a stronger cloud CEO to plan, a cheaper or local one to act. Needs
+      care with private chats, whose CEO must stay local.
+    - [ ] Replanning in act mode: when a planned hire fails, stop and show the user a revised plan instead of
+      improvising (the replanner of plan-and-execute).
+    - [ ] A plan covers the CEO's own hires only. Managers' hires inside their reserved pools, and the turn's spend
+      (`approve_turn_usd`), still ask as before; the plan cannot estimate token spend inside a reservation.
+- **8c″. Plan graphs (1 day).** — DONE 2026-10-30 on `feature/plan-graph`; plan in `plan/2026-10-30-plan-graphs.md`
+  - [x] `propose_plan` takes `steps` (`id`, `agent`, `task`, `after`) and an optional hire `prompt`; without steps each
+    hire gets its task once. `program.py` compiles the steps: a hire node per planned hire (all at the start), a step
+    node waiting for its hire and its inputs (a join where there are several), a fire node after each hire's last
+    step, and an answer node. Unknown agents or inputs, steps waiting for each other and unused hires are plan
+    problems. Agents hired in earlier turns can take steps and are neither hired nor fired.
+  - [x] `plangraph.py` builds the LangGraph `StateGraph` (results and hires merged by reducers) and runs it through a
+    `Runner`; a step whose hire was refused fails, a step that needs a failed or skipped step is skipped, the rest
+    run. `runtime.PlanRunner` is the CEO: `perform` (split out of `dispatch`) for `hire_agent` and `fire_agent`,
+    `ask_agent` for steps, one tool-less CEO turn for the answer. `planning.begin` hands the approved plan to the CEO's
+    run (`Session.approved`, cleared every turn). `step` trace events and activity lines; the plan carries `steps` and
+    a Mermaid `graph`. `plan_execution=ceo` keeps 8c′.
+  - [x] Found while probing: LangGraph pulls in `langsmith`, which with `LANGSMITH_TRACING=true` in the environment
+    POSTs every node's state to LangSmith. The run holds tracing off (`tracing_context(enabled=False)`); a test with
+    the variables set sees no tracer and no connection. LangGraph 1.2.15's default recursion limit is 10007 (older
+    releases: 25); the run sets its own, from the program's size.
+  - [x] Tests: `test_plangraph.py` (19: compiling, running with a fake runner, a conversation that plans and approves,
+    a denied hire, an empty answer, LangSmith) and 8 more in `test_planning.py`; the 8c′ conversation tests pin
+    `plan_execution=ceo`. 22 mutations of the new checks are each caught (two survived at first: the recursion limit
+    and the tracing guard; their tests were tightened).
+  - Follow-ups:
+    - [ ] Replanning when a step fails, instead of skipping what needs it (the 8c′ follow-up still stands).
+    - [ ] Steps that call a tool directly, and conditional edges.
+    - [ ] A LangGraph checkpointer (SQLite) so a running plan survives a restart (Phase 9's durable sessions).
+    - [ ] Draw `graph` on the chat page.
+    - [ ] Supersteps: a short chain waits beside a long step, and one hire waiting for approval holds up the
+      others' first steps. Eager scheduling if that matters in real runs.
+    - [ ] One real run (local models only) once the user asks for it.
 - **8d. A local detector for sensitive messages (2 days).**
   - [ ] Patterns for personal data and secrets (emails, phone numbers, card numbers, government IDs, API keys,
     private keys) mark a message private before any model sees it. Optional: a small local model as a second

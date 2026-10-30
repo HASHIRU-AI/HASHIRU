@@ -23,6 +23,8 @@ dependencies = [
     "starlette",
     "uvicorn",
     "presidio-analyzer==2.2.366",
+    # Runs approved plans (plangraph.py). Exact pin, like litellm; its langsmith dependency is kept from tracing.
+    "langgraph==1.2.15",
 ]
 
 [project.scripts]

@@ -26,4 +26,5 @@ traces/
 .pytest_cache/
 .coverage
 user_tools/
+model_catalog.json
 data/*.sqlite3
