@@ -13,18 +13,19 @@ from omegaconf import DictConfig, OmegaConf
 
 from hashiru.llm import is_local
 
-__all__ = ["DIFFICULTIES", "A2APeer", "McpServer", "Settings", "load_settings"]
+__all__ = ["AUTO", "DIFFICULTIES", "A2APeer", "McpServer", "Settings", "load_settings"]
 
 SERVER_NAME = re.compile(r"[a-z][a-z0-9_]{0,23}")
 SERVER_KEYS = {"command", "args", "env", "url", "headers", "labels", "egress"}
 PEER_KEYS = {"url", "headers", "price_usd_per_message", "labels"}
 POSITIVE = ("task_timeout", "tool_start_timeout", "tool_call_timeout", "mcp_start_timeout", "session_ttl",
-            "max_sessions", "ollama_num_ctx")
+            "max_sessions", "ollama_num_ctx", "auto_per_tier", "auto_max_usd")
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 NON_NEGATIVE = ("budget_usd", "max_usd", "turn_reserve_usd", "max_escalations", "approve_hire_usd", "approve_hire_mb",
                 "approve_turn_usd")
 LABELS = {"private", "untrusted"}
 DIFFICULTIES = ("easy", "medium", "hard")  # what a hiring agent says about a job (router.py)
+AUTO = ("auto",)  # models=auto: recon.settle picks the models before the hub starts
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,9 @@ class Settings:
     approve_turn_usd: float = 0.25  # a turn asks before spending more each time it has spent this much (0: never)
     default_mode: str = "act"  # plan: every new request is planned first and waits for approval (planning.py)
     plan_execution: str = "graph"  # how an approved plan runs: graph (plangraph.py) or ceo (the CEO's tool loop)
+    model_catalog: str = "model_catalog.json"  # a refreshed LiteLLM map and the providers' lists (recon.py)
+    auto_per_tier: int = 1  # models=auto: cloud models per provider and tier
+    auto_max_usd: float = 30.0  # models=auto: the most a cloud pick may cost per million output tokens
 
     @property
     def internal_url(self) -> str:
@@ -290,8 +294,10 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
         raise ValueError(f"obfuscate_with must be 'patterns+model' or 'patterns', got {settings.obfuscate_with!r}")
     if settings.obfuscate_model and not is_local(settings.obfuscate_model):
         raise ValueError(f"obfuscate_model must be a local model (ollama_chat/...), got {settings.obfuscate_model}")
+    if settings.models == AUTO and settings.routing:
+        raise ValueError("routing cannot be set with models=auto: name the models instead, or leave routing out")
     has_local = bool(settings.private_ceo_model or settings.obfuscate_model or is_local(settings.ceo_model)
-                     or any(is_local(m) for m in settings.models))
+                     or any(is_local(m) for m in settings.models) or settings.models == AUTO)
     patterns_only = settings.private_mode == "obfuscate" and settings.obfuscate_with == "patterns"
     if settings.private_by_default and not (has_local or patterns_only):
         raise ValueError("private_by_default needs a local model: add one to models or set private_ceo_model")

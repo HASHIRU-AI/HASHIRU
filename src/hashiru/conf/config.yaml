@@ -2,7 +2,7 @@
 # environment variable named in its default. Models are LiteLLM strings: ollama_chat/... and
 # ollama/... are local (they cost memory), anything else is cloud (it costs money).
 ceo_model: ${oc.env:CEO_MODEL,'ollama_chat/qwen3.5:4b'}
-models: ${oc.env:MODELS,'ollama_chat/qwen3.5:4b'}  # comma-separated, or a YAML list
+models: ${oc.env:MODELS,'ollama_chat/qwen3.5:4b'}  # comma-separated, a YAML list, or auto (model recon below)
 budget_usd: ${oc.decode:${oc.env:BUDGET_USD,'0.50'}}  # the CEO's pool for one session
 max_usd: ${oc.decode:${oc.env:MAX_USD,'2.00'}}        # hard cap on real API spend per process
 max_depth: 2                                          # levels of agents below the CEO
@@ -64,6 +64,14 @@ default_mode: ${oc.env:HASHIRU_DEFAULT_MODE,act}  # act, or plan: every new requ
 # steps it needs are done, each hire fired after its last step, then the CEO's answer) and the hub runs it. ceo: the
 # CEO is told the plan and carries it out with its tools.
 plan_execution: ${oc.env:HASHIRU_PLAN_EXECUTION,graph}
+# Model recon (`hashiru models` shows it). models: auto hires from what this machine can use: every pulled Ollama model
+# that calls tools, and per provider and tier the auto_per_tier best cloud models whose key is set and that cost at
+# most auto_max_usd per million output tokens, with routing built from their tiers (routing must then be left out).
+# `hashiru models --refresh` downloads LiteLLM's newest model map into model_catalog (its prices also apply to models
+# you name yourself); `--check` asks each provider which models its key can use. Starting never touches the network.
+model_catalog: ${oc.env:HASHIRU_MODEL_CATALOG,model_catalog.json}
+auto_per_tier: 1
+auto_max_usd: 30.0
 # Serving (`hashiru serve`): a chat page at /, an OpenAI-compatible API at /v1, the CEO as an A2A agent at /a2a
 # (card at /.well-known/agent-card.json and /a2a/.well-known/agent-card.json) and HASHIRU as an MCP server
 # (/public/mcp), all on one port.
