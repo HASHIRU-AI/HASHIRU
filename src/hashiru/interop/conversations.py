@@ -4,18 +4,24 @@ Each conversation is one hub session (a CEO, its hires, its trace) plus the chat
 resend the whole chat with every message, so a request continues a conversation only when its earlier messages
 match that conversation's history; anything else (a new chat, an edited message, a regenerated reply) gets a new
 session that is shown the chat so far as text.
+
+When work waits for the user's approval (hashiru.approvals), the turn's answer is the question and the turn waits in
+its conversation; the user's next message answers the question and gets the rest of the turn.
 """
 import asyncio
+import contextlib
 import hashlib
 import json
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from hashiru.approvals import Decision, question
 from hashiru.privacy import holds_private
 from hashiru.runtime import DEADLINE, ask_agent
 from hashiru.session import USER, Session
+from hashiru.trace import PRIVATE
 
 if TYPE_CHECKING:
     from hashiru.hub import Hub
@@ -94,6 +100,19 @@ def delivered(event: dict[str, Any]) -> str | None:
 
 
 @dataclass
+class Turn:
+    """A turn whose CEO run is under way. `mark` is where the part of it not answered yet begins (that part's cost
+    and deliveries) and `said` the message that part answers; `asked` lists the approvals the user was shown."""
+
+    run: "asyncio.Task[str]"
+    queue: "asyncio.Queue[dict[str, Any]]"
+    stop: Callable[[], None]
+    said: str
+    mark: int
+    asked: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Conversation:
     session: Session
     history: History = field(default_factory=list)
@@ -102,6 +121,7 @@ class Conversation:
     context: str = ""  # the A2A context it answers, if an A2A client opened it
     head: str = ""     # fingerprint(history), kept current
     private: bool = False  # private from its next turn on: asked for, or reopened for a context or chat that was
+    waiting: Turn | None = None  # a turn waiting for the user's approval: their next message answers it
 
     @property
     def id(self) -> str:
@@ -155,6 +175,7 @@ class Conversations:
             past = list(history or [])
             conv = Conversation(self.hub.new_session(label), past, context=context, head=fingerprint(past),
                                 private=self.was_private(past, context))
+            conv.session.approvals.attended = True  # its questions go to the user in the turn's answer
             self.open_[conv.id] = conv
             if context:
                 self._contexts[context] = conv.id
@@ -168,7 +189,9 @@ class Conversations:
         The conversation is claimed at once (Busy if it already is), so two requests cannot both start a turn.
         `deadline` (Unix time) can only shorten task_timeout. `private` (or private_by_default) makes the conversation
         private from this message on: local models only (Hub.make_private); if that is impossible the answer says why
-        and no model sees the message. Consumers iterate it under contextlib.aclosing: if they
+        and no model sees the message. When work waits for the user's approval, the answer asks for it (and carries
+        "approval": the questions) and the turn waits: the next message decides (Decision.of) and gets the rest of
+        the turn, so it is not sent to the CEO. Consumers iterate it under contextlib.aclosing: if they
         stop before the answer, the turn is stopped and the conversation closed. A reply that is an error also closes
         it: the CEO's run may still be going, and a new turn would race it.
         """
@@ -197,7 +220,30 @@ class Conversations:
 
     async def _turn(self, conv: Conversation, text: str, instructions: str, deadline: float | None,
                     private: bool) -> AsyncGenerator[dict[str, Any]]:
-        session, queue = conv.session, asyncio.Queue[dict[str, Any]]()
+        session = conv.session
+        if conv.waiting is not None:  # this message answers the approvals the last answer asked for
+            turn, conv.waiting = conv.waiting, None
+            if private:
+                self._mark_private(conv)  # from the next turn on: this one's CEO is already running
+            labels = set(session.trace.outgoing(USER, session.id, text)) | ({PRIVATE} if conv.private else set())
+            session.approvals.decide(turn.asked, Decision.of(text, sorted(labels)))
+            turn.said, turn.mark, turn.asked = text, len(session.trace.events), []
+        else:
+            if (refused := await self._front_door(conv, private)) is not None:
+                yield refused
+                return
+            try:
+                turn = self._start(conv, text, instructions, deadline)
+            except BaseException:
+                conv.busy, conv.used = False, time.monotonic()
+                raise
+        async with contextlib.aclosing(self._follow(conv, turn)) as items:
+            async for item in items:
+                yield item
+
+    async def _front_door(self, conv: Conversation, private: bool) -> dict[str, Any] | None:
+        """Make the conversation private if it must be; the answer to give instead of a turn if that is impossible."""
+        session = conv.session
         if private or conv.private or self.hub.settings.private_by_default or holds_private(session, USER):
             try:  # the user's words (or, after a delivery, the history) are private: the CEO must be local
                 why = await self.hub.make_private(session)
@@ -206,48 +252,73 @@ class Conversations:
                 raise
             if why:  # nothing ran, so the conversation stays open for a message that need not be private
                 conv.busy, conv.used = False, time.monotonic()
-                yield {"kind": "answer", "text": f"error: {why}", "reply": f"error: {why}", "cost_usd": 0.0}
-                return
+                return {"kind": "answer", "text": f"error: {why}", "reply": f"error: {why}", "cost_usd": 0.0}
             self._mark_private(conv)
-        start = len(session.trace.events)
-        stop_listening = session.trace.listen(queue.put_nowait)
-        prompt = self.hub.recall(session, text)
-        if instructions:
-            prompt = f"The user's chat app adds these instructions:\n{instructions}\n\n{prompt}"
-        limit = time.time() + self.hub.settings.task_timeout
-        token = DEADLINE.set(limit if deadline is None else min(limit, deadline))  # the run's task copies it
+        return None
+
+    def _start(self, conv: Conversation, text: str, instructions: str, deadline: float | None) -> Turn:
+        """Send the user's message to the CEO, listening to the trace from here on."""
+        session, queue = conv.session, asyncio.Queue[dict[str, Any]]()
+        mark = len(session.trace.events)
+        stop = session.trace.listen(queue.put_nowait)
         try:
-            run = asyncio.create_task(
-                ask_agent(self.hub, session, USER, "ceo", with_history(session, conv.history, prompt)))
-        finally:
-            DEADLINE.reset(token)
+            prompt = self.hub.recall(session, text)
+            if instructions:
+                prompt = f"The user's chat app adds these instructions:\n{instructions}\n\n{prompt}"
+            limit = time.time() + self.hub.settings.task_timeout
+            token = DEADLINE.set(limit if deadline is None else min(limit, deadline))  # the run's task copies it
+            try:
+                run = asyncio.create_task(
+                    ask_agent(self.hub, session, USER, "ceo", with_history(session, conv.history, prompt)))
+            finally:
+                DEADLINE.reset(token)
+        except BaseException:
+            stop()
+            raise
         run.add_done_callback(lambda _: queue.put_nowait({"kind": "_done"}))
-        answered = False
+        return Turn(run, queue, stop, text, mark)
+
+    async def _follow(self, conv: Conversation, turn: Turn) -> AsyncGenerator[dict[str, Any]]:
+        """The turn's events until its answer, or until work waits for the user's approval: then the answer is the
+        question, and the turn waits in the conversation for the next message."""
+        session, waiting, answered = conv.session, False, False
         try:
             while True:
                 try:
-                    event = await asyncio.wait_for(queue.get(), KEEPALIVE)
+                    event = await asyncio.wait_for(turn.queue.get(), KEEPALIVE)
                 except TimeoutError:
                     yield {"kind": "idle"}
                     continue
                 if event["kind"] == "_done":
                     break
                 yield event
-            reply = run.result()
-            turn = session.trace.events[start:]
-            shown = "\n\n".join([*filter(None, map(delivered, turn)), reply])
-            cost = sum(e.get("cost_usd", 0.0) for e in turn if e["kind"] == "llm")
-            self._remember(conv, text, shown)
+                if questions := session.approvals.show():
+                    turn.asked, conv.waiting, waiting = [q.id for q in questions], turn, True
+                    yield self._answer(conv, turn, question(questions), [q.public() for q in questions])
+                    return
+            reply = turn.run.result()
+            answer = self._answer(conv, turn, reply)
             answered = True
             if reply.startswith("error: "):
                 self.close_soon(conv)
-            yield {"kind": "answer", "text": shown, "reply": reply, "cost_usd": round(cost, 8)}
+            yield answer
         finally:
-            stop_listening()
             conv.busy, conv.used = False, time.monotonic()
-            if not answered:
-                run.cancel()
-                self.close_soon(conv)
+            if not waiting:
+                turn.stop()
+                if not answered:
+                    turn.run.cancel()
+                    self.close_soon(conv)
+
+    def _answer(self, conv: Conversation, turn: Turn, reply: str,
+                approval: list[dict[str, str]] | None = None) -> dict[str, Any]:
+        """The answer to the part of the turn since turn.mark (what agents delivered first), now in the history."""
+        events = conv.session.trace.events[turn.mark:]
+        shown = "\n\n".join([*filter(None, map(delivered, events)), reply])
+        cost = sum(e.get("cost_usd", 0.0) for e in events if e["kind"] == "llm")
+        self._remember(conv, turn.said, shown)
+        return {"kind": "answer", "text": shown, "reply": reply, "cost_usd": round(cost, 8)} | (
+            {"approval": approval} if approval else {})
 
     def _remember(self, conv: Conversation, said: str, shown: str) -> None:
         conv.history.append((said, shown))
@@ -262,6 +333,10 @@ class Conversations:
     async def close(self, conv: Conversation) -> None:
         if self.open_.pop(conv.id, None) is None:
             return
+        if conv.waiting is not None:  # its run stops with the session; nobody listens to it anymore
+            conv.waiting.stop()
+            conv.waiting.run.cancel()
+            conv.waiting = None
         self._heads = {h: c for h, c in self._heads.items() if c != conv.id}
         self._contexts = {x: c for x, c in self._contexts.items() if c != conv.id}
         await self.hub.close_session(conv.session)
@@ -306,7 +381,8 @@ class Conversations:
                    "depth": a.depth, "live": a.live, "reserved_usd": round(a.reserved, 6),
                    "spent_usd": round(a.spent, 6), "left_usd": round(left[a.name], 6), "gpu_mb": a.gpu_mb}
                   for a in ledger.agents.values()]
-        return {"session": conv.id, "busy": conv.busy, "turns": len(conv.history), "budget_usd": s.budget_usd,
+        return {"session": conv.id, "busy": conv.busy, "waiting": conv.waiting is not None,
+                "turns": len(conv.history), "budget_usd": s.budget_usd,
                 "private": holds_private(conv.session, USER),
                 "spent_usd": round(sum(a.spent for a in ledger.agents.values()), 6),
                 "wallet": {"max_usd": self.hub.wallet.max_usd, "spent_usd": round(self.hub.wallet.spent, 6)},

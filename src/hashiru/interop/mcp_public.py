@@ -1,7 +1,8 @@
 """HASHIRU as an MCP server for MCP hosts (Claude Code, Cursor, ...), at /public/mcp.
 
 Tools: `ask` sends a message to the CEO (pass the `session` from an earlier answer to continue that conversation,
-with its agents still hired) and `end_session` closes one. The agents' work arrives as progress notifications.
+with its agents still hired) and `end_session` closes one. The agents' work arrives as progress notifications. An
+answer that asks for the user's approval carries `approval`; the next `ask` in that session answers it.
 Resource: `hashiru://sessions/{session}`, a conversation's agents and pools.
 """
 import contextlib
@@ -14,6 +15,7 @@ from starlette.routing import BaseRoute
 
 from hashiru.interop.activity import describe
 from hashiru.interop.conversations import Busy
+from hashiru.interop.openai_api import asking
 
 if TYPE_CHECKING:
     from hashiru.hub import Hub
@@ -46,7 +48,8 @@ class PublicMCP:
         """Ask HASHIRU's CEO, which hires and directs agents within a budget, and wait for its answer.
 
         Pass the session from an earlier answer to continue that conversation; leave it empty to start a new one.
-        private=true keeps this message and the rest of the conversation on local models.
+        private=true keeps this message and the rest of the conversation on local models. If the answer asks for
+        approval (a big hire or spend), show it to the user and pass their reply as the next text in this session.
         """
         convs = self.hub.conversations
         conv = convs.get(session) if session else None
@@ -67,7 +70,7 @@ class PublicMCP:
                 elif line := describe(item):
                     step += 1
                     await ctx.report_progress(step, None, line)
-        return {"answer": answer["text"], "session": conv.id, "cost_usd": answer["cost_usd"]}
+        return {"answer": answer["text"], "session": conv.id, "cost_usd": answer["cost_usd"]} | asking(answer)
 
     async def end_session(self, session: str) -> dict[str, Any]:
         """Close a HASHIRU session: fire its agents and free their memory."""

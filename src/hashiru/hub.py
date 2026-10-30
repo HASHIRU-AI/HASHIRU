@@ -113,6 +113,7 @@ class Hub:
         Runs still in flight are cancelled.
         """
         self.sessions.pop(session.id, None)
+        session.approvals.drop()  # nobody will answer its questions now
         for rec in session.ledger.agents.values():
             rec.live = False
             self.unmount(session, rec.name)

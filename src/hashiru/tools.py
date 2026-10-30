@@ -9,6 +9,7 @@ import httpx
 from a2a.utils.errors import A2AError
 from mcp.server.mcpserver import Context, MCPServer
 
+from hashiru import approvals
 from hashiru.config import DIFFICULTIES
 from hashiru.ledger import AgentRecord, free_mb
 from hashiru.llm import is_local
@@ -110,6 +111,8 @@ class Tools:
         failures = []
         for candidate in candidates:  # a model that does not fit or load gives way to the next one
             out = await self._hire_one(session, boss, name, role, candidate, prompt, budget_usd, scope)
+            if out.get("denied"):  # the user said no: that ends the hire, whatever else could be tried
+                return out
             if "hired" in out:
                 if not model:
                     rec = session.ledger.agents[name]
@@ -150,6 +153,10 @@ class Tools:
             price = max(declared.per_message_usd if declared else 0.0, peer.price_usd_per_message or 0.0)
             if settings.enforce_budget and budget_usd + 1e-9 < price:
                 return {"error": f"budget_usd must cover one message to {peer.name}: ${price}"}
+        if short := self._short(session, boss, budget_usd):  # before asking the user about money it lacks
+            return short
+        if refused := await approvals.hire(self.hub, session, boss, name, model, budget_usd):
+            return refused  # (asked before taking memory_lock: other hires do not wait for the user)
         if is_local(model):
             async with self.hub.memory_lock:  # check free memory, reserve and load as one step
                 if too_big := await self.hub.fits(model):
@@ -193,16 +200,23 @@ class Tools:
             return {"error": f"{boss.name} has been fired and cannot hire"}
         if session.ledger.get(name) is not None:
             return {"error": f"name {name!r} was just taken"}
-        if self.hub.settings.enforce_budget:
-            # A cloud hirer pays for its own turns too: it must keep something to ask, fire and answer with.
-            margin = 0.0 if boss.tier == "local" else self.hub.settings.turn_reserve_usd
-            left = session.ledger.left()[boss.name]
-            if left + 1e-9 < budget_usd + margin:
-                keep = f" and keep ${margin} for your own turns" if margin else ""
-                return {"error": f"your pool has ${left:.6f} left: not enough to reserve ${budget_usd}{keep}"}
+        if short := self._short(session, boss, budget_usd):
+            return short
         rec = session.ledger.add(name, role, tier, model, prompt, boss.name, boss.depth + 1, budget_usd, tools=scope)
         rec.price_usd = price
         return rec
+
+    def _short(self, session: Session, boss: AgentRecord, budget_usd: float) -> dict[str, Any] | None:
+        """Why the hirer's pool cannot cover `budget_usd`, under enforce_budget, or None."""
+        if not self.hub.settings.enforce_budget:
+            return None
+        # A cloud hirer pays for its own turns too: it must keep something to ask, fire and answer with.
+        margin = 0.0 if boss.tier == "local" else self.hub.settings.turn_reserve_usd
+        left = session.ledger.left()[boss.name]
+        if left + 1e-9 < budget_usd + margin:
+            keep = f" and keep ${margin} for your own turns" if margin else ""
+            return {"error": f"your pool has ${left:.6f} left: not enough to reserve ${budget_usd}{keep}"}
+        return None
 
     async def fire_agent(self, ctx: Context, name: str) -> dict[str, Any]:
         """Fire an agent you hired (directly or below you) and every agent it hired. Unspent money goes back."""
