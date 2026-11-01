@@ -34,6 +34,16 @@ def test_check_priced_rejects_unknown_cloud_model():
         llm.check_priced(["made-up-provider/model-x"])
 
 
+def test_check_priced_rejects_a_cloud_model_litellm_names_but_does_not_price():
+    # LiteLLM can know a model without knowing its price (gpt-6-luna under the pinned 1.103.4 map): its info then
+    # says $0, and every call would be billed by the provider but never charged to a pool or the wallet
+    model = "hashiru_test/name-only"
+    llm.litellm.register_model({model: {"litellm_provider": "openai", "mode": "chat"}})
+    assert not llm.has_price(model)
+    with pytest.raises(ValueError, match="no price"):
+        llm.check_priced([model])
+
+
 def test_prices_file_fills_gaps_in_litellms_price_map(tmp_path):
     model = "hashiru_test/priced-model"
     assert not llm.has_price(model)
