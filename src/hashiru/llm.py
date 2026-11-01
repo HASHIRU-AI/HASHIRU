@@ -39,11 +39,13 @@ def is_local(model: str) -> bool:
 
 
 def has_price(model: str) -> bool:
+    """LiteLLM knows what a token of `model` costs. Knowing its name is not enough: for a model newer than its map it
+    answers with $0, and the provider would bill calls that no pool or wallet ever sees."""
     try:
-        litellm.get_model_info(model)
+        info = litellm.get_model_info(model)
     except Exception:  # LiteLLM raises a plain Exception for models it has not mapped
         return False
-    return True
+    return (info.get("input_cost_per_token") or 0) > 0 or (info.get("output_cost_per_token") or 0) > 0
 
 
 def register_prices(path: Path) -> None:
@@ -55,7 +57,8 @@ def check_priced(models: list[str]) -> None:
     """Fail fast: neither the pools nor the wallet can see the cost of an unpriced cloud model."""
     unpriced = [m for m in models if not is_local(m) and not has_price(m)]
     if unpriced:
-        raise ValueError(f"LiteLLM has no price for {unpriced}; add one to a prices file (prices_file=...)")
+        raise ValueError(f"LiteLLM has no price for {unpriced}; run `hashiru models --refresh` for its newest "
+                         "prices, or add one to a prices file (prices_file=...)")
 
 
 class LLM:
