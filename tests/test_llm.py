@@ -103,3 +103,11 @@ def test_loading_uses_the_same_context_window_and_reports_the_loaded_size(monkey
     assert calls[0][1]["options"] == {"num_ctx": 16384}
     loaded["models"] = []  # Ollama did not report it: fall back to the file size
     assert asyncio.run(ollama.load("ollama_chat/qwen3.5:4b")) == 3232
+
+
+def test_temperature_zero_is_dropped_only_where_a_model_rejects_it(monkeypatch):
+    # gpt-6-luna rejects temperature=0 while it reasons (found on the first real call, 2026-11-01): LiteLLM drops
+    # the parameter for such models when asked, and keeps it for every other model
+    seen = fake_litellm(monkeypatch)
+    asyncio.run(llm.LLM("http://ollama", llm.Wallet(2.0)).chat("gpt-4.1-mini", []))
+    assert seen[0]["temperature"] == 0 and seen[0]["drop_params"] is True
