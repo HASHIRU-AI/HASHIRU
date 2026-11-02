@@ -122,7 +122,7 @@ async def _try(j: Job, o: Option, pool: Pool, market: Market, log: list[Attempt]
 
 async def run_upfront(p: Project, alloc: Mapping[str, str], market: Market, options: Sequence[Option]) -> RunResult:
     """Carry out a fixed allocation: jobs by value (then id), each once, nothing changed on the way."""
-    pool, log, answers = Pool(p.budget_usd), [], {}
+    pool, log, answers = Pool(p.budget_usd), list[Attempt](), dict[str, str]()
     for j in sorted(p.jobs, key=lambda x: (-x.value, x.id)):
         if (name := alloc.get(j.id, SKIP)) == SKIP:
             continue
@@ -136,7 +136,7 @@ async def cascade(p: Project, stats: Stats, market: Market, options: Sequence[Op
     """The solver that adapts: per job, the options expected to succeed at least `theta` of the time, cheapest first.
     A checkable job moves up until the check passes (at most MAX_CHECKS tries); any other job asks the two cheapest
     and, if they disagree, a third. Without a qualifying option, the most reliable one answers alone."""
-    pool, log, answers = Pool(p.budget_usd), [], {}
+    pool, log, answers = Pool(p.budget_usd), list[Attempt](), dict[str, str]()
 
     def ranked(j: Job) -> list[tuple[Option, float, float]]:
         known = [(o, *c) for o in options if serves(o, j) if (c := _cell(stats, j, o.name, False)) is not None]
