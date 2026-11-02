@@ -101,6 +101,8 @@ uv run hashiru serve --config examples/hashiru.yaml      # adds the fetch and cl
 ```
 
 A manager can be hired with only some tools: `hire_agent(..., tools=["memory", "ask_agent"])`.
+`web_tools=false` takes `get_website` and `arxiv_search` away from every agent (a benchmark does, so no answer is
+looked up).
 
 ## Budgets, modes and deadlines
 
