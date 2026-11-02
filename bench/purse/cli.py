@@ -2,11 +2,12 @@
 records the outcome table; `check` runs the validity checks on it; `run` runs an allocator on a condition's projects.
 Commands that can reach a real model refuse unless --spend is given.
 
-    uv run --env-file .env python -m purse pool --out bench/out/pool.jsonl
-    uv run --env-file .env python -m purse calibrate --pool ... --table ... --options gpt-6-luna --repeats 2 \\
-        --max-usd 5 --spend
-    uv run python -m purse check --pool ... --table ...
-    uv run python -m purse run --allocator knapsack --pool ... --table ... --rho 0.5 --tau 0.5 --out bench/out/k
+    PYTHONPATH=bench uv run python -m purse pool --out bench/out/pool.jsonl
+    PYTHONPATH=bench uv run --env-file .env python -m purse calibrate --pool ... --table ... \\
+        --options gpt-6-luna --repeats 2 --max-usd 5 --spend
+    PYTHONPATH=bench uv run python -m purse check --pool ... --table ...
+    PYTHONPATH=bench uv run python -m purse run --allocator knapsack --pool ... --table ... --rho 0.5 \\
+        --tau 0.5 --out bench/out/k
 """
 import argparse
 import asyncio

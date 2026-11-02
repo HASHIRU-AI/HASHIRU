@@ -1,6 +1,8 @@
 # Design: PURSE, a benchmark for how agents spend (working name)
 
-Status: design for the user's approval; nothing built. Date: 2026-11-01. Replaces the GAIA proposal and HASHIRUBench in
+Status: approved and built on 2026-11-01 (`bench/` on `feature/whitepaper`, plan
+`plan/2026-11-01-purse-implementation.md`, rulings in its ledger); not yet calibrated: no model has been called.
+Date: 2026-11-01. Replaces the GAIA proposal and HASHIRUBench in
 the whitepaper plan (`plan/2026-11-01-whitepaper-v2.md`, §5 and W7). The user asked for "a new hard benchmark that will
 guarantee it tests what you want" and skipped the questions; every call below is mine unless it says otherwise.
 
@@ -280,9 +282,10 @@ adapter and harness 1.5, `csp` and `grid_check` 0.5, validity checks 0.5). Calib
 
 ## 17. Build order, after approval
 
-1. Branch `feature/whitepaper` from `develop`, after merging `bugfix/unpriced-models`.
-2. Generators and verifiers, tests first; the validity checks running on a synthetic outcome table.
-3. Oracles, knapsack, cascade and replay, tested against brute force.
-4. The web-tools switch and the memory cap in HASHIRU (tests first), the `csp` agent, `grid_check`, the HASHIRU adapter
-   with fake models.
+1. [x] Branch `feature/whitepaper` from `develop`, after merging `bugfix/unpriced-models`.
+2. [x] Generators and verifiers, tests first; the validity checks running on a synthetic outcome table.
+3. [x] Oracles, knapsack, cascade and replay, tested against brute force.
+4. [x] The web-tools switch and the memory cap in HASHIRU (tests first), the `csp` agent, `grid_check`, the HASHIRU
+   adapter with fake models. The single-agent baseline is `fixed:<CEO model>` in replay (each job on the CEO's model
+   alone); a live CEO answering all eight jobs in one context is not built.
 5. Ask before the pilot (real calls), then before calibration, then before each batch of runs.

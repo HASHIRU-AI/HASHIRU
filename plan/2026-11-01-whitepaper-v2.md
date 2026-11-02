@@ -244,11 +244,12 @@ across two processes, and the debate plan graph (`traces/chat-20261030-081949-*.
   real `.env`, the hub starts with the refreshed map and refuses `gpt-6-luna` without it.
 - [ ] Pilot check: no cloud call has run in v2 yet, so the first one must show a nonzero `cost_usd` in the trace (LiteLLM
   prices the response's model name, which may be a dated snapshot).
-- [ ] An allocation extractor over traces (reservations, spends, refunds, tiers, make or buy, escalations, peer
-  prices) and a ledger cross-check with `ledger.replay`.
-- [ ] RQ2's baselines (single agent, fixed teams, the optimizer split) as configurations of the same hub where
-  possible; RQ3's priced peers; RQ4's microbenchmarks; loaders for the task suites; per-run config, price and
-  environment records; tests for the harness with fake models.
+- [x] An allocation extractor over traces (`bench/purse/traces.py`: hires, reservations, spends, refunds, declared
+  difficulty, escalations, which hire got which job, prompt fidelity). Not done: a cross-check with `ledger.replay`.
+- [x] PURSE (`bench/`, 2026-11-01): the task suite, RQ2's baselines (fixed teams, the knapsack, the cascade, the
+  LLM's up-front split, oracles), RQ3's priced peers (`calc`, `csp`), per-run environment records, the validity
+  checks, 119 tests with fake models. Not done: RQ4's microbenchmarks.
+- [ ] Pilot, then calibration, then the runs: each needs the user's approval (Phase E).
 
 ### Phase E: Real runs (4 to 6 days, each batch approved first)
 - [ ] E1, local only ($0): RQ3's local peers, RQ4's local timings; Ollama running with `qwen3.5:4b`.
