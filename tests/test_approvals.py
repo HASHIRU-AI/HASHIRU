@@ -18,7 +18,7 @@ from openai import AsyncOpenAI
 from test_interop import call, reply, serve, user
 from test_router import SizedOllama, worker_replies
 
-from hashiru import approvals, cli, runtime
+from hashiru import cli, runtime
 from hashiru import hub as hub_module
 from hashiru.approvals import Decision
 from hashiru.config import load_settings
@@ -127,8 +127,7 @@ def test_a_local_hire_asks_only_to_load_a_big_model_that_is_not_loaded(tmp_path,
     assert [(q.kind, q.what) for q in questions] == [("gpu", "ceo wants to hire b1 on ollama_chat/big, loading "
                                                              "500 MB of memory")]
     assert session.approvals.show() == []
-    for module in (approvals, hub_module):
-        monkeypatch.setattr(module, "free_mb", lambda: 100)
+    monkeypatch.setattr(hub_module, "free_mb", lambda: 100)  # every memory check reads it through Hub.free_memory
     small = make_hub(tmp_path / "small", approve_hire_mb=400)
     tight = attended(small)
     assert "needs 500 MB" in asyncio.run(hire(small, tight, model="ollama_chat/big"))["error"]

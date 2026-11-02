@@ -38,6 +38,7 @@ mcp_start_timeout: 30                  # seconds to connect to each configured M
 # left, a local model must fit in free memory, and an agent whose pool is spent stops making cloud calls.
 # false keeps accounting only, so policy experiments can watch agents overspend.
 enforce_budget: true
+memory_mb: 0                  # cap (MB) on the memory local hires hold together; 0: free memory as measured
 allow_hiring: true
 allow_local_agents: true
 allow_cloud_agents: true      # cloud models and remote A2A peers
