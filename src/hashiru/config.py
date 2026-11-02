@@ -21,8 +21,8 @@ PEER_KEYS = {"url", "headers", "price_usd_per_message", "labels"}
 POSITIVE = ("task_timeout", "tool_start_timeout", "tool_call_timeout", "mcp_start_timeout", "session_ttl",
             "max_sessions", "ollama_num_ctx", "auto_per_tier", "auto_max_usd")
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
-NON_NEGATIVE = ("budget_usd", "max_usd", "turn_reserve_usd", "max_escalations", "approve_hire_usd", "approve_hire_mb",
-                "approve_turn_usd")
+NON_NEGATIVE = ("budget_usd", "max_usd", "turn_reserve_usd", "max_escalations", "reference_min_chars",
+                "approve_hire_usd", "approve_hire_mb", "approve_turn_usd")
 LABELS = {"private", "untrusted"}
 DIFFICULTIES = ("easy", "medium", "hard")  # what a hiring agent says about a job (router.py)
 AUTO = ("auto",)  # models=auto: recon.settle picks the models before the hub starts
@@ -100,7 +100,13 @@ class Settings:
     obfuscate_with: str = "patterns+model"  # patterns (Presidio) alone, or plus a local model for names and details
     obfuscate_model: str = ""  # the local model that finds them; default: as private_ceo_model
     routing: tuple[tuple[str, tuple[str, ...]], ...] = ()  # difficulty -> models to try, in order (router.py)
+    # kind of job -> (model, measured success rate, mean cost in $) per model: a hire may give its kind instead of a
+    # difficulty, and goes to the cheapest model that succeeds at least route_min_rate of the time (router.py)
+    success_rates: tuple[tuple[str, tuple[tuple[str, float, float], ...]], ...] = ()
+    route_min_rate: float = 0.7
     max_escalations: int = 2  # times a failing worker moves up its list of models, per message
+    request_by_reference: bool = False  # the CEO reads long sections as an outline; messages naming one carry it
+    reference_min_chars: int = 2000  # a section this long or longer is held back from the CEO (request_by_reference)
     approve_hire_usd: float = 0.25  # a cloud hire reserving this much or more waits for the user (0: never)
     approve_hire_mb: int = 16384  # a local model this big (MB) waits for the user before it loads (0: never)
     approve_turn_usd: float = 0.25  # a turn asks before spending more each time it has spent this much (0: never)
@@ -203,6 +209,25 @@ def _peers(value: Any) -> tuple[A2APeer, ...]:
     return tuple(peers)
 
 
+def _success_rates(value: Any) -> tuple[tuple[str, tuple[tuple[str, float, float], ...]], ...]:
+    """{kind: {model: [rate, cost_usd]}} -> the setting; rates in [0, 1], costs >= 0."""
+    if not value:
+        return ()
+    shape = "success_rates must map kinds of job to {model: [success rate, mean cost in $]}"
+    if not isinstance(value, dict) or not all(isinstance(m, dict) for m in value.values()):
+        raise ValueError(shape)
+    out = []
+    for kind, models in value.items():
+        rows = []
+        for model, pair in models.items():
+            if not (isinstance(pair, list) and len(pair) == 2 and all(isinstance(x, int | float) for x in pair)
+                    and 0 <= pair[0] <= 1 and pair[1] >= 0):
+                raise ValueError(f"{shape}; got {kind!r}.{model!r} = {pair!r}")
+            rows.append((str(model), float(pair[0]), float(pair[1])))
+        out.append((str(kind), tuple(rows)))
+    return tuple(out)
+
+
 def _routing(value: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
     if not value:
         return ()
@@ -263,6 +288,8 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
             values[key] = _peers(value)
         elif key == "routing":
             values[key] = _routing(value)
+        elif key == "success_rates":
+            values[key] = _success_rates(value)
         else:
             try:
                 values[key] = kind(value) if kind in (int, float, str) else value
@@ -296,6 +323,8 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
         raise ValueError(f"obfuscate_with must be 'patterns+model' or 'patterns', got {settings.obfuscate_with!r}")
     if settings.obfuscate_model and not is_local(settings.obfuscate_model):
         raise ValueError(f"obfuscate_model must be a local model (ollama_chat/...), got {settings.obfuscate_model}")
+    if not 0 <= settings.route_min_rate <= 1:
+        raise ValueError(f"route_min_rate must be between 0 and 1, got {settings.route_min_rate}")
     if settings.models == AUTO and settings.routing:
         raise ValueError("routing cannot be set with models=auto: name the models instead, or leave routing out")
     has_local = bool(settings.private_ceo_model or settings.obfuscate_model or is_local(settings.ceo_model)
