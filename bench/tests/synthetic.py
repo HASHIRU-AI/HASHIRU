@@ -1,12 +1,13 @@
 """A synthetic pool and outcome table built to pass PURSE's validity checks, with a switch that breaks exactly one."""
 from purse.jobs import BINS, LEVELS
-from purse.market import MARKET, SMALL
+from purse.market import MARKET, SMALL, SMALL_OPTION
 from purse.projects import ALL
 from purse.table import OutcomeTable, Record
 from tests.helpers import job
 
 SHIFT = {"low": -1.5, "mid": 0.0, "high": 1.5}  # how much the hidden bin moves a job's real difficulty
 REPEATS = 20
+FULL = (SMALL_OPTION, *MARKET)  # three tiers: the checks are tested on the market they were designed for
 
 
 def rate(option: str, family: str, level: int, hidden: str, broken: str | None) -> float:
@@ -41,7 +42,7 @@ def build(broken: str | None = None, per_cell: int = 8) -> tuple[list, OutcomeTa
                                                for i in range(per_cell))]
     table = OutcomeTable(None)
     for j in pool:
-        for o in MARKET:
+        for o in FULL:
             if o.families and j.family not in o.families:
                 continue
             right = round(rate(o.name, j.family, j.level, j.hidden, broken) * REPEATS)

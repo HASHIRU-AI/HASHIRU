@@ -9,7 +9,7 @@ from purse import cli
 from purse.market import MARKET, Outcome
 from purse.table import OutcomeTable
 from tests.helpers import job
-from tests.synthetic import build
+from tests.synthetic import FULL, build
 
 
 def write(tmp_path, broken=None):
@@ -17,7 +17,7 @@ def write(tmp_path, broken=None):
     pool_file, table_file = tmp_path / "pool.jsonl", tmp_path / "table.jsonl"
     pool_file.write_text("".join(json.dumps(asdict(j)) + "\n" for j in pool))
     saved = OutcomeTable(table_file)
-    for uid, option in {(j.uid, o.name) for j in pool for o in MARKET}:
+    for uid, option in {(j.uid, o.name) for j in pool for o in FULL}:
         for r in table.records(uid, option):
             saved.add(r)
     return pool_file, table_file

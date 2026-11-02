@@ -30,7 +30,7 @@ from hashiru.hub import Hub
 from hashiru.llm import LLM, Wallet, WalletExceeded
 from purse.checks import run_checks
 from purse.jobs import LEVELS, Job
-from purse.market import CEO_MODEL, MARKET, Market, Option, lookup, priced, serves
+from purse.market import CEO_MODEL, MARKET, Market, Option, calibrated, lookup, priced, serves
 from purse.oracles import sweep_prices
 from purse.projects import Project, build_pool, with_budget
 from purse.replay import ReplayMarket
@@ -201,7 +201,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     pool, table = load_pool(args.pool), OutcomeTable(args.table)
     if args.command == "check":
-        checks = run_checks(pool, table, MARKET, args.seed)
+        checks = run_checks(pool, table, calibrated(table.options()), args.seed)
         for c in checks:
             print(f"{'PASS' if c.passed else 'FAIL'} {c.name}: {c.value:.3f} ({c.threshold})")
         return 0 if all(c.passed for c in checks) else 1
@@ -231,8 +231,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         except BaseException as exc:
             return _stopped(exc, factory, str(args.table))
         return 0
-    price = args.price if args.price is not None else sweep_prices(table, pool, MARKET)[1]
-    options = priced(MARKET, price)
+    market = calibrated(table.options())  # the options the table holds records for
+    price = args.price if args.price is not None else sweep_prices(table, pool, market)[1]
+    options = priced(market, price)
     cfg = RunConfig(args.allocator, args.rho, args.tau, args.projects, args.seeds, args.memory_mb, args.ceo,
                     not args.uninformed, args.live, args.max_usd, args.out, peers, args.port)
     if is_live(cfg):

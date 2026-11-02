@@ -5,7 +5,8 @@ from typing import Literal, Protocol
 
 from purse.jobs import Job
 
-__all__ = ["CEO_MODEL", "MARKET", "SMALL", "Market", "Option", "Outcome", "lookup", "priced", "serves"]
+__all__ = ["ALL_OPTIONS", "CEO_MODEL", "MARKET", "SMALL", "SMALL_OPTION", "Market", "Option", "Outcome",
+           "calibrated", "lookup", "priced", "serves"]
 
 CEO_MODEL = "gpt-6-luna"
 SMALL = "nvidia_nim/google/gemma-4-31b-it"  # the small tier, hosted on NVIDIA NIM (bench/prices.json)
@@ -23,13 +24,23 @@ class Option:
     output_usd_per_m: float = 0.0
 
 
-MARKET: tuple[Option, ...] = (  # local models are left out of the runs: a 4B thinking model took 6 min a job here
-    Option(SMALL, "cloud", input_usd_per_m=0.14, output_usd_per_m=0.40),
+# The small tier (Gemma 4 31B on NIM, priced in bench/prices.json) is out of the 2026-11-01 runs: NIM did not answer.
+# Local models are out too: a 4B thinking model took 6 minutes a job on the laptop the runs used.
+SMALL_OPTION = Option(SMALL, "cloud", input_usd_per_m=0.14, output_usd_per_m=0.40)
+MARKET: tuple[Option, ...] = (
     Option("gpt-6-luna", "cloud", input_usd_per_m=0.10, output_usd_per_m=0.50),
     Option("meta/muse-spark-1.3", "cloud", input_usd_per_m=1.25, output_usd_per_m=4.25),
     Option("a2a/calc", "agent", 0.001, ("arithmetic",)),
     Option("a2a/csp", "agent", 0.001, ("grids",)),
 )
+
+
+ALL_OPTIONS = (SMALL_OPTION, *MARKET)
+
+
+def calibrated(names: set[str]) -> tuple[Option, ...]:
+    """The options an outcome table holds records for: the market a check or a run should use."""
+    return tuple(o for o in ALL_OPTIONS if o.name in names)
 
 
 @dataclass(frozen=True)
