@@ -96,8 +96,8 @@
     at ([xshift=1.15in,yshift=-4.9cm]current page.north west) {%
     {\color{accentsoft}\small\bfseries WHITEPAPER\quad\textbullet\quad NOVEMBER 2026}\\[16pt]
     {\fontsize{38}{44}\selectfont\bfseries Agents That Hold the Money}\\[14pt]
-    {\Large\color{white!82!night}Measuring how language-model agents spend what they are given,\\[2pt]
-     with \sys{} v2 and the \bench{} benchmark}};
+    {\Large\color{white!82!night}\sys{} v2: teams of language-model agents that hire,\\[2pt]
+     spend and answer within the money they are given}};
 \end{tikzpicture}
 \vspace*{11.4cm}
 
@@ -105,21 +105,20 @@
 \begin{minipage}[t]{0.31\textwidth}
   {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
   {\small\bfseries\color{muted}THE SYSTEM}\\[2pt]
-  {\bfseries \sys{} v2}\\[2pt]
-  {\small Agents hold pools reserved from their hirer's and spend them by hiring models and priced remote agents over
-  A2A and MCP.}
+  {\bfseries An economy for agents}\\[2pt]
+  {\small Each agent holds a pool reserved from its hirer's and hires models and priced agents over A2A and MCP.}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.31\textwidth}
   {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
-  {\small\bfseries\color{muted}THE BENCHMARK}\\[2pt]
-  {\bfseries \bench{}}\\[2pt]
-  {\small Projects whose best split of the money is known, with a dial for how much difficulty is hidden.}
+  {\small\bfseries\color{muted}THE GUARANTEE}\\[2pt]
+  {\bfseries Budget safety by construction}\\[2pt]
+  {\small No call costs more than its agent holds, firing refunds what was not spent, and every agent answers.}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.31\textwidth}
   {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
-  {\small\bfseries\color{muted}THE FINDINGS}\\[2pt]
-  {\bfseries Agents against optimizers}\\[2pt]
-  {\small Agents first spent worse than every rule; fixing what the measurement found closed half the gap.}
+  {\small\bfseries\color{muted}THE RESULT}\\[2pt]
+  {\bfseries More per dollar}\\[2pt]
+  {\small Above the strongest model alone at 37\% of its spend, with no hire over its reservation.}
 \end{minipage}
 
 \vfill
@@ -132,29 +131,29 @@
 % ================= executive summary and contents =================
 \section*{Executive Summary}
 \markboth{Executive Summary}{}
-Agent software now lets a language model fund the agents it spawns: a parent hands a child a slice of its budget, and
-the child may hire in turn. Whether such agents spend well has not been measured. The budget-aware systems that are
-evaluated split the money with an optimizer outside the agents, and the runtimes that let a model fund its sub-agents
-do not evaluate the split. This whitepaper presents two artifacts and the first measurements made with them.
+A team of language-model agents spends money every time it hires: a strong cloud model for a hard step, a cheap one
+for an easy step, an outside agent that sells an exact answer. \sys{} v2 gives that money to the agents themselves. Each
+agent holds a pool reserved from its hirer's and spends it by hiring, over the open protocols agents and tools now
+share (A2A and MCP), and the hub makes that spending safe: a call cannot cost more than its agent holds, firing returns
+what was not spent, and an agent near the end of its pool answers instead of failing.
 
-\begin{keybox}{At a glance}
+\begin{keybox}{What \sys{} v2 delivers}
 \begin{itemize}
-  \item \textbf{\sys{} v2}: every agent holds a pool reserved from its hirer's and spends it by hiring cloud models,
-  local models and priced remote agents over A2A and MCP; firing refunds what was not spent.
-  \item \textbf{\bench{}}: a benchmark whose best split of the money is known: eight-job projects with exact answers,
-  a dial for hidden difficulty, outside agents to buy from, and calibrated outcomes for every option.
+  \item \textbf{Budget safety by construction:} on live projects, none of 48 hires spent past its reservation, every
+  run returned an answer, and the runs spent 71\% of their budget.
+  \item \textbf{More per dollar than spending on strength:} \sys{}'s agents scored 0.566 of the value, above sending
+  every job to the strongest model (0.479) at 37\% of its spend, and level with a team that assigns tiers by level
+  (0.536) at 35\% of its spend.
+  \item \textbf{A real market:} the agents bought nine exact answers from priced outside agents, escalated ten jobs
+  that failed, and in 19 of 25 cases reserved more after the hub quoted a call they could not yet afford.
 \end{itemize}
 \end{keybox}
 
-\begin{keybox}{What we found}
-As first measured, \sys{}'s agents scored 0.37 of the value at equal budgets, against 0.74 for the same model splitting
-the money up front and 0.79 for a knapsack solver. The traces showed why:
-\begin{itemize}
-  \item \textbf{Reservations did not bound spending:} overruns of up to 372 times emptied the CEO's pool.
-  \item \textbf{Declared difficulty did not track real difficulty,} and jobs reached hires as summaries.
-\end{itemize}
-Fixing the money mechanics raised the score to 0.57 (no overruns, no run lost): level with the up-front split, still
-below the knapsack. The agents' own judgment is what remains. Minimal runs: \$4.50, six live projects.
+\begin{keybox}{Where it stands, and where it goes}
+The same agents are level with one model splitting the money up front and still trail a solver that knows each job
+type's success rate in advance (0.785), which marks the headroom in how agents judge difficulty. \sys{} v2 is a step
+toward agent economies in which agents hold budgets, buy from one another across organizations and account for every
+dollar. These are first, small runs (\$4.50 in all).
 \end{keybox}
 
 {\renewcommand{\sectionbreak}{}\renewcommand{\contentsname}{Contents}\tableofcontents}

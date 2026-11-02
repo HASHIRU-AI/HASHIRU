@@ -45,8 +45,8 @@ for agents~\cite{a2aproject2026agent2agent}.
 
 \begin{table}[!htb]
 \centering
-\caption{Who splits the money, and when. \sys{} v2 shares agent-held budgets with 2026 agent runtimes; what is new is
-measuring the split against a known optimum (\bench{}).}
+\caption{Who splits the money, and when. \sys{} v2 shares agent-held budgets with 2026 agent runtimes; it bounds
+each call before it is made and is measured against a known optimum.}
 \label{tab:related}
 \footnotesize
 \begin{tabular}{@{}p{4.2cm}p{3.6cm}p{2.6cm}p{3.6cm}@{}}
@@ -58,13 +58,13 @@ RouteLLM, FrugalGPT & router, cascade & per query & router oracle \\
 Automaton, wayland-core & the model & during & no \\
 AgentLance & manager model & per subtask & no \\
 $R^3$-Bench, EcoAgent & one agent, on itself & during & yes \\
-\textbf{\sys{} v2 on \bench{}} & \textbf{the agents, to depth 2} & \textbf{during} & \textbf{yes} \\
+\textbf{\sys{} v2} & \textbf{the agents, to depth 2} & \textbf{during, each call bounded} & \textbf{yes} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \sys{} v2 shares agent-held budgets with these runtimes and the oracle construction with $R^3$-Bench, but it is
-different in two dimensions: (1) \emph{Measured, not only provided:} to our knowledge, it is the first to evaluate
-agent-held budgets across a hiring tree against solver, up-front and fixed-team splits at equal dollars. (2)
-\emph{Reserved pools with make or buy:} a hire reserves money (and memory) that firing refunds, and the market includes
-priced remote agents and whole teams.
+different in two dimensions: (1) \emph{Bounded before the call:} a hire reserves money (and memory) that firing refunds,
+and each call's output is capped to what its agent holds before the call is made, where wayland-core's sub-agent stops
+itself once it has crossed its cap. (2) \emph{Measured against an optimum:} to our knowledge, it is the first system whose
+agent-held budgets are evaluated across a hiring tree against solver, up-front and fixed-team splits at equal dollars.

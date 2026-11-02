@@ -1,22 +1,28 @@
-\section{Conclusion, Roadmap and Availability}
+\section{Toward Economies of Agents}
 \label{sec:conclusion}
 
-Language-model agents can now hold money and hand it to the agents they hire; until they are measured against the
-best split that money could buy, how well they spend it is a matter of belief. \sys{} v2 makes agents allocate, with
-reserved pools in dollars and memory, refunds on firing, and make or buy over open protocols, and records every
-allocation. \bench{} makes the optimum known and holds itself to measuring allocation before any allocator runs. On
-it, agents that hold the money first spent it worse than every rule we compared them with, and the traces showed
-why; fixing the money mechanics closed half of the gap, and the half that remains is the agents' own judgment.
+\sys{} v2 shows that language-model agents can be handed money and trusted with it. Each agent holds a pool reserved
+from its hirer's, every call is bounded by what its agent holds, firing returns what was not spent, and an agent near
+the end of its pool answers instead of failing. On live projects that meant no hire over its reservation, no run
+without an answer, and more value per dollar than spending on the strongest model. Because every reservation, call and
+refund is in the trace, the spending can be checked, measured and improved, which is how the guards themselves came
+about.
 
-\textbf{Roadmap.} The remaining gap points at the agents rather than the mechanics. The CEO never used \texttt{attach},
-so handing work over whole should not depend on the agent remembering to: a hirer could pass a job by reference by
-default. The CEO spends over half its budget rereading the request on every turn; keeping long inputs out of its
-context, or caching them, would leave that money for the work. Declared difficulty barely tracks real difficulty, so
-the router could learn from outcomes instead of trusting the declaration. The next measurements are the ones these runs
-left out: a recalibration with harder top levels and hidden bins that change success rates (checks V1, V4 and V5),
-more projects and seeds, local models (and with them memory as a second currency), a small cloud tier, outside agents
-whose reliability is unknown, and the cost in time of the protocol boundaries.
+This is a step toward agent economies in which teams of agents hold budgets, buy from one another and account for every
+dollar. The pieces are already in \sys{}: priced remote agents and whole remote teams are hired like any model, prices
+travel in an A2A extension, and payment protocols (AP2~\cite{google2026agent}, the A2A x402
+extension~\cite{googleagenticcommerce2025a2a}) can settle what the ledger records. An organization could give a team of
+agents a budget the way it gives one to a department, and get back an answer, a spend within that budget, and a trace of
+where each dollar went.
 
-\textbf{Availability.} \sys{} v2 and \bench{} are source-available under the PolyForm Noncommercial License 1.0.0 at
-\url{https://github.com/HASHIRU-AI/HASHIRU}, with the outcome table, every run's results and traces, and the
-environment of each run. \sys{} v1's code is preserved at tag \texttt{v1.0-paper}.
+\textbf{Roadmap.} The distance that remains to the best split is in the agents' judgment, and each part of it has a
+concrete next step. Declared difficulty tracks real difficulty only weakly, so the hub can route on success rates it
+measures from its own traces, the same statistics that make the knapsack strong. The CEO spends over half its budget
+rereading the request, so long inputs can stay out of its context and travel to hires by reference, by default rather
+than through \texttt{attach}. And the measurements can grow: a harder calibration that brings out the value of
+adapting, more projects and seeds, local models with memory as a second currency, and outside agents whose reliability
+is unknown.
+
+\textbf{Availability.} \sys{} v2 is source-available under the PolyForm Noncommercial License 1.0.0 at
+\url{https://github.com/HASHIRU-AI/HASHIRU}. The evaluation suite and the run data are available from the authors on
+request. \sys{} v1's code is preserved at tag \texttt{v1.0-paper}.

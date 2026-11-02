@@ -39,11 +39,11 @@ firing returns what it did not spend. A remote agent is paid its declared price 
 v1 had one level of hierarchy, a hand-written table of resource units, and no analysis of the local-against-cloud
 trade (its own stated limitations). v2 lets managers hire with money they were given, prices every cloud call from
 LiteLLM's price map~\cite{berriai2026litellm} (local calls cost no dollars but hold the memory their model really uses,
-measured from Ollama~\cite{ollama2026ollama}), and is measured by \bench{}. Rules that v1 left to prompts (who may
+measured from Ollama~\cite{ollama2026ollama}), and bounds every call by what its agent holds. Rules that v1 left to prompts (who may
 spend what, where private data may go) are enforced in code: in our experience with an earlier prototype, rules stated
 only in prompts were broken.
 
-\subsection{Pools, reservations and refunds}
+\subsection{Budget safety by construction}
 \label{sec:pools}
 Each agent $a$ holds a reservation $R_a$ carved from its hirer's pool, and one rule says what it can still spend.
 
@@ -55,8 +55,8 @@ Each agent $a$ holds a reservation $R_a$ carved from its hirer's pool, and one r
 \end{equation}
 A live hire holds its whole reservation; a fired one holds only what it (and everyone below it) actually spent.
 \end{keybox}
- Firing therefore returns the unspent part, and two hires running at once cannot spend the same dollars: each
-holds its reservation from the moment it is hired. Table~\ref{tab:pool} works one session through.
+Firing therefore returns the unspent part, and two hires running at once cannot spend the same dollars: each holds its
+reservation from the moment it is hired. Table~\ref{tab:pool} works one session through.
 
 \begin{table}[!htb]
 \centering
@@ -76,16 +76,18 @@ w1 spends 0.03, then the CEO fires it & 0.26 & 0.13 \\
 \end{tabular}
 \end{table}
 
-The checks are in code, not in prompts: a hire cannot reserve more than its hirer has left, an agent whose pool is
-spent makes no further cloud call, and a remote agent is paid from its hirer's reservation, which must cover its
-declared price before each message. No call can cost more than its agent has left: its output is capped to what the
-pool pays for after reading the input, and a call that cannot pay for a short answer is refused before it reaches the
-provider, with its estimated cost, so the hirer can reserve more. An agent with one step left (its last allowed turn,
-or a pool that pays for an answer but not for another working turn) answers with what it has rather than ending
-with nothing. A local hire is refused if its model does not fit in free memory (or in a cap,
-\texttt{memory\_mb}). Separately, \texttt{max\_usd} caps real spend for the whole process. Because every reservation,
-call and fire is in the trace, the ledger can be rebuilt from the trace alone, so budget rules can be checked after the
-fact.
+A rule is only as good as its enforcement, and \sys{} enforces this one in code at every call, not in the prompt. Three
+guards keep it true. (1) \emph{Reservations:} a hire cannot reserve more than its hirer has left, a local hire must fit
+in free memory (or under a cap, \texttt{memory\_mb}), and a remote agent's declared price must fit in its reservation
+before each message. (2) \emph{Bounded calls:} before a cloud call, the hub prices its input and caps its output to what
+the agent can still pay for, so the call cannot cost more than the agent holds; a call that cannot pay for a short
+answer is refused before it reaches the provider, and its refusal states the price, so the hirer can reserve more.
+(3) \emph{A closing turn:} an agent with one step left (its last allowed turn, or a pool that pays for an answer but not
+for another working turn and the answer after it) answers with what it has instead of ending with nothing. Together
+they hold each agent to what it holds, within the margin of the hub's token estimate, whatever the agent decides;
+\S\ref{sec:evaluation} shows each one at work. Separately,
+\texttt{max\_usd} caps real spend for the whole process, and because every reservation, call and fire is in the trace,
+the ledger can be rebuilt from the trace alone.
 
 \subsection{Hiring by declared difficulty}
 A hiring agent may name a model, or declare how hard a job is (easy, medium or hard) and let the hub choose. The hub
@@ -118,8 +120,7 @@ recognizers~\cite{presidio2026presidio} and a local model find the values), or r
 
 \subsection{Implementation}
 \sys{} v2 is 6,429 lines of Python 3.13 with exact pins for its protocol and model libraries, and 455 tests that run
-without API keys or Ollama. The two changes \bench{} needed (a switch that takes the web tools away, so that no answer
-can be looked up, and the memory cap) were added test-first. Running \bench{} found four defects in \sys{}, each fixed
-test-first: a reasoning model (\texttt{gpt-6-luna}) rejects temperature 0; a reservation did not bound a call's cost;
-a hirer could not hand over a long input except by retyping it; and an agent could spend its last money on rereading
-rather than answering (\S\ref{sec:evaluation}).
+without API keys or Ollama. The guards of \S\ref{sec:pools} grew out of measurement: each was written test-first after a
+benchmark run showed what happens without it (\S\ref{sec:evaluation}). So did three smaller features: \texttt{attach},
+which lets a hirer pass sections of the user's request to a hire word for word; a switch that takes the web tools away,
+so that no answer can be looked up during an evaluation; and support for reasoning models that reject temperature 0.

@@ -1,9 +1,10 @@
-\section{\bench{}: A Benchmark with a Known Optimum}
+\section{How We Measured}
 \label{sec:purse}
 
-\bench{} measures how an allocator splits one budget across the jobs of a project by hiring priced options. It is built
-so that the score moves with the split, the best split is computable for every project and budget, and some conditions
-leave adapting during the task nothing to gain. Any system that can hire models within a budget can be run on it.
+To know whether agents spend well, we need tasks on which the best split of the money is known. Our evaluation suite,
+\bench{}, builds them: each project is a set of jobs that share one budget, every job has an exact answer, and every job
+has been tried on every option beforehand, so the best split for any budget can be computed. The score then moves with
+the split, and the gap to the best split says how much money an allocator left on the table.
 
 \subsection{Jobs and projects}
 A project is eight jobs, two from each of four families (Table~\ref{tab:families}), with one budget $B$. Each job has a

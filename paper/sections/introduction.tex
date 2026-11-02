@@ -1,56 +1,47 @@
-\section{The Problem: Who Splits the Money?}
+\section{Introduction}
 \label{sec:intro}
 
 Teams of language-model agents cost money, and how a team's budget is split decides what the team can do. A
 hierarchical system (a CEO agent that hires managers and workers, as in \sys{} v1~\cite{pai2025hashiru}, or the
 orchestrators of AutoGen~\cite{wu2024autogen}, MetaGPT~\cite{hong2024metagpt} and Magentic-One~\cite{fourney2024magenticone})
-spends on every hire: a strong cloud model for a hard step, a cheap one for an easy step, a local model where the data
-must not leave the machine. The split matters because the steps differ, and because a team that spends its budget on
-the wrong steps fails on the ones that needed it.
+spends on every hire: a strong cloud model for a hard step, a cheap one for an easy step, an outside agent that sells an
+exact answer. A team that spends its budget on the wrong steps fails on the ones that needed it, and a team that cannot
+bound its spending cannot be trusted with a budget at all.
 
-Two lines of work handle the split today, and neither measures the agents doing it. The first decides the split
-\emph{outside} the agents: an integer program picks the models and a learned policy picks the topology
-(BAMAS~\cite{yang2026bamas}), a router assigns a model per query (MasRouter~\cite{yue2025masrouter},
-RouteLLM~\cite{ong2025routellm}), or a solver divides the dollars across a pipeline's phases before it runs
-(ZEBRA~\cite{hamri2026zebra}, whose baseline in which a language model splits the dollars directly loses to a knapsack
-solver). The second lets the agents themselves fund the agents they spawn: Automaton's \texttt{fund\_child}
-transfers credits to a child~\cite{conway2026automaton}, wayland-core's \texttt{delegate} gives a sub-agent a dollar
-ceiling charged to it and its descendants~\cite{ferrox2026waylandcore}, and AgentLance lets a manager model set
-enforced per-subtask budgets within its payment~\cite{liu2026markets}. These runtimes provide the mechanism; they do not
-evaluate how well the agents allocate. Benchmarks of budget awareness (BAGEN~\cite{lin2026bagen},
-BATS~\cite{liu2026budgetaware}, $R^3$-Bench~\cite{wang2026r3bench}, EcoAgent-Bench~\cite{wu2026ecoagent},
-CostBench~\cite{liu2026costbench}) evaluate one agent spending its own tokens, actions or tools, not money it hands to
-other agents. No arrangement measures how language-model agents divide money they hold when they hire other models
-and agents during a task, against the best split that money could buy.
+Agent software has started to hand this money to the agents. Automaton's \texttt{fund\_child} transfers credits to a
+child agent~\cite{conway2026automaton}; wayland-core's \texttt{delegate} gives a sub-agent a dollar ceiling charged to
+it and its descendants~\cite{ferrox2026waylandcore}; AgentLance lets a manager model set budgets for subtasks within
+its payment~\cite{liu2026markets}. Budget-aware systems that are evaluated split the money with an optimizer outside the
+agents instead (BAMAS~\cite{yang2026bamas}, ZEBRA~\cite{hamri2026zebra}), and benchmarks of budget awareness
+(BAGEN~\cite{lin2026bagen}, $R^3$-Bench~\cite{wang2026r3bench}, EcoAgent-Bench~\cite{wu2026ecoagent}) measure one agent
+spending its own tokens or actions. A ceiling that is checked after a call crosses it does not keep the call from
+crossing it, and none of these systems is measured against the best split its money could buy. No arrangement covers
+the case where agents hold the money for a whole hiring tree, every call is bounded by what its agent holds before it is
+made, and the resulting allocation is measured against a known optimum.
 
-Measuring this needs two things that existing suites lack. The first is a system in which agents must allocate:
-every hire reserves money from the hirer's pool, the hirer can fire, rehire and escalate while the task runs, and
-every reservation, spend and refund is recorded. The second is a task suite on which the best split is known, so that
-``spent well'' has a reference: the score must move with the split, the optimum must be computable, and some
-conditions must be built so that adapting during the task cannot help, so that a gain from adapting can be told from
-luck.
-
-To address these limitations, we build both and use them to measure agents against optimizers.
+To address these limitations, we built \sys{} v2. Every agent is its own A2A service, every tool is served over MCP,
+and every hire reserves money from its hirer's pool. The hub, not the prompt, keeps spending safe: a call's output is
+capped to what its agent has left, a call that cannot pay for an answer is refused with its price, firing returns what
+was not spent, and an agent with one step left answers with what it has. Because every reservation, call and refund is
+in the trace, the allocation can be measured, and we measured it on a benchmark built so that the best split of the
+money is known.
 
 \begin{keybox}{What this whitepaper contributes}
 \begin{itemize}
   \item \textbf{\sys{} v2, an economy for agents:} each agent holds a pool reserved from its hirer's, in dollars and,
-  for local models, measured memory; it declares how hard a job is and the hub hires the cheapest model that fits the
-  job, the pool and the data's sensitivity, or it buys from a priced remote agent or a whole remote team over A2A;
-  firing refunds what was not spent, and the ledger can be rebuilt from the trace (\S\ref{sec:system}).
-  \item \textbf{\bench{}, a benchmark with a known optimum:} procedurally generated jobs with exact answers, a dial for
-  how much difficulty is hidden, calibrated outcomes for every job on every option, oracles for every budget, and
-  validity checks that hold the benchmark to measuring allocation before any allocator runs (\S\ref{sec:purse}).
-  \item \textbf{Agents against optimizers:} at equal budgets, we compare agents allocating during the task with a
-  knapsack solver and a language model that each split the money up front, a cascade that adapts by rule, and fixed
-  teams, and we report how the agents spend (\S\ref{sec:evaluation}).
+  for local models, measured memory; it declares how hard a job is and the hub hires the cheapest model that fits, or
+  it buys from a priced remote agent or a whole remote team over A2A (\S\ref{sec:system}).
+  \item \textbf{Budget safety by construction:} reserved pools with refunds, calls bounded by their pool before they
+  are made, and a closing turn that turns an empty pool into an answer rather than a failure; on live projects, none
+  of 48 hires spent past its reservation and every run answered (\S\ref{sec:pools}, \S\ref{sec:evaluation}).
+  \item \textbf{Agents measured against optimizers:} on projects whose best split is known, \sys{}'s agents scored
+  above sending every job to the strongest model at 37\% of its spend, matched a team that assigns tiers by level at
+  35\% of its spend, and bought, escalated and re-reserved as the market priced their work (\S\ref{sec:evaluation}).
 \end{itemize}
 \end{keybox}
 
-As first measured on \bench{}, agents that hold the money spent it worse than every rule we compared them
-with: \sys{}'s agents scored 0.374 of the value at equal budgets, against 0.738 for the same model splitting the money
-up front and 0.785 for a knapsack solver. The traces showed why: a reservation did not bound a call's cost, so
-overruns emptied the CEO's pool; declared difficulty did not track real difficulty; and jobs reached hires as
-summaries. Fixing the first of these, and the CEO's habit of spending its last money on rereading rather than
-answering, raised \sys{} to 0.566, level with the up-front split and still below the knapsack
-(\S\ref{sec:evaluation}). The mechanics now hold; the agents' judgment is what remains.
+Each of the three safety mechanisms earns its place in the measurements. Run as first built, without the call bound
+and the closing turn, the same agents overran a reservation by up to 372 times and lost half their runs to an empty
+pool; with both, they lost none and spent 71\% of their budget. The remaining distance to the best split, and to a solver that
+knows each job type's success rate in advance, is in how the agents judge difficulty, which is where \sys{} goes next
+(\S\ref{sec:conclusion}).
