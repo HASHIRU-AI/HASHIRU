@@ -44,22 +44,19 @@ packages = ["src/hashiru"]
 include = ["src/hashiru"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "bench/tests"]
-pythonpath = ["bench"]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 120
 target-version = "py313"
-include = ["src/hashiru/**/*.py", "tests/**/*.py", "examples/**/*.py", "bench/**/*.py"]
+include = ["src/hashiru/**/*.py", "tests/**/*.py", "examples/**/*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
-[tool.ruff.lint.isort]
-known-first-party = ["hashiru", "purse"]
 
 [tool.mypy]
 python_version = "3.13"
-files = ["src/hashiru", "examples", "bench/purse"]
+files = ["src/hashiru", "examples"]
 ignore_missing_imports = true
 check_untyped_defs = true

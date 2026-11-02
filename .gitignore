@@ -28,4 +28,3 @@ traces/
 user_tools/
 model_catalog.json
 data/*.sqlite3
-bench/out/
