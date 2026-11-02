@@ -57,3 +57,14 @@ def test_correct_reads_json_in_tags_or_fences_case_insensitively():
     wrong["1"] = wrong["2"]
     assert not GRIDS.correct(answer, json.dumps(wrong))
     assert not GRIDS.correct(answer, "<answer>not json</answer>")
+
+
+def test_split_count_on_hand_made_puzzles():
+    attrs = (("color", ("red", "green")), ("pet", ("cat", "dog")))
+    by_propagation = Puzzle(2, attrs, (grids.Clue("left_of", ("color", "red"), ("color", "green")),
+                                       grids.Clue("same", ("color", "red"), ("pet", "cat"))))
+    assert solve(by_propagation) == ([{"1": {"color": "red", "pet": "cat"}, "2": {"color": "green", "pet": "dog"}}],
+                                     0)
+    one_guess = Puzzle(2, attrs, (grids.Clue("same", ("color", "red"), ("pet", "cat")),))
+    solutions, splits = solve(one_guess)
+    assert len(solutions) == 2 and splits == 1  # nothing to deduce: one case split, and both cases solve
