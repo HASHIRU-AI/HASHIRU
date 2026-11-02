@@ -3,13 +3,14 @@ import pytest
 
 from purse.checks import run_checks
 from purse.market import MARKET, priced
+from purse.market import SMALL as QWEN
 from purse.oracles import c_full, expected_cost, expected_score, oracle_buys, oracle_full, sweep_prices, voi
 from purse.projects import make_project, with_budget
 from purse.solvers import SKIP, fixed, hybrid, plan_knapsack
 from purse.table import cell_stats, visible_stats
 from tests.synthetic import build
 
-QWEN, LUNA, SPARK = "ollama_chat/qwen3.5:4b", "gpt-6-luna", "meta/muse-spark-1.3"
+LUNA, SPARK = "gpt-6-luna", "meta/muse-spark-1.3"
 
 
 def projects(pool, table, rho, tau=0.5, n=20):

@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from purse.jobs import Job, extract_answer, family
-from purse.market import Market, Option, Outcome, lookup, serves
+from purse.market import SMALL, Market, Option, Outcome, lookup, serves
 from purse.projects import Project, score
 from purse.table import Stats
 
@@ -17,7 +17,7 @@ Allocation = dict[str, str]  # job id -> option name, or SKIP
 SKIP = "skip"
 UNIT = 1e-4  # the knapsack counts dollars in units of $0.0001, costs rounded up
 MAX_CHECKS = 3  # grid_check answers at most this many times per puzzle
-HYBRID = {1: "ollama_chat/qwen3.5:4b", 2: "ollama_chat/qwen3.5:4b", 3: "gpt-6-luna", 4: "gpt-6-luna",
+HYBRID = {1: SMALL, 2: SMALL, 3: "gpt-6-luna", 4: "gpt-6-luna",
           5: "meta/muse-spark-1.3"}  # AgentCARD-style: the tier follows the visible level
 
 

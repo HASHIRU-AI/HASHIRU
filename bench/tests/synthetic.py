@@ -1,6 +1,6 @@
 """A synthetic pool and outcome table built to pass PURSE's validity checks, with a switch that breaks exactly one."""
 from purse.jobs import BINS, LEVELS
-from purse.market import MARKET
+from purse.market import MARKET, SMALL
 from purse.projects import ALL
 from purse.table import OutcomeTable, Record
 from tests.helpers import job
@@ -17,17 +17,16 @@ def rate(option: str, family: str, level: int, hidden: str, broken: str | None) 
         return 0.0 if broken == "V6" else 1.0 if e <= 3.5 else 0.1
     if option == "meta/muse-spark-1.3":
         return 1.0 if broken == "V4" else 0.95 if e <= 4.5 else 0.6 if e <= 5.5 else 0.2
-    if option == "gpt-6-luna" or (broken == "V3" and option == "ollama_chat/qwen3.5:4b"):
+    if option == "gpt-6-luna" or (broken == "V3" and option == SMALL):
         return 0.9 if e <= 3.5 else 0.2
-    if option == "ollama_chat/gemma4:12b":
-        return 0.95 if e <= 1.5 else 0.1
-    return 0.95 if e <= 1.5 else 0.05  # qwen
+    return 0.95 if e <= 1.5 else 0.05  # the small tier
 
 
 def cost(option: str, broken: str | None) -> float:
     if broken == "V1":
         return 0.0
-    return {"gpt-6-luna": 0.002, "meta/muse-spark-1.3": 0.00001 if broken == "V2" else 0.004}.get(option, 0.0)
+    return {SMALL: 0.0003, "gpt-6-luna": 0.002,
+            "meta/muse-spark-1.3": 0.00001 if broken == "V2" else 0.004}.get(option, 0.0)
 
 
 def answer(family: str, n: int, broken: str | None) -> str:

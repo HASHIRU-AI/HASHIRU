@@ -54,7 +54,8 @@ def test_bench_settings_turn_off_web_and_approvals(tmp_path, fake_family):
     s = bench_settings(p, MARKET, out_dir=tmp_path, max_usd=2.0, peer_urls={"a2a/calc": "http://127.0.0.1:9301/"})
     assert s.ceo_model == CEO_MODEL and s.budget_usd == 0.25 and s.memory_mb == 1000 and s.max_usd == 2.0
     assert not s.web_tools and (s.approve_hire_usd, s.approve_hire_mb, s.approve_turn_usd) == (0, 0, 0)
-    assert s.models == ("ollama_chat/qwen3.5:4b", "ollama_chat/gemma4:12b", "gpt-6-luna", "meta/muse-spark-1.3")
+    assert s.models == ("nvidia_nim/google/gemma-4-31b-it", "gpt-6-luna", "meta/muse-spark-1.3")
+    assert s.prices_file.endswith("bench/prices.json")
     assert [(a.name, a.price_usd_per_message) for a in s.a2a_peers] == [("calc", 0.001)]
     assert s.mcp_servers[0].name == "purse" and s.mcp_servers[0].args == ("-m", "purse.peers.grid_check")
     assert str(tmp_path) in s.trace_dir and s.task_timeout == p.deadline_s

@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from purse.jobs import Job
-from purse.market import Option, priced
+from purse.market import SMALL, Option, priced
 from purse.oracles import BUYABLE, c_full, expected_cost, expected_score, oracle_buys, oracle_full, sweep_prices, voi
 from purse.projects import Project, fold_of, make_project, score, with_budget
 from purse.solvers import SKIP, Allocation, fixed, hybrid
@@ -15,7 +15,7 @@ __all__ = ["Check", "run_checks"]
 
 PER_RHO = 30
 TAU = 0.5
-SPARK, LUNA, QWEN = "meta/muse-spark-1.3", "gpt-6-luna", "ollama_chat/qwen3.5:4b"
+SPARK, LUNA = "meta/muse-spark-1.3", "gpt-6-luna"
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ def run_checks(pool: Sequence[Job], table: OutcomeTable, market: Sequence[Option
         s = seen.get((fam, level, None, option))
         return s.rate if s else 0.0
     families = sorted({j.family for j in pool})
-    separated = sum(any(rate(f, lv, LUNA) >= 0.8 and rate(f, lv, QWEN) <= 0.4 for lv in levels)
+    separated = sum(any(rate(f, lv, LUNA) >= 0.8 and rate(f, lv, SMALL) <= 0.4 for lv in levels)
                     and any(rate(f, lv, SPARK) - rate(f, lv, LUNA) >= 0.2 for lv in levels) for f in families)
     checks.append(Check("V3 tiers separate", separated, f"all {len(families)} families", separated == len(families)))
 
