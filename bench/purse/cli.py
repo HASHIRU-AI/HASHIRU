@@ -123,10 +123,10 @@ def _peers(values: Sequence[str]) -> dict[str, str]:
 
 @contextlib.asynccontextmanager
 async def _hub_market(p: Project, options: Sequence[Option], out: Path, peers: dict[str, str],
-                      reserve: float | None, factory: HubFactory) -> AsyncIterator[Market]:
+                      reserve: float | None, factory: HubFactory, port: int = 9250) -> AsyncIterator[Market]:
     from purse.hashiru_run import HubMarket, bench_settings
     hub = factory(bench_settings(p, options, out_dir=out, max_usd=factory.wallet.max_usd, max_escalations=0,
-                                 peer_urls=peers, turn_reserve_usd=0.0))
+                                 peer_urls=peers, turn_reserve_usd=0.0, port=port))
     async with hub.serving(), HubMarket(hub, hub.new_session("purse"), reserve) as market:
         yield market
 
@@ -138,7 +138,7 @@ async def _live(cfg: RunConfig, p: Project, text: str, options: Sequence[Option]
     from purse.hashiru_run import bench_settings, propose_split, run_hashiru, variant_text
     factory.wallet.check()
     hub = factory(bench_settings(p, options, out_dir=cfg.out, max_usd=factory.wallet.max_usd,
-                                 peer_urls=dict(cfg.peers), ceo_model=cfg.ceo))
+                                 peer_urls=dict(cfg.peers), ceo_model=cfg.ceo, port=cfg.port))
     async with hub.serving():
         if cfg.allocator == "llm-split":
             alloc, ceo = await propose_split(hub, p, variant_text(text, "split"))
@@ -168,6 +168,7 @@ def _parser() -> argparse.ArgumentParser:
         p.add_argument("--max-usd", type=float, default=2.0, help="the hub's cap on real spend")
         p.add_argument("--peer", action="append", default=[], help="NAME=URL of a running outside agent")
         p.add_argument("--spend", action="store_true", help="allow calls to real models")
+        p.add_argument("--port", type=int, default=9250, help="the hub's port (one per concurrent command)")
     cal.add_argument("--options", required=True, help="comma-separated market options")
     cal.add_argument("--repeats", type=int, default=1)
     cal.add_argument("--levels", default=",".join(map(str, LEVELS)))
@@ -223,7 +224,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         factory = HubFactory(args.max_usd)
 
         async def go() -> int:
-            async with _hub_market(calib, MARKET, args.out, peers, RESERVE_USD, factory) as market:
+            async with _hub_market(calib, MARKET, args.out, peers, RESERVE_USD, factory, args.port) as market:
                 return await calibrate(todo, table, market)
         try:
             print(f"recorded {asyncio.run(go())} attempts in {args.table}")
@@ -233,7 +234,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     price = args.price if args.price is not None else sweep_prices(table, pool, MARKET)[1]
     options = priced(MARKET, price)
     cfg = RunConfig(args.allocator, args.rho, args.tau, args.projects, args.seeds, args.memory_mb, args.ceo,
-                    not args.uninformed, args.live, args.max_usd, args.out, peers)
+                    not args.uninformed, args.live, args.max_usd, args.out, peers, args.port)
     if is_live(cfg):
         options = tuple(o for o in options if o.kind != "agent" or o.name in peers)
         if not args.spend:
@@ -245,7 +246,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     factory = HubFactory(cfg.max_usd)  # one cap for the whole batch
 
     def live_market(p: Project) -> Any:
-        return _hub_market(p, options, cfg.out, peers, None, factory)
+        return _hub_market(p, options, cfg.out, peers, None, factory, cfg.port)
 
     async def live(c: RunConfig, p: Project, text: str, opts: Sequence[Option], seed: int) -> Any:
         return await _live(c, p, text, opts, seed, table, factory)

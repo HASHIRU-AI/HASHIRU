@@ -30,6 +30,7 @@ __all__ = ["PORT", "HubMarket", "LiveRun", "bench_settings", "plan_to_allocation
 
 PORT = 9250
 BENCH = Path(__file__).resolve().parents[1]
+PRICES = BENCH / "prices.json"  # prices for market models LiteLLM does not price (the NIM-hosted small model)
 VARIANTS = {"": "", "names-models": "Name a model for every hire; do not give a difficulty.",
             "split": "Plan one worker per job you delegate, named after the job id."}
 
@@ -50,7 +51,7 @@ def bench_settings(p: Project, market: Sequence[Option], *, out_dir: Path, max_u
                     task_timeout=p.deadline_s, web_tools=False, approve_hire_usd=0, approve_hire_mb=0,
                     approve_turn_usd=0, max_escalations=max_escalations, turn_reserve_usd=turn_reserve_usd,
                     trace_dir=str(out_dir / "traces"),
-                    data_dir=str(out_dir / "data"), port=port, obfuscate_with="patterns")
+                    data_dir=str(out_dir / "data"), port=port, obfuscate_with="patterns", prices_file=str(PRICES))
 
 
 class HubMarket:

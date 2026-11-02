@@ -45,6 +45,7 @@ class RunConfig:
     max_usd: float = 2.0
     out: Path = Path("bench/out")
     peers: Mapping[str, str] = field(default_factory=dict)
+    port: int = 9250
 
 
 def is_live(cfg: RunConfig) -> bool:

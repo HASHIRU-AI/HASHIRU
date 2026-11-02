@@ -5,9 +5,10 @@ from typing import Literal, Protocol
 
 from purse.jobs import Job
 
-__all__ = ["CEO_MODEL", "MARKET", "Market", "Option", "Outcome", "lookup", "priced", "serves"]
+__all__ = ["CEO_MODEL", "MARKET", "SMALL", "Market", "Option", "Outcome", "lookup", "priced", "serves"]
 
 CEO_MODEL = "gpt-6-luna"
+SMALL = "nvidia_nim/google/gemma-4-31b-it"  # the small tier, hosted on NVIDIA NIM (bench/prices.json)
 
 
 @dataclass(frozen=True)
@@ -22,9 +23,8 @@ class Option:
     output_usd_per_m: float = 0.0
 
 
-MARKET: tuple[Option, ...] = (
-    Option("ollama_chat/qwen3.5:4b", "local"),
-    Option("ollama_chat/gemma4:12b", "local"),
+MARKET: tuple[Option, ...] = (  # local models are left out of the runs: a 4B thinking model took 6 min a job here
+    Option(SMALL, "cloud", input_usd_per_m=0.14, output_usd_per_m=0.40),
     Option("gpt-6-luna", "cloud", input_usd_per_m=0.10, output_usd_per_m=0.50),
     Option("meta/muse-spark-1.3", "cloud", input_usd_per_m=1.25, output_usd_per_m=4.25),
     Option("a2a/calc", "agent", 0.001, ("arithmetic",)),
