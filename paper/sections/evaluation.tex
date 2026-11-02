@@ -1,4 +1,4 @@
-\section{Evaluation}
+\section{Results}
 \label{sec:evaluation}
 
 We ask three questions. \textbf{RQ1:} given money, how do language-model agents spend it? \textbf{RQ2:} at an equal
@@ -7,9 +7,9 @@ agents sell answers, do agents buy, and does buying pay?
 
 \subsection{Setup}
 \textbf{Models and prices.} The CEO is \texttt{gpt-6-luna} (\$0.10 / \$0.50 per million input / output tokens). The
-market is \texttt{gpt-6-luna} (the cheap reasoning tier), \texttt{muse-spark-1.3} from Meta's Model API (\$1.25 /
-\$4.25, the dear tier), \res{[the small tier: Gemma 4 31B on NVIDIA NIM, priced at its most common list price, \$0.14 /
-\$0.40, if NIM answers; otherwise left out]}, and the \texttt{calc} and \texttt{csp} agents. Prices are LiteLLM's map
+market is \texttt{gpt-6-luna} (the cheap tier), \texttt{muse-spark-1.3} from Meta's Model API (\$1.25 / \$4.25, the
+dear tier), and the \texttt{calc} and \texttt{csp} agents. A small tier (Gemma 4 31B on NVIDIA NIM) was planned but
+left out: its hosted endpoint did not answer on the run date. Prices are LiteLLM's map
 of 2026-11-01. Local models are not in these runs: on the laptop available (Apple M5, 24 GB), a 4B thinking model took
 six minutes on one arithmetic job.
 

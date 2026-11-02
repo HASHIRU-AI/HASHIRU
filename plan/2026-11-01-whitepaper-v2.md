@@ -10,8 +10,8 @@ Date: 2026-11-01
 
 | # | Question | Recommendation | Why |
 |---|---|---|---|
-| W1 | What the whitepaper is | **A systems paper with its own evaluation: an arXiv report first, then cut down for a venue** | v1's evidence was one baseline (Gemini 2.0 Flash alone), with p > 0.05 on 5 of the 9 tasks that had a baseline, and no baseline for the other 2. The 2026 papers nearest to v2 (BAMAS, ZEBRA, AgentCARD) all report numbers |
-| W2 | Venue | **ICML 2027** (deadline not announced; trackers expect Jan 22 to 28, 2027) or **COLM 2027** (tentative, about Mar 30, 2027). MLSys 2027 (Oct 30) and AAMAS 2027 (Oct 8) have passed | About 11 weeks to ICML, enough for the plan below |
+| W1 | What the whitepaper is | **Decided 2026-11-01 by the user: a single-column whitepaper, not a conference paper** ("i am not tryna target a conf"); it keeps its own evaluation (PURSE). Earlier recommendation: an arXiv report first, then cut down for a venue | v1's evidence was one baseline (Gemini 2.0 Flash alone), with p > 0.05 on 5 of the 9 tasks that had a baseline, and no baseline for the other 2. The 2026 papers nearest to v2 (BAMAS, ZEBRA, AgentCARD) all report numbers |
+| W2 | Venue (moot: no conference, per W1) | **ICML 2027** (deadline not announced; trackers expect Jan 22 to 28, 2027) or **COLM 2027** (tentative, about Mar 30, 2027). MLSys 2027 (Oct 30) and AAMAS 2027 (Oct 8) have passed | About 11 weeks to ICML, enough for the plan below |
 | W3 | arXiv | **A new arXiv ID** that cites 2506.04255, not a replacement of it | v1's numbers describe v1's code (tag `v1.0-paper`) |
 | W4 | Models and money | **Decided 2026-11-01:** CEO `gpt-6-luna`; hires from `ollama_chat/qwen3.5:4b`, `gpt-6-luna` and `meta/muse-spark-1.3`. Proposal: $50 in all for cloud runs, a pilot first, each batch asked before it runs | See section 9 for prices and setup |
 | W5 | ~~Lite's R4 and R5~~ | **Dropped**: security enforcement is not a contribution of this paper | The rules stay in the design and the implementation sections |

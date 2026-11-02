@@ -17,7 +17,7 @@ are generated from seeds, so they cannot be looked up, and \sys{}'s web tools ar
 \caption{\bench{}'s four job families.}
 \label{tab:families}
 \footnotesize
-\begin{tabular}{@{}p{1.35cm}p{2.15cm}p{2.15cm}p{1.3cm}@{}}
+\begin{tabular}{@{}p{2.2cm}p{4.0cm}p{5.2cm}p{3.0cm}@{}}
 \toprule
 Family & Level sets & Hidden bin sets & Can be bought \\
 \midrule
@@ -41,8 +41,8 @@ $P(\text{bin} \mid \text{level}) = \rho\,[\text{bin is the level's}] + (1 - \rho
 
 \subsection{The market}
 \label{sec:purse-market}
-The options are a small cloud model, a cheap reasoning model and a dear reasoning model, and two outside agents that
-are exact programs behind A2A: \texttt{calc} (exact arithmetic, \sys{}'s example agent, which reads expressions of up
+The options are model tiers at different prices (in the runs reported here, a cheap and a dear reasoning model) and
+two outside agents that are exact programs behind A2A: \texttt{calc} (exact arithmetic, \sys{}'s example agent, which reads expressions of up
 to 200 characters and so refuses level 5) and \texttt{csp} (a constraint solver for grids). Outside agents charge a
 price per message, swept over $c_\mathrm{ref} \times \{0.25, 1, 4, 16\}$, where $c_\mathrm{ref}$ is the cheap model's
 median cost on the jobs they can do. A free \texttt{grid\_check} tool answers whether a grid solution satisfies every
@@ -69,7 +69,7 @@ with the same project text, prices, statistics and budget for all four (Table~\r
 \caption{The four allocators in the main comparison.}
 \label{tab:twobytwo}
 \footnotesize
-\begin{tabular}{@{}p{1.2cm}p{3.2cm}p{3.2cm}@{}}
+\begin{tabular}{@{}p{1.6cm}p{6.4cm}p{6.4cm}@{}}
 \toprule
  & Up front & During the task \\
 \midrule
@@ -96,13 +96,13 @@ with live runs) needs live runs.
 \caption{Validity checks, from the outcome table, before any allocator runs.}
 \label{tab:checks}
 \footnotesize
-\begin{tabular}{@{}p{2.4cm}p{5.2cm}@{}}
+\begin{tabular}{@{}p{3.6cm}p{11.0cm}@{}}
 \toprule
 Check & Holds when \\
 \midrule
 V1 Allocation matters & oracle-full beats the best fixed policy by $\geq$ 10 points at $\tau = 0.5$ \\
 V2 The budget binds & the dear model alone covers $<$ 60\% of the value at $\tau = 0.5$ \\
-V3 Tiers separate & per family, a level where the cheap reasoning model succeeds $\geq$ 80\% and the small model $\leq$ 40\%, and one where the dear model leads the cheap by $\geq$ 20 points \\
+V3 Tiers separate & per family, a level where the cheap model succeeds $\geq$ 80\% (and a small tier, if present, $\leq$ 40\%), and one where the dear model leads the cheap by $\geq$ 20 points \\
 V4 Headroom & the dear model succeeds $\leq$ 60\% at level 5 in $\geq$ 2 families \\
 V5 Observability & VOI $\leq$ 0.02 at $\rho = 1$ and $\geq$ 0.08 at $\rho = 0$ \\
 V6 Make or buy responds & oracle buying falls $\geq$ 40 points across the price sweep \\

@@ -1,12 +1,19 @@
-\documentclass[conference]{IEEEtran}
+\documentclass[11pt]{article}
+\usepackage[letterpaper,margin=1in]{geometry}
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
-\usepackage{multirow}
+\usepackage{tabularx}
 \usepackage{graphicx}
 \usepackage{xcolor}
+\usepackage[numbers,sort&compress]{natbib}
 \usepackage[hidelinks]{hyperref}
 \usepackage{url}
+\usepackage{parskip}
+\usepackage{enumitem}
+\setlist{itemsep=2pt}
 
 % Open issues for the authors, and numbers still to be filled from the runs.
 \newcommand{\kunal}[1]{\textcolor{blue}{[Kunal: #1]}}
@@ -14,28 +21,35 @@
 \newcommand{\sys}{HASHIRU}
 \newcommand{\bench}{PURSE}
 
+\title{\textbf{Agents That Hold the Money}\\[4pt]
+\large Measuring how LLM agents spend what they are given, with \sys{} v2 and the \bench{} benchmark}
+\author{Kunal Pai \and Parth Shah \and Harshil Patel\\[2pt] \small HashiruAI \quad \kunal{affiliations and emails}}
+\date{Whitepaper, November 2026}
+
 \begin{document}
-
-\title{Agents That Hold the Money:\\Measuring How LLM Agents Spend What They Are Given}
-
-\author{\IEEEauthorblockN{Kunal Pai, Parth Shah, Harshil Patel}
-\IEEEauthorblockA{\kunal{affiliations and emails}}}
-
 \maketitle
 
-\begin{abstract}
-Agent software now lets a language model fund the agents it spawns: a parent hands a child a slice of its budget,
-and the child may hire in turn. Whether such agents spend well has not been measured. The budget-aware systems that
-are evaluated split the money with an optimizer outside the agents, and the runtimes that let a model fund its
-sub-agents do not evaluate the split. We present two artifacts. \sys{} v2 is a multi-agent system in which every agent
-holds a pool reserved from its hirer's (dollars, plus measured memory for local models) and spends it by hiring cloud
-models, local models and priced remote agents over open protocols (A2A for agents, MCP for tools); firing an agent
-returns what it did not spend, and the ledger can be rebuilt from the trace alone. \bench{} is a benchmark built so
-that the best split of the money is known: projects of eight jobs with exact answers, a dial for how much of each job's
-difficulty is hidden until it is tried, outside agents to buy from, and calibrated outcomes for every job on every
-option. On \bench{}, \res{[headline result: agent allocation against the knapsack and the up-front LLM split at equal
-budgets, with the oracle gap]}. \sys{} v2 and \bench{} are source-available.
-\end{abstract}
+\section*{Executive Summary}
+Agent software now lets a language model fund the agents it spawns: a parent hands a child a slice of its budget, and
+the child may hire in turn. Whether such agents spend well has not been measured. The budget-aware systems that are
+evaluated split the money with an optimizer outside the agents, and the runtimes that let a model fund its sub-agents
+do not evaluate the split.
+
+This whitepaper presents two artifacts and the first measurements made with them.
+\begin{itemize}
+  \item \textbf{\sys{} v2} is a multi-agent system in which every agent holds a pool reserved from its hirer's (dollars,
+  plus measured memory for local models) and spends it by hiring cloud models, local models and priced remote agents
+  over open protocols (A2A for agents, MCP for tools). Firing an agent returns what it did not spend, and the ledger can
+  be rebuilt from the trace alone.
+  \item \textbf{\bench{}} is a benchmark built so that the best split of the money is known: projects of eight jobs
+  with exact answers, a dial for how much of each job's difficulty is hidden until it is tried, outside agents to buy
+  from, and calibrated outcomes for every job on every option.
+  \item \textbf{What we found:} \res{[headline result: agent allocation against the knapsack and the up-front LLM split
+  at equal budgets, with the oracle gap]}.
+\end{itemize}
+\sys{} v2 and \bench{} are source-available under the PolyForm Noncommercial License 1.0.0.
+
+\tableofcontents
 
 \input{sections/introduction}
 \input{sections/related}
@@ -45,7 +59,7 @@ budgets, with the oracle gap]}. \sys{} v2 and \bench{} are source-available.
 \input{sections/limitations}
 \input{sections/conclusion}
 
-\bibliographystyle{IEEEtran}
+\bibliographystyle{unsrtnat}
 \bibliography{refs}
 
 \end{document}
