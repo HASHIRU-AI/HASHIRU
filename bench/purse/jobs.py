@@ -88,6 +88,7 @@ def make_job(family_name: str, level: int, hidden: str, seed: int, uid: str, val
 
 
 def same_integer(answer: str, response: str) -> bool:
-    """The response's answer is the integer `answer`, ignoring spaces, thousands separators and a final period."""
-    text = NOISE.sub("", extract_answer(response)).removesuffix(".")
+    """The response's answer is the integer `answer`, ignoring spaces, thousands separators and a final period. In
+    "expression = value" (how the calc agent replies) the value is what counts."""
+    text = NOISE.sub("", extract_answer(response).rsplit("=", 1)[-1]).removesuffix(".")
     return re.fullmatch(r"-?\d+", text) is not None and int(text) == int(answer)

@@ -25,3 +25,22 @@ class FakeFamily:
 def fake_family() -> Any:
     family = FAMILIES.get("fake") or register_family(FakeFamily())
     yield family
+
+
+class FakeOllama:
+    """Records loads and unloads; every local model loads as 100 MB, and sizes() reports `sizes`."""
+
+    def __init__(self, sizes: dict[str, int] | None = None) -> None:
+        self.loaded: list[str] = []
+        self.unloaded: list[str] = []
+        self._sizes = sizes or {}
+
+    async def load(self, model: str) -> int:
+        self.loaded.append(model)
+        return 100
+
+    async def unload(self, model: str) -> None:
+        self.unloaded.append(model)
+
+    async def sizes(self) -> dict[str, int]:
+        return dict(self._sizes)
