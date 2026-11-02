@@ -1,9 +1,18 @@
 \section{Limitations and Scope}
 \label{sec:limitations}
 
-\textbf{Scale of the runs.} The runs reported here are minimal: one calibration attempt per job and option, and live
-runs on a small number of projects. Replay draws on those single attempts, so its seed variance understates the
-variance of new calls; confidence intervals are over projects.
+\textbf{Scale of the runs.} The runs reported here are minimal: one calibration attempt per job and option, ten
+projects for the replayed allocators and six, one seed each, for the live ones. Replay draws on single attempts, so it
+carries no variance of the models' own; the intervals we give are over projects, and with six projects they are wide.
+
+\textbf{The calibration.} Three of seven validity checks fail on this table. Hidden difficulty is worth under one
+point, so these runs cannot show a gain from adapting during the task, whoever adapts; the tiers separate in every
+family, but Spark leaves headroom only on long aggregation.
+
+\textbf{Live against replay.} The LLM split's plan was made live and carried out by replay with each job's canonical
+prompt, while \sys{}'s agents carried out their own decisions and wrote their own messages. Part of the gap between
+them is execution (summarized jobs), not allocation; the replay of \sys{}'s own choices of model is not comparable here,
+since it covers only the jobs it handed to hires.
 
 \textbf{The market.} Prices are list prices on the run date. The runs have two model tiers; the planned small tier was
 left out when its host did not answer. Local models, and with them memory as a

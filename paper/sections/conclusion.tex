@@ -5,9 +5,16 @@ Language-model agents can now hold money and hand it to the agents they hire; un
 best split that money could buy, how well they spend it is a matter of belief. \sys{} v2 makes agents allocate, with
 reserved pools in dollars and memory, refunds on firing, and make or buy over open protocols, and records every
 allocation. \bench{} makes the optimum known and holds itself to measuring allocation before any allocator runs. On
-it, \res{[one-sentence summary of the main result]}.
+it, agents that hold the money spent it worse than a knapsack solver and than the same model
+splitting the money up front, because they reserved too little, misjudged difficulty and summarized the work they
+delegated.
 
-\textbf{Roadmap.} The next measurements are the ones these runs left out: local models, and with them memory as a
+\textbf{Roadmap.} The failures point at changes to \sys{}. A reservation should cover what a call can cost (an
+estimate from the input's length and a cap on output tokens) rather than act as a ceiling checked before the call.
+A hirer should be able to hand a job to a hire by reference, so that long inputs reach the hire whole and the CEO does
+not reread them on every turn. And the turn limit should scale with the work a request carries. The next
+measurements are the ones these runs left out: a recalibration with harder top levels and hidden bins that change
+success rates (checks V1, V4 and V5); local models, and with them memory as a
 second currency, on hardware that runs them at speed; a small cloud tier; more calibration attempts per job, so that
 replay carries the models' own variance; outside agents whose reliability is unknown; and the cost in time of the
 protocol boundaries (an A2A hop, a gateway MCP call, a hired hub against an in-process manager).

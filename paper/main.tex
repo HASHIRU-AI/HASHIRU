@@ -48,6 +48,8 @@
 \raggedbottom
 \setlist{itemsep=3pt,topsep=4pt,leftmargin=*}
 \setcounter{tocdepth}{1}
+\usepackage[titles]{tocloft}
+\setlength{\cftbeforesecskip}{3pt}
 
 \titleformat{\section}[display]{\normalfont\bfseries\color{ink}}
   {\fontsize{38}{38}\selectfont\color{accentsoft}\thesection}{4pt}{\fontsize{22}{27}\selectfont}
@@ -117,7 +119,7 @@
   {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
   {\small\bfseries\color{muted}THE FINDINGS}\\[2pt]
   {\bfseries Agents against optimizers}\\[2pt]
-  {\small \res{[one line, once the runs are in]}}
+  {\small Agents spent worse than every rule, and we show where the money went.}
 \end{minipage}
 
 \vfill
@@ -137,19 +139,23 @@ do not evaluate the split. This whitepaper presents two artifacts and the first 
 
 \begin{keybox}{At a glance}
 \begin{itemize}
-  \item \textbf{\sys{} v2} is a multi-agent system in which every agent holds a pool reserved from its hirer's
-  (dollars, plus measured memory for local models) and spends it by hiring cloud models, local models and priced remote
-  agents over open protocols (A2A for agents, MCP for tools). Firing returns what was not spent, and the ledger can be
-  rebuilt from the trace alone.
-  \item \textbf{\bench{}} is a benchmark built so that the best split of the money is known: projects of eight jobs
-  with exact answers, a dial for how much of each job's difficulty is hidden until it is tried, outside agents to buy
-  from, and calibrated outcomes for every job on every option.
+  \item \textbf{\sys{} v2}: every agent holds a pool reserved from its hirer's and spends it by hiring cloud models,
+  local models and priced remote agents over A2A and MCP; firing refunds what was not spent.
+  \item \textbf{\bench{}}: a benchmark whose best split of the money is known: eight-job projects with exact answers,
+  a dial for hidden difficulty, outside agents to buy from, and calibrated outcomes for every option.
 \end{itemize}
 \end{keybox}
 
 \begin{keybox}{What we found}
-\res{[Headline result: agent allocation against the knapsack and the up-front LLM split at equal budgets, with the
-oracle gap; one line each on how agents spend and on make or buy.]}
+On \bench{}'s first calibration, \sys{}'s agents scored 0.37 of the value at equal budgets, against 0.74 for the same
+model splitting the money up front, 0.79 for a knapsack solver and 0.86 for the best possible split.
+\begin{itemize}
+  \item \textbf{They reserved too little:} overruns emptied the CEO's pool in three of six projects.
+  \item \textbf{They misjudged difficulty:} declared and real difficulty correlate at 0.07.
+  \item \textbf{They summarized jobs} for their hires instead of forwarding them.
+\end{itemize}
+These are minimal runs (\$3.96, six live projects) on a calibration where hidden difficulty is worth under a point:
+they show where agent allocation breaks, not how large the gap is in general.
 \end{keybox}
 
 {\renewcommand{\sectionbreak}{}\renewcommand{\contentsname}{Contents}\tableofcontents}

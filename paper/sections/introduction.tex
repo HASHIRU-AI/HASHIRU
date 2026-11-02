@@ -47,6 +47,9 @@ To address these limitations, we build both and use them to measure agents again
 \end{itemize}
 \end{keybox}
 
-\res{[Headline findings, one sentence each, once the runs are in: (1) where agent allocation lands between the best
-fixed team and the oracle; (2) agent allocation against the knapsack and the up-front LLM split (the 2x2);
-(3) how agents spend: declared difficulty against hidden difficulty, refunds, buying.]}
+On \bench{}'s first calibration, agents that hold the money spent it worse than every rule we compared them
+with: \sys{}'s agents scored 0.374 of the value at equal budgets, against 0.738 for the same model splitting the money
+up front and 0.785 for a knapsack solver. The traces show why. The agents reserved far less than their calls cost, so
+overruns emptied the CEO's pool in three of six projects; their declared difficulty did not track the jobs' real
+difficulty (rank correlation 0.07); and they summarized jobs for their hires instead of forwarding them. Each failure
+points at a change in the system (\S\ref{sec:conclusion}).
