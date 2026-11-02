@@ -101,3 +101,12 @@ def test_fit_theta_picks_the_best_on_the_other_fold():
     stats = stats_for(j, {QWEN: (0.5, 0.0), LUNA: (0.6, 0.001), SPARK: (0.95, 0.01)})
     market = FakeMarket({("j1", QWEN): ok("wrong"), ("j1", LUNA): ok("wrong"), ("j1", SPARK): ok("right")})
     assert asyncio.run(fit_theta([p], stats, market, OPTIONS)) == 0.7
+
+
+def test_an_outside_agent_needs_its_price_left_in_the_pool():
+    from purse.solvers import Pool
+    pool = Pool(0.005)
+    assert not pool.allows(Option("a2a/calc", "agent", 0.01)) and pool.allows(Option("a2a/calc", "agent", 0.004))
+    assert pool.allows(Option(LUNA, "cloud")) and pool.allows(Option(QWEN, "local"))
+    pool.charge(0.006)
+    assert not pool.allows(Option(LUNA, "cloud")) and pool.allows(Option(QWEN, "local"))
