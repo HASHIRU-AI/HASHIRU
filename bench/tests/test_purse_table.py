@@ -66,4 +66,4 @@ def test_agents_serve_only_their_families():
     calc = next(o for o in MARKET if o.name == "a2a/calc")
     assert serves(calc, job("x", family="arithmetic")) and not serves(calc, job("y", family="grids"))
     assert serves(Option("gpt-6-luna", "cloud"), job("y", family="grids"))
-    assert {o.kind for o in MARKET} == {"cloud", "agent"} and len(MARKET) == 5
+    assert {o.kind for o in MARKET} == {"cloud", "agent"} and len(MARKET) == 4

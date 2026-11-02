@@ -2,12 +2,13 @@
 import pytest
 
 from purse.checks import run_checks
-from purse.market import MARKET, priced
 from purse.market import SMALL as QWEN
+from purse.market import priced
 from purse.oracles import c_full, expected_cost, expected_score, oracle_buys, oracle_full, sweep_prices, voi
 from purse.projects import make_project, with_budget
 from purse.solvers import SKIP, fixed, hybrid, plan_knapsack
 from purse.table import cell_stats, visible_stats
+from tests.synthetic import FULL as MARKET
 from tests.synthetic import build
 
 LUNA, SPARK = "gpt-6-luna", "meta/muse-spark-1.3"

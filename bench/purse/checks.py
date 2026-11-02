@@ -77,7 +77,8 @@ def run_checks(pool: Sequence[Job], table: OutcomeTable, market: Sequence[Option
         s = seen.get((fam, level, None, option))
         return s.rate if s else 0.0
     families = sorted({j.family for j in pool})
-    separated = sum(any(rate(f, lv, LUNA) >= 0.8 and rate(f, lv, SMALL) <= 0.4 for lv in levels)
+    small = any(o.name == SMALL for o in market)  # with two tiers, the first half asks only that Luna can succeed
+    separated = sum(any(rate(f, lv, LUNA) >= 0.8 and (not small or rate(f, lv, SMALL) <= 0.4) for lv in levels)
                     and any(rate(f, lv, SPARK) - rate(f, lv, LUNA) >= 0.2 for lv in levels) for f in families)
     checks.append(Check("V3 tiers separate", separated, f"all {len(families)} families", separated == len(families)))
 
