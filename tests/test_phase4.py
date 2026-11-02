@@ -417,5 +417,111 @@ def test_an_agent_whose_pool_pays_only_for_its_answer_answers_now(tmp_path):
     assert out.startswith("final answer: ") and llm.offered == [False]
 
 
+class ReasoningLLM:
+    """A reasoning model at its worst: a working turn (tools offered) reasons until its output cap and comes back
+    empty, charging everything the cap allowed; a closing turn (no tools) answers."""
+
+    def __init__(self, empty_cost_free: int = 0):
+        self.offered: list[bool] = []
+        self.free = empty_cost_free  # this many empty working turns first, at no cost
+
+    async def chat(self, model, messages, tools=None):
+        from hashiru import llm as llm_module
+        self.offered.append(tools is not None)
+        cost_in = llm_module.affordable(model, messages, tools, 0.0)[1]
+        if tools is None:
+            return reply("final answer"), cost_in + 20 * llm_module.litellm_output_price(model)
+        if self.free:
+            self.free -= 1
+            return reply(""), 0.0
+        cap = llm_module.OUTPUT_CAP.get() or 0
+        return reply(""), cost_in + cap * llm_module.litellm_output_price(model)
+
+
+def ask_ceo(hub):
+    async def go():
+        async with hub.serving():
+            return await runtime.ask_agent(hub, hub.new_session("t"), USER, "ceo", "do the thing")
+    return asyncio.run(go())
+
+
+def test_a_working_turn_that_reasons_to_its_cap_still_leaves_money_for_the_answer(tmp_path):
+    llm = ReasoningLLM()
+    hub = Hub(make_settings(tmp_path, port=9389, budget_usd=0.01), llm=llm, ollama=FakeOllama())  # type: ignore[arg-type]
+    assert ask_ceo(hub) == "final answer" and llm.offered == [True, False]
+
+
+def test_an_agent_whose_working_turns_come_back_empty_twice_gets_a_closing_turn(tmp_path):
+    llm = ReasoningLLM(empty_cost_free=2)
+    hub = Hub(make_settings(tmp_path, port=9390), llm=llm, ollama=FakeOllama())  # type: ignore[arg-type]
+    assert ask_ceo(hub) == "final answer" and llm.offered == [True, True, False]
+
+
+LONG = "## Jobs\n\n### j1 (arithmetic)\nCompute 2 + 2.\n\n### j2 (aggregation)\n" + "".join(
+    f"#{i} | order {i} | region North\n" for i in range(1, 201)) + "\n## Who you can hire\ncalc"
+
+
+def test_the_outline_holds_back_long_sections_and_keeps_short_ones():
+    out = runtime.outline(LONG, min_chars=500)
+    assert "### j1 (arithmetic)\nCompute 2 + 2." in out and "## Who you can hire\ncalc" in out
+    assert "### j2 (aggregation)\n#1 | order 1 | region North\n#2 |" in out and "#199 |" not in out
+    assert "198 more lines" in out and "j2" in out.split("198 more lines")[1].split("\n")[0]
+    assert runtime.outline(LONG, min_chars=10**6) == LONG
+
+
+def test_by_reference_the_ceo_reads_the_outline_and_hires_get_the_whole_section(tmp_path):
+    seen = []
+
+    class LLM:
+        async def chat(self, model, messages, tools=None):
+            seen.append(messages[1]["content"])
+            return reply("done"), 0.0
+    hub = Hub(make_settings(tmp_path, port=9391, request_by_reference=True, reference_min_chars=500), llm=LLM(),
+              ollama=FakeOllama())  # type: ignore[arg-type]
+
+    async def go():
+        async with hub.serving():
+            session = hub.new_session("t")
+            return await runtime.ask_agent(hub, session, USER, "ceo", LONG), session
+    out, session = asyncio.run(go())
+    assert out == "done" and "#199 |" not in seen[0] and "Compute 2 + 2." in seen[0]
+    assert "#199 |" in session.request  # attach still reads the whole request
+
+
+def test_by_reference_a_message_naming_a_section_carries_it(tmp_path, ollama, monkeypatch):
+    sent = []
+
+    async def fake_ask(hub_, session_, me, name, text):
+        sent.append(text)
+        return "ok"
+    monkeypatch.setattr(runtime, "ask_agent", fake_ask)
+    hub = Hub(make_settings(tmp_path, request_by_reference=True), ollama=ollama)  # type: ignore[arg-type]
+    session = hub.new_session("t", trace=False)
+    session.request = LONG
+    hire(hub, session, name="w1", prompt="Count the North orders in j2.")
+    hire(hub, session, name="w2", budget_usd=0.01)
+    ask = {"name": "w1", "text": "Go."}
+    assert asyncio.run(runtime.perform(hub, session, None, "ceo", "ask_agent", ask)) == {"reply": "ok"}
+    asyncio.run(runtime.perform(hub, session, None, "ceo", "ask_agent", {"name": "w2", "text": "Solve j1, not J10."}))
+    asyncio.run(runtime.perform(hub, session, None, "ceo", "ask_agent",
+                                {"name": "w2", "text": "Again: j1.", "attach": ["### j1"]}))
+    assert sent[0] == "Go." + runtime.attachments(LONG, ["### j2 (aggregation)"])  # named in w1's hire prompt
+    assert sent[1] == "Solve j1, not J10." + runtime.attachments(LONG, ["### j1 (arithmetic)"])
+    assert sent[2].count("Compute 2 + 2.") == 1  # attached once, not twice
+
+
+def test_without_by_reference_messages_carry_only_what_they_attach(hub, session, monkeypatch):
+    sent = []
+
+    async def fake_ask(hub_, session_, me, name, text):
+        sent.append(text)
+        return "ok"
+    monkeypatch.setattr(runtime, "ask_agent", fake_ask)
+    session.request = LONG
+    hire(hub, session, name="w1", prompt="Count the North orders in j2.")
+    asyncio.run(runtime.perform(hub, session, None, "ceo", "ask_agent", {"name": "w1", "text": "Go."}))
+    assert sent == ["Go."]
+
+
 def test_the_rules_tell_agents_to_attach_long_inputs():
     assert "attach" in runtime.RULES
