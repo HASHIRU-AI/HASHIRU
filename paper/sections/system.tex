@@ -6,6 +6,34 @@
 depth (two levels below the CEO by default). Every agent is its own A2A service with its own Agent Card, every tool is
 served over MCP, and \sys{} itself is reachable as an OpenAI-compatible model, an A2A agent and an MCP server. One
 process serves everything on one port. Every model call, tool call and message is written to a JSONL trace.
+Figure~\ref{fig:tree} shows one hiring tree.
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[
+  agent/.style={draw=rulecolor,fill=sand,rounded corners=3pt,align=center,inner sep=6pt,font=\small,minimum width=3.3cm},
+  remote/.style={agent,fill=white,dashed,draw=accent},
+  edge/.style={-{Stealth[length=2.2mm]},draw=muted,line width=0.7pt},
+  lab/.style={font=\scriptsize\color{muted},fill=white,inner sep=1.5pt},
+  node distance=1.1cm and 0.5cm]
+  \node[font=\small\bfseries] (user) {You};
+  \node[agent,below=0.7cm of user,fill=accentsoft!35,draw=accent] (ceo) {\textbf{CEO}\\pool \$0.50};
+  \node[agent,below left=1.2cm and 1.6cm of ceo] (m1) {\textbf{manager m1}\\reserves \$0.20};
+  \node[agent,below=1.2cm of ceo] (w1) {\textbf{worker w1}, local model\\\$0.10 and 3.5 GB};
+  \node[remote,below right=1.2cm and 1.6cm of ceo] (calc) {\textbf{a2a/calc}, remote agent\\\$0.001 a message};
+  \node[agent,below=1.0cm of m1] (w2) {\textbf{worker w2}, cloud model\\reserves \$0.05};
+  \node[draw=rulecolor,rounded corners=3pt,font=\small,inner sep=5pt,right=1.4cm of ceo] (mcp) {MCP tools};
+  \draw[edge] (user) -- (ceo);
+  \draw[edge] (ceo) -- node[lab]{A2A} (m1);
+  \draw[edge] (ceo) -- node[lab]{A2A} (w1);
+  \draw[edge] (ceo) -- node[lab]{A2A + price} (calc);
+  \draw[edge] (m1) -- node[lab]{A2A} (w2);
+  \draw[edge,dashed] (ceo) -- (mcp);
+\end{tikzpicture}
+\caption{One hiring tree. Each hire reserves money from its hirer's pool (and a local model, the memory it uses);
+firing returns what it did not spend. A remote agent is paid its declared price from its hirer's reservation.}
+\label{fig:tree}
+\end{figure}
 
 \subsection{From v1 to v2}
 v1 had one level of hierarchy, a hand-written table of resource units, and no analysis of the local-against-cloud
@@ -17,23 +45,27 @@ only in prompts were broken.
 
 \subsection{Pools, reservations and refunds}
 \label{sec:pools}
-Each agent $a$ holds a reservation $R_a$ carved from its hirer's pool. What it can still spend is
+Each agent $a$ holds a reservation $R_a$ carved from its hirer's pool, and one rule says what it can still spend.
+
+\begin{keybox}{One rule for every pool}
+\vspace{-6pt}
 \begin{equation}
-\mathrm{left}(a) = R_a - \mathrm{spent}(a) - \sum_{c \in \mathrm{hires}(a)} \mathrm{hold}(c),
+\mathrm{left}(a) = R_a - \mathrm{spent}(a) - \sum_{c \in \mathrm{hires}(a)} \mathrm{hold}(c)
 \label{eq:left}
 \end{equation}
-where a live hire holds its whole reservation and a fired one holds only what it (and everyone below it) actually
-spent. Firing therefore returns the unspent part, and two hires running at once cannot spend the same dollars: each
+A live hire holds its whole reservation; a fired one holds only what it (and everyone below it) actually spent.
+\end{keybox}
+ Firing therefore returns the unspent part, and two hires running at once cannot spend the same dollars: each
 holds its reservation from the moment it is hired. Table~\ref{tab:pool} works one session through.
 
-\begin{table}[t]
+\begin{table}[!tb]
 \centering
 \caption{One session's pools (dollars). The CEO starts with \$0.50.}
 \label{tab:pool}
 \footnotesize
 \begin{tabular}{@{}lrr@{}}
 \toprule
-Step & CEO left & m1 left \\
+\tablehead Step & CEO left & m1 left \\
 \midrule
 Session opens, \texttt{budget\_usd} = 0.50 & 0.50 & \\
 CEO spends 0.01 thinking & 0.49 & \\

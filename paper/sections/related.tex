@@ -43,7 +43,7 @@ payment protocols (AP2~\cite{google2026agent}, the A2A x402 extension~\cite{goog
 \sys{} v2 speaks the open protocols these build on: MCP for tools~\cite{modelcontextprotocol2026specification} and A2A
 for agents~\cite{a2aproject2026agent2agent}.
 
-\begin{table}[t]
+\begin{table}[!tb]
 \centering
 \caption{Who splits the money, and when. \sys{} v2 shares agent-held budgets with 2026 agent runtimes; what is new is
 measuring the split against a known optimum (\bench{}).}
@@ -51,7 +51,7 @@ measuring the split against a known optimum (\bench{}).}
 \footnotesize
 \begin{tabular}{@{}p{4.2cm}p{3.6cm}p{2.6cm}p{3.6cm}@{}}
 \toprule
-Line of work & Who allocates & When & Evaluated against an optimum \\
+\tablehead Line of work & Who allocates & When & Evaluated against an optimum \\
 \midrule
 BAMAS, ZEBRA, MasRouter & optimizer & before the task & no \\
 RouteLLM, FrugalGPT & router, cascade & per query & router oracle \\

@@ -1,55 +1,159 @@
 \documentclass[11pt]{article}
-\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage[letterpaper,top=1.05in,bottom=1in,left=1.15in,right=1.15in,headheight=15pt,headsep=24pt,
+            footskip=36pt]{geometry}
 \usepackage[T1]{fontenc}
-\usepackage{lmodern}
+\usepackage[default,semibold]{sourcesanspro}
 \usepackage{microtype}
+\linespread{1.08}
 \usepackage{amsmath,amssymb}
-\usepackage{booktabs}
-\usepackage{tabularx}
+\usepackage{booktabs,colortbl,tabularx,array}
 \usepackage{graphicx}
 \usepackage{xcolor}
+\usepackage{float}
+\usepackage[section]{placeins}  % floats stay within their section
+\usepackage{flafter}  % and never appear before the text that introduces them
+\usepackage{caption}
 \usepackage[numbers,sort&compress]{natbib}
-\usepackage[hidelinks]{hyperref}
 \usepackage{url}
+\urlstyle{same}
 \usepackage{parskip}
 \usepackage{enumitem}
-\setlist{itemsep=2pt}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{needspace}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc}
+\usepackage[colorlinks,linkcolor=accent,citecolor=accent,urlcolor=accent]{hyperref}
 
-% Open issues for the authors, and numbers still to be filled from the runs.
+% ---- palette (from the HASHIRU logo and chat page) ----
+\definecolor{ink}{HTML}{1E1D1B}
+\definecolor{night}{HTML}{161615}
+\definecolor{accent}{HTML}{B4561F}
+\definecolor{accentsoft}{HTML}{E29D62}
+\definecolor{sand}{HTML}{F5EFE6}
+\definecolor{muted}{HTML}{6B675F}
+\definecolor{rulecolor}{HTML}{DCD3C4}
+\color{ink}
+
+% ---- open issues, and numbers still to be filled from the runs ----
 \newcommand{\kunal}[1]{\textcolor{blue}{[Kunal: #1]}}
 \newcommand{\res}[1]{\textcolor{red}{#1}}
 \newcommand{\sys}{HASHIRU}
 \newcommand{\bench}{PURSE}
 
-\title{\textbf{Agents That Hold the Money}\\[4pt]
-\large Measuring how LLM agents spend what they are given, with \sys{} v2 and the \bench{} benchmark}
-\author{Kunal Pai \and Parth Shah \and Harshil Patel\\[2pt] \small HashiruAI \quad \kunal{affiliations and emails}}
-\date{Whitepaper, November 2026}
+% ---- layout ----
+\widowpenalty=10000
+\clubpenalty=10000
+\raggedbottom
+\setlist{itemsep=3pt,topsep=4pt,leftmargin=*}
+\setcounter{tocdepth}{1}
+
+\titleformat{\section}[display]{\normalfont\bfseries\color{ink}}
+  {\fontsize{38}{38}\selectfont\color{accentsoft}\thesection}{4pt}{\fontsize{22}{27}\selectfont}
+  [\vspace{6pt}{\color{accent}\titlerule[1.2pt]}]
+\titlespacing*{\section}{0pt}{18pt}{12pt}
+\newcommand{\sectionbreak}{\Needspace*{14\baselineskip}}  % a heading never strands at a page's foot
+\titleformat{\subsection}{\normalfont\large\bfseries\color{accent}}{\thesubsection}{0.7em}{}
+\titlespacing*{\subsection}{0pt}{16pt}{4pt}
+\titleformat{\paragraph}[runin]{\normalfont\bfseries\color{ink}}{}{0pt}{}[.]
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\sectionmark}[1]{\markboth{#1}{}}
+\fancyhead[L]{\footnotesize\color{muted}\textbf{\sys{} v2}\enspace|\enspace Whitepaper}
+\fancyhead[R]{\footnotesize\color{muted}\nouppercase{\leftmark}}
+\fancyfoot[L]{\footnotesize\color{muted}Agents That Hold the Money}
+\fancyfoot[R]{\footnotesize\bfseries\color{accent}\thepage}
+\renewcommand{\headrule}{{\color{rulecolor}\hrule height 0.6pt}}
+
+\captionsetup{font={small},labelfont={bf,color=accent},justification=raggedright,singlelinecheck=false,skip=6pt}
+\arrayrulecolor{rulecolor}
+\newcommand{\tablehead}{\rowcolor{sand}}
+
+\newtcolorbox{keybox}[1]{enhanced,colback=sand,colframe=sand,boxrule=0pt,arc=0pt,
+  borderline west={3pt}{0pt}{accent},left=14pt,right=12pt,top=9pt,bottom=9pt,
+  title={#1},coltitle=accent,fonttitle=\bfseries\large,attach title to upper={\par\smallskip},
+  before skip=12pt,after skip=14pt}
+\newtcolorbox{pullquote}{enhanced,colback=white,colframe=white,boxrule=0pt,arc=0pt,
+  borderline north={1pt}{0pt}{accentsoft},borderline south={1pt}{0pt}{accentsoft},
+  left=4pt,right=4pt,top=10pt,bottom=10pt,fontupper=\large\itshape\color{accent},before skip=12pt,after skip=14pt}
 
 \begin{document}
-\maketitle
 
+% ================= cover =================
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[night] (current page.north west) rectangle ([yshift=-12.6cm]current page.north east);
+  \fill[accentsoft] ([yshift=-12.6cm]current page.north west) rectangle ([yshift=-12.85cm]current page.north east);
+  \node[anchor=north west,inner sep=0] (logo) at ([xshift=1.15in,yshift=-0.95in]current page.north west)
+    {\includegraphics[width=1.25cm]{figures/logo.png}};
+  \node[anchor=west,text=white,font=\bfseries\large] at ([xshift=0.35cm]logo.east) {\sys{}};
+  \node[anchor=north west,text width=16cm,align=left,text=white,inner sep=0]
+    at ([xshift=1.15in,yshift=-4.9cm]current page.north west) {%
+    {\color{accentsoft}\small\bfseries WHITEPAPER\quad\textbullet\quad NOVEMBER 2026}\\[16pt]
+    {\fontsize{38}{44}\selectfont\bfseries Agents That Hold the Money}\\[14pt]
+    {\Large\color{white!82!night}Measuring how language-model agents spend what they are given,\\[2pt]
+     with \sys{} v2 and the \bench{} benchmark}};
+\end{tikzpicture}
+\vspace*{11.4cm}
+
+\noindent
+\begin{minipage}[t]{0.31\textwidth}
+  {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
+  {\small\bfseries\color{muted}THE SYSTEM}\\[2pt]
+  {\bfseries \sys{} v2}\\[2pt]
+  {\small Agents hold pools reserved from their hirer's and spend them by hiring models and priced remote agents over
+  A2A and MCP.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.31\textwidth}
+  {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
+  {\small\bfseries\color{muted}THE BENCHMARK}\\[2pt]
+  {\bfseries \bench{}}\\[2pt]
+  {\small Projects whose best split of the money is known, with a dial for how much difficulty is hidden.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.31\textwidth}
+  {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
+  {\small\bfseries\color{muted}THE FINDINGS}\\[2pt]
+  {\bfseries Agents against optimizers}\\[2pt]
+  {\small \res{[one line, once the runs are in]}}
+\end{minipage}
+
+\vfill
+\noindent{\large\bfseries Kunal Pai, Parth Shah, Harshil Patel}\\[2pt]
+{\color{muted}HashiruAI \quad \kunal{affiliations and emails}}\\[8pt]
+{\small\color{muted}\sys{} v2 and \bench{} are source-available under the PolyForm Noncommercial License 1.0.0:
+\url{https://github.com/HASHIRU-AI/HASHIRU}}
+\end{titlepage}
+
+% ================= executive summary and contents =================
 \section*{Executive Summary}
+\markboth{Executive Summary}{}
 Agent software now lets a language model fund the agents it spawns: a parent hands a child a slice of its budget, and
 the child may hire in turn. Whether such agents spend well has not been measured. The budget-aware systems that are
 evaluated split the money with an optimizer outside the agents, and the runtimes that let a model fund its sub-agents
-do not evaluate the split.
+do not evaluate the split. This whitepaper presents two artifacts and the first measurements made with them.
 
-This whitepaper presents two artifacts and the first measurements made with them.
+\begin{keybox}{At a glance}
 \begin{itemize}
-  \item \textbf{\sys{} v2} is a multi-agent system in which every agent holds a pool reserved from its hirer's (dollars,
-  plus measured memory for local models) and spends it by hiring cloud models, local models and priced remote agents
-  over open protocols (A2A for agents, MCP for tools). Firing an agent returns what it did not spend, and the ledger can
-  be rebuilt from the trace alone.
+  \item \textbf{\sys{} v2} is a multi-agent system in which every agent holds a pool reserved from its hirer's
+  (dollars, plus measured memory for local models) and spends it by hiring cloud models, local models and priced remote
+  agents over open protocols (A2A for agents, MCP for tools). Firing returns what was not spent, and the ledger can be
+  rebuilt from the trace alone.
   \item \textbf{\bench{}} is a benchmark built so that the best split of the money is known: projects of eight jobs
   with exact answers, a dial for how much of each job's difficulty is hidden until it is tried, outside agents to buy
   from, and calibrated outcomes for every job on every option.
-  \item \textbf{What we found:} \res{[headline result: agent allocation against the knapsack and the up-front LLM split
-  at equal budgets, with the oracle gap]}.
 \end{itemize}
-\sys{} v2 and \bench{} are source-available under the PolyForm Noncommercial License 1.0.0.
+\end{keybox}
 
-\tableofcontents
+\begin{keybox}{What we found}
+\res{[Headline result: agent allocation against the knapsack and the up-front LLM split at equal budgets, with the
+oracle gap; one line each on how agents spend and on make or buy.]}
+\end{keybox}
+
+{\renewcommand{\sectionbreak}{}\renewcommand{\contentsname}{Contents}\tableofcontents}
+\clearpage
 
 \input{sections/introduction}
 \input{sections/related}
@@ -59,7 +163,9 @@ This whitepaper presents two artifacts and the first measurements made with them
 \input{sections/limitations}
 \input{sections/conclusion}
 
+\renewcommand{\refname}{References}
+{\small
 \bibliographystyle{unsrtnat}
-\bibliography{refs}
+\bibliography{refs}}
 
 \end{document}
