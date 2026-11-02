@@ -1,9 +1,8 @@
 """F1: evaluate a fully parenthesized integer expression exactly. The level sets its size; the hidden bin sets how
 many multiplications it has and how big its digits are (so how many carries and borrows)."""
 import random
-import re
 
-from purse.jobs import InfeasibleCell, extract_answer, register_family
+from purse.jobs import InfeasibleCell, register_family, same_integer
 
 __all__ = ["ARITHMETIC", "DIGITS", "OPERATORS", "Arithmetic"]
 
@@ -12,7 +11,6 @@ DIGITS = {1: 2, 2: 3, 3: 4, 4: 6, 5: 8}
 TIMES_SHARE = {"low": 0.2, "mid": 0.35, "high": 0.5}  # the rest: + 70%, - 30%
 DIGIT_SET = {"low": "01234", "mid": "0123456789", "high": "56789"}
 ATTEMPTS = 100
-NOISE = re.compile(r"[\s,_]")
 
 
 class Arithmetic:
@@ -49,8 +47,7 @@ class Arithmetic:
         return f"({lt} {op} {rt})", value, max(lb, rb, abs(value))
 
     def correct(self, answer: str, response: str) -> bool:
-        text = NOISE.sub("", extract_answer(response)).removesuffix(".")
-        return re.fullmatch(r"-?\d+", text) is not None and int(text) == int(answer)
+        return same_integer(answer, response)
 
 
 ARITHMETIC = register_family(Arithmetic())
