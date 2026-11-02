@@ -7,10 +7,10 @@ from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from purse.jobs import Job
+from purse.jobs import BINS, Job, level_bin
 from purse.market import Option
 
-__all__ = ["CellStat", "OutcomeTable", "Record", "Stats", "cell_stats"]
+__all__ = ["CellStat", "OutcomeTable", "Record", "Stats", "cell_stats", "visible_stats"]
 
 log = logging.getLogger(__name__)
 
@@ -101,3 +101,20 @@ def cell_stats(table: OutcomeTable, jobs: Iterable[Job], hidden: bool, market: S
                 key = (job.family, job.level, job.hidden if hidden else None, option)
                 acc[key].append((r.solved, prices.get(option, r.cost_usd)))
     return {k: CellStat(sum(c for c, _ in v) / len(v), sum(x for _, x in v) / len(v), len(v)) for k, v in acc.items()}
+
+
+def visible_stats(hidden: Stats, rho: float) -> Stats:
+    """What an allocator measures per (family, level, option) on projects drawn with `rho`: the hidden bins' cells
+    weighted by P(bin | level) = rho [bin is the level's bin] + (1 - rho) / 3, renormalized over the bins present."""
+    groups: dict[tuple[str, int, str], list[tuple[float, CellStat]]] = defaultdict(list)
+    for (fam, level, b, option), s in hidden.items():
+        if b is not None:
+            groups[(fam, level, option)].append((rho * (b == level_bin(level)) + (1 - rho) / len(BINS), s))
+    out: Stats = {}
+    for (fam, level, option), cells in groups.items():
+        total = sum(w for w, _ in cells)
+        if total > 0:
+            out[(fam, level, None, option)] = CellStat(sum(w * s.rate for w, s in cells) / total,
+                                                        sum(w * s.cost_usd for w, s in cells) / total,
+                                                        sum(s.n for _, s in cells))
+    return out

@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
 import purse.families  # noqa: F401  (registers the four families)
-from purse.jobs import BINS, LEVELS, InfeasibleCell, Job, family, make_job
+from purse.jobs import BINS, LEVELS, InfeasibleCell, Job, family, level_bin, make_job
 from purse.market import Option
 from purse.table import Stats
 
@@ -23,10 +23,6 @@ RETRIES = 3  # fresh seeds for a job its generator could not make, before the ce
 REDRAWS = 50  # new (level, bin) draws for a slot whose cell has no unused job left
 FENCE = re.compile(r"```[\w-]*\n?(.*?)```", re.S)
 TRAILING_COMMA = re.compile(r",\s*([}\]])")
-
-
-def level_bin(level: int) -> str:
-    return "low" if level <= 2 else "mid" if level == 3 else "high"
 
 
 def draw_hidden(level: int, rho: float, rng: random.Random) -> str:

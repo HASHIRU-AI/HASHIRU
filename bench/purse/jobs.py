@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 __all__ = ["ANSWER_NOTE", "BINS", "FAMILIES", "LEVELS", "WORKER_PROMPT", "Family", "InfeasibleCell", "Job",
-           "extract_answer", "family", "make_job", "register_family", "same_integer"]
+           "extract_answer", "family", "level_bin", "make_job", "register_family", "same_integer"]
 
 BINS = ("low", "mid", "high")
 LEVELS = (1, 2, 3, 4, 5)
@@ -74,6 +74,11 @@ def extract_answer(response: str) -> str:
         if len(text) >= 2 and text.startswith(left) and text.endswith(right):
             text = text[1:-1].strip()
     return text
+
+
+def level_bin(level: int) -> str:
+    """The hidden bin a visible level suggests: 1 and 2 low, 3 mid, 4 and 5 high."""
+    return "low" if level <= 2 else "mid" if level == 3 else "high"
 
 
 def make_job(family_name: str, level: int, hidden: str, seed: int, uid: str, value: int = 1) -> Job:
