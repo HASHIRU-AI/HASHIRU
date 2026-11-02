@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 __all__ = ["ANSWER_NOTE", "BINS", "FAMILIES", "LEVELS", "WORKER_PROMPT", "Family", "InfeasibleCell", "Job",
-           "extract_answer", "family", "make_job", "register_family"]
+           "extract_answer", "family", "make_job", "register_family", "same_integer"]
 
 BINS = ("low", "mid", "high")
 LEVELS = (1, 2, 3, 4, 5)
@@ -14,6 +14,7 @@ WORKER_PROMPT = "Solve the task exactly. " + ANSWER_NOTE
 
 TAGGED = re.compile(r"<answer>(.*?)</answer>", re.S | re.I)
 FENCE = re.compile(r"^```[\w-]*\n?(.*?)\n?```$", re.S)
+NOISE = re.compile(r"[\s,_]")
 
 
 @dataclass(frozen=True)
@@ -79,3 +80,9 @@ def make_job(family_name: str, level: int, hidden: str, seed: int, uid: str, val
     task, answer, features = family(family_name).generate(level, hidden, random.Random(seed))
     return Job(id="", uid=uid, family=family_name, level=level, hidden=hidden, value=value,
                prompt=f"{task}\n\n{ANSWER_NOTE}", answer=answer, features=tuple(sorted(features.items())))
+
+
+def same_integer(answer: str, response: str) -> bool:
+    """The response's answer is the integer `answer`, ignoring spaces, thousands separators and a final period."""
+    text = NOISE.sub("", extract_answer(response)).removesuffix(".")
+    return re.fullmatch(r"-?\d+", text) is not None and int(text) == int(answer)
