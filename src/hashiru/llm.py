@@ -78,8 +78,9 @@ class LLM:
         """
         self.wallet.check()
         extra = {"api_base": self.ollama_url, "num_ctx": self.num_ctx} if is_local(model) else {}
-        resp = await litellm.acompletion(model=model, messages=messages, tools=tools or None,
-                                         temperature=0, num_retries=2, **extra)  # ride out a 429/503
+        # drop_params: a reasoning model that rejects temperature=0 (gpt-6-luna) runs at its default instead
+        resp = await litellm.acompletion(model=model, messages=messages, tools=tools or None, temperature=0,
+                                         drop_params=True, num_retries=2, **extra)  # ride out a 429/503
         cost = 0.0 if is_local(model) else float(litellm.completion_cost(completion_response=resp))
         self.wallet.spent += cost
         return resp.choices[0].message, cost
