@@ -5,6 +5,7 @@ the trace and moves labels. An approved plan's graph (plangraph.py) acts as the 
 """
 import asyncio
 import json
+import re
 import time
 from collections.abc import Collection, Mapping
 from contextvars import ContextVar
@@ -101,6 +102,53 @@ def attachments(request: str, headings: Collection[str]) -> str:
             end += 1
         out.append("\n".join(lines[start:end]).strip())
     return "".join(f"\n\n{section}" for section in out)
+
+
+PREVIEW_LINES = 2  # lines of a held-back section the CEO still reads under its heading (request_by_reference)
+
+
+def leaves(request: str) -> list[tuple[int, int, str]]:
+    """(first line, end line, heading) of each section with no subsection: a heading line up to the next heading."""
+    lines = request.splitlines()
+    heads = [i for i, line in enumerate(lines) if re.match(r"#+ \S", line)]
+    out = []
+    for k, start in enumerate(heads):
+        end = heads[k + 1] if k + 1 < len(heads) else len(lines)
+        deeper = end < len(lines) and depth(lines[end]) > depth(lines[start])
+        if not deeper:
+            out.append((start, end, lines[start].strip()))
+    return out
+
+
+def depth(line: str) -> int:
+    return len(line) - len(line.lstrip("#"))
+
+
+def outline(request: str, min_chars: int) -> str:
+    """`request` with every section of `min_chars` or more cut to its heading and first lines, and a note on how to
+    pass the whole section to an agent: what the CEO reads under request_by_reference."""
+    lines = request.splitlines()
+    for start, end, heading in reversed(leaves(request)):
+        body = lines[start:end]
+        while body and not body[-1].strip():
+            body = body[:-1]
+        if len("\n".join(body)) < min_chars:
+            continue
+        held = len(body) - 1 - PREVIEW_LINES
+        note = (f"[{held} more lines held by the hub. Name {key(heading)} in a message, or attach '{heading}', and "
+                f"the agent gets the whole section.]")
+        lines[start:start + len(body)] = [*body[:1 + PREVIEW_LINES], note]
+    return "\n".join(lines) + ("\n" if request.endswith("\n") else "")
+
+
+def key(heading: str) -> str:
+    """How a message names a section: the first word of its heading ('j5' for '### j5 (aggregation)')."""
+    return heading.lstrip("#").split()[0].strip(":.,")
+
+
+def named(request: str, text: str) -> list[str]:
+    """Headings of the sections of `request` that `text` names by key, as a whole word."""
+    return [h for _, _, h in leaves(request) if re.search(rf"(?<!\w){re.escape(key(h))}(?!\w)", text)]
 
 
 def empty(rec: AgentRecord) -> str:
@@ -287,7 +335,13 @@ async def perform(hub: "Hub", session: Session, mcp: Any, me: str, name: str, ar
     elif name == "propose_plan":
         return {"error": "propose_plan is only for plan mode"}
     if name == "ask_agent":
-        text = str(args.get("text", "")) + attachments(session.request, [str(h) for h in args.get("attach") or []])
+        asked = [str(h) for h in args.get("attach") or []]
+        if hub.settings.request_by_reference:  # attach by default: every section the message or the hire's job names
+            hire = session.ledger.get(str(args.get("name", "")))
+            asked += named(session.request, str(args.get("text", "")) + " " + (hire.prompt if hire else ""))
+        text = str(args.get("text", ""))  # each section once, and not again if the text already holds it
+        text += "".join(part for part in dict.fromkeys(attachments(session.request, [h]) for h in asked)
+                        if part.strip() not in text)
         return {"reply": await ask_agent(hub, session, me, str(args.get("name", "")), text)}
     egress = set() if hub.settings.private_egress == "allow" else hub.egress()  # an unknown value blocks
     return await call_tool(session, mcp, me, name, args, turn, hub.sources(), hub.external(), egress,
@@ -295,16 +349,20 @@ async def perform(hub: "Hub", session: Session, mcp: Any, me: str, name: str, ar
 
 
 async def think(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]],
-                tools: list[dict[str, Any]] | None) -> tuple[Any, list[Any], int]:
+                tools: list[dict[str, Any]] | None, keep_answer: bool = False) -> tuple[Any, list[Any], int]:
     """One LLM call: charge its cost to the agent and trace the thought. Returns (msg, calls, seq).
 
     Under enforce_budget a cloud call's output is capped so the call cannot cost more than the agent has left, and a
     call that cannot pay for MIN_ANSWER_TOKENS of output is refused before it reaches the provider: its "reply" says
-    what the call would cost, so the hirer can reserve more."""
+    what the call would cost, so the hirer can reserve more. A working turn (`keep_answer`) is capped lower, so a
+    turn that reasons to its cap still leaves what the closing turn needs: reading the messages and a short answer."""
     cap = None
     if hub.settings.enforce_budget and rec.tier != "local":
         left = session.ledger.left()[rec.name]
         cap, cost_in = affordable(rec.model, messages, tools, left)
+        if keep_answer:
+            cap, _ = affordable(rec.model, messages, tools,
+                                left - cost_in - MIN_ANSWER_TOKENS * litellm_output_price(rec.model))
         if cap is not None and cap < MIN_ANSWER_TOKENS:
             per_answer = (litellm_output_price(rec.model)) * MIN_ANSWER_TOKENS
             why = (f"failed: {rec.name}'s pool has ${max(left, 0):.4f}, and a call on {rec.model} costs about "
@@ -361,6 +419,12 @@ def closing(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[
     return left < 2 * cost_in + 2 * MIN_ANSWER_TOKENS * litellm_output_price(rec.model)
 
 
+async def close(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]]) -> str:
+    """The closing turn: no tools, and an instruction to answer with what the agent has."""
+    msg, _, _ = await think(hub, session, rec, [*messages, {"role": "user", "content": CLOSING}], None)
+    return msg.content or empty(rec)
+
+
 def spent_out(hub: "Hub", session: Session, rec: AgentRecord) -> str | None:
     """Why the agent may not make another LLM call, under enforce_budget: a cloud agent needs money left."""
     if hub.settings.enforce_budget and rec.tier != "local" and session.ledger.left()[rec.name] <= 0:
@@ -374,6 +438,8 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
     if not still_on(hub, session, rec):
         return "failed"
     planning = session.planning  # a turn plans or acts throughout
+    if name == "ceo" and hub.settings.request_by_reference:
+        text = outline(text, hub.settings.reference_min_chars)
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt(rec, planning)},
                                       {"role": "user", "content": text}]
     if rec.role == "worker":
@@ -406,14 +472,13 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
                      if allowed(rec, t.name) and (readable(t) or not planning)]
             tools += [PROPOSE_TOOL] if planning else [ASK_TOOL] if allowed(rec, "ask_agent") else []
             if closing(hub, session, rec, messages, tools, last=n == hub.settings.max_turns - 1):
-                msg, _, _ = await think(hub, session, rec, [*messages, {"role": "user", "content": CLOSING}], None)
-                return msg.content or empty(rec)
-            msg, calls, turn = await think(hub, session, rec, messages, tools)
+                return await close(hub, session, rec, messages)
+            msg, calls, turn = await think(hub, session, rec, messages, tools, keep_answer=True)
             if not calls:
                 if (msg.content or "").strip():
                     return msg.content or ""
-                if nudged:
-                    return empty(rec)
+                if nudged:  # empty twice (a reasoning model can spend a whole turn thinking): one closing turn
+                    return await close(hub, session, rec, messages)
                 nudged = True
                 messages += NUDGE
                 continue

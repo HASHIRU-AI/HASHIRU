@@ -1,4 +1,5 @@
 """Every model call goes through LiteLLM, so any provider can be plugged in."""
+import asyncio
 import json
 import math
 import os
@@ -10,8 +11,8 @@ os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")  # use the bundled
 
 import litellm  # must come after the env var above
 
-__all__ = ["INPUT_MARGIN", "LLM", "OUTPUT_CAP", "Wallet", "WalletExceeded", "affordable", "check_priced", "has_price",
-           "is_local", "litellm_output_price", "register_prices"]
+__all__ = ["INPUT_MARGIN", "LLM", "OUTPUT_CAP", "RATE_LIMIT_WAITS", "Wallet", "WalletExceeded", "affordable",
+           "check_priced", "has_price", "is_local", "litellm_output_price", "register_prices"]
 
 litellm.suppress_debug_info = True
 
@@ -19,6 +20,9 @@ litellm.suppress_debug_info = True
 # agent's pool holds. A context variable, so concurrent calls in one process each carry their own.
 OUTPUT_CAP: ContextVar[int | None] = ContextVar("hashiru_output_cap", default=None)
 INPUT_MARGIN = 1.1  # token counts are estimates: price the input a little high
+# Seconds to wait before sending a rate-limited call again (LiteLLM's own retries do not wait): together over a
+# minute, so a per-minute token or request limit has passed. A refused attempt is not billed.
+RATE_LIMIT_WAITS = (2.0, 4.0, 8.0, 15.0, 30.0, 45.0)
 
 
 class WalletExceeded(RuntimeError):
@@ -59,7 +63,8 @@ def has_price(model: str) -> bool:
 def affordable(model: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None,
                left_usd: float) -> tuple[int | None, float]:
     """(the most output tokens `left_usd` pays for after reading the input, the input's estimated cost). None tokens
-    means no cap: a local model, or one without an output price."""
+    means no cap: a local model, or one without an output price. The cap never exceeds the model's own maximum output,
+    which a provider rejects."""
     if is_local(model):
         return None, 0.0
     info = litellm.get_model_info(model)
@@ -68,7 +73,9 @@ def affordable(model: str, messages: list[dict[str, Any]], tools: list[dict[str,
     out = info.get("output_cost_per_token") or 0
     if out <= 0:
         return None, cost_in
-    return max(0, math.floor((left_usd - cost_in) / out)), cost_in
+    cap = max(0, math.floor((left_usd - cost_in) / out))
+    most = info.get("max_output_tokens")
+    return (min(cap, int(most)) if most else cap), cost_in
 
 
 def litellm_output_price(model: str) -> float:
@@ -112,8 +119,15 @@ class LLM:
         if (cap := OUTPUT_CAP.get()) is not None:
             extra["max_tokens"] = cap  # LiteLLM sends max_completion_tokens to reasoning models
         # drop_params: a reasoning model that rejects temperature=0 (gpt-6-luna) runs at its default instead
-        resp = await litellm.acompletion(model=model, messages=messages, tools=tools or None, temperature=0,
-                                         drop_params=True, num_retries=2, **extra)  # ride out a 429/503
+        for wait in (*RATE_LIMIT_WAITS, None):
+            try:
+                resp = await litellm.acompletion(model=model, messages=messages, tools=tools or None, temperature=0,
+                                                 drop_params=True, num_retries=2, **extra)  # ride out a 503
+                break
+            except litellm.RateLimitError:
+                if wait is None:
+                    raise
+                await asyncio.sleep(wait)
         cost = 0.0 if is_local(model) else float(litellm.completion_cost(completion_response=resp))
         self.wallet.spent += cost
         return resp.choices[0].message, cost

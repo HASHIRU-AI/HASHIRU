@@ -109,7 +109,9 @@ looked up).
 Budgets are enforced in code: a hire cannot reserve more than its hirer has left, a local model must fit in free
 memory, and an agent whose pool is spent stops making cloud calls (`enforce_budget=false` only records
 overspending, for policy experiments). `memory_mb` caps the memory local hires may hold together (a benchmark sets it, so runs do not depend on what
-else the machine is running). `max_usd` caps real API spend for the whole process. `allow_hiring`,
+else the machine is running). `max_usd` caps real API spend for the whole process. A call the provider refuses for its
+rate limit waits and is sent again (from 2 to 45 seconds, 104 in all) instead of failing the agent; a refused call is
+not billed. `allow_hiring`,
 `allow_local_agents` and `allow_cloud_agents` are v1's mode switches. Each user request has one deadline
 (`task_timeout`) that every agent it reaches must meet; firing an agent or closing a conversation stops its work.
 
@@ -124,6 +126,21 @@ privacy and pool allow: a hirer holding private data gets local models first (on
 `private_mode=block`), and a hire with `budget_usd: 0` gets local models only. A worker that fails or answers empty
 moves up its list and gets the message again, up to `max_escalations` times per message (2 by default), shown in the
 chat's activity; a worker holding private data never moves to a cloud model. Naming a `model` still works.
+
+Where you have measured how often each model succeeds on a kind of job, give the hub those numbers and a hire can name
+the kind instead (`hire_agent(..., kind="aggregation level 4")`): it goes to the cheapest model that succeeds at least
+`route_min_rate` of the time (0.7 by default), then to the others, most reliable first. In a YAML config file:
+
+```yaml
+success_rates:              # kind of job -> model -> [success rate, mean cost in $]
+  aggregation level 4: {gpt-4.1-mini: [0.55, 0.004], gpt-4.1: [0.95, 0.02]}
+route_min_rate: 0.7
+```
+
+With `request_by_reference: true`, the CEO reads each section of the request that is `reference_min_chars` long or
+longer (2000 by default) as its heading, its first lines and a note, and any message to a hire that names a section
+(by the first word of its heading, such as `j5`, in the message or the hire's job) carries that section word for word.
+Long inputs then reach the agents that need them without filling the CEO's context on every turn.
 
 ## Which models you can use (`hashiru models`, `MODELS=auto`)
 

@@ -141,3 +141,52 @@ def test_routing_settings():
                        ("max_escalations=-1", "max_escalations")):
         with pytest.raises(ValueError, match=match):
             load_settings([bad])
+
+
+# ---- routing on measured success rates ----
+
+RATES = (("arithmetic level 4", (("ollama_chat/tiny", 0.2, 0.0), ("gpt-4.1-mini", 0.9, 0.002),
+                                 ("gpt-4.1", 1.0, 0.01))),)
+
+
+def test_measured_rates_route_to_the_cheapest_model_that_succeeds_often_enough(tmp_path):
+    hub = make_hub(tmp_path, success_rates=RATES, route_min_rate=0.7)
+    session = hub.new_session("t", trace=False)
+    boss = session.ledger.agents["ceo"]
+    assert hub.router.by_rates(session, boss, "arithmetic level 4", 0.1) == ["gpt-4.1-mini", "gpt-4.1",
+                                                                             "ollama_chat/tiny"]
+    assert hub.router.by_rates(session, boss, "Arithmetic, level 4", 0.1)[0] == "gpt-4.1-mini"  # same kind
+    assert hub.router.by_rates(session, boss, "arithmetic level 4", 0.0) == ["ollama_chat/tiny"]  # a $0 pool
+    strict = make_hub(tmp_path, success_rates=RATES, route_min_rate=0.95)
+    assert strict.router.by_rates(session, boss, "arithmetic level 4", 0.1)[:2] == ["gpt-4.1", "gpt-4.1-mini"]
+    assert hub.router.by_rates(session, boss, "strings level 2", 0.1) == []
+
+
+def test_a_hire_by_kind_uses_the_measured_route(tmp_path):
+    hub = make_hub(tmp_path, success_rates=RATES)
+    session = hub.new_session("t", trace=False)
+    out = hire(hub, session, kind="arithmetic level 4")
+    assert out["model"] == "gpt-4.1-mini" and out["kind"] == "arithmetic level 4"
+    assert session.ledger.agents["w1"].route == ("gpt-4.1-mini", "gpt-4.1", "ollama_chat/tiny")
+    assert hire(hub, session, name="w2", kind="strings level 2", difficulty="hard")["model"] == "gpt-4.1"
+    error = hire(hub, session, name="w3", kind="strings level 2")["error"]
+    assert "arithmetic level 4" in error  # an unmeasured kind without a difficulty: the error lists the kinds
+
+
+def test_the_hire_tool_lists_the_measured_kinds(tmp_path):
+    def description(hub):
+        return next(t.description for t in asyncio.run(hub.mcp.list_tools()) if t.name == "hire_agent")
+    assert "arithmetic level 4" in description(make_hub(tmp_path, success_rates=RATES))
+    assert "kind" not in description(make_hub(tmp_path))
+
+
+def test_success_rate_settings(tmp_path):
+    config = tmp_path / "rates.yaml"  # kinds have spaces: a YAML file, not a command-line override
+    config.write_text("models: [gpt-4.1-mini]\nroute_min_rate: 0.8\n"
+                      "success_rates:\n  arithmetic level 4: {gpt-4.1-mini: [0.9, 0.002]}\n")
+    s = load_settings([], str(config))
+    assert s.success_rates == (("arithmetic level 4", (("gpt-4.1-mini", 0.9, 0.002),)),) and s.route_min_rate == 0.8
+    for bad in ("+success_rates={a: {gpt-4.1-mini: [1.5, 0]}}", "+success_rates={a: {gpt-4.1-mini: 0.9}}",
+                "route_min_rate=2"):
+        with pytest.raises(ValueError, match=r"success_rates|route_min_rate"):
+            load_settings(["models=[gpt-4.1-mini]", bad])

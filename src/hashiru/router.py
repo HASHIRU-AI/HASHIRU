@@ -1,5 +1,7 @@
 """Hiring by difficulty: the hiring agent says how hard a job is, and the router turns that into the models the hire
-may run on, best first.
+may run on, best first. Where success rates have been measured for a kind of job (`success_rates`), the agent may
+give the kind instead: the hire goes to the cheapest model that succeeds at least `route_min_rate` of the time, then
+to the others, most reliable first.
 
 The order comes from the `routing` setting or, for a difficulty it does not list, from `models`: an easy job tries
 small local models first, then cheap cloud ones; a medium job large local models, then cheap cloud ones; a hard job
@@ -8,6 +10,7 @@ privacy and pool allow: a hirer holding private data hires only local models in 
 obfuscating, and a pool of $0 cannot pay a cloud model. A worker that fails moves up its list (Hub.escalate).
 """
 import logging
+import re
 from typing import TYPE_CHECKING
 
 import httpx
@@ -24,7 +27,7 @@ from hashiru.session import Session
 if TYPE_CHECKING:
     from hashiru.hub import Hub
 
-__all__ = ["DIFFICULTIES", "Router", "escalate"]
+__all__ = ["DIFFICULTIES", "Router", "escalate", "kind_key"]
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +40,23 @@ class Router:
         """The models a hire by `boss` for a `difficulty` job may run on, best first (empty if none may)."""
         table = dict(self.hub.settings.routing)
         order = list(table[difficulty]) if difficulty in table else await self.default(difficulty)
+        return self.allowed(session, boss, order, budget_usd)
+
+    def kinds(self) -> list[str]:
+        """The kinds of job with measured success rates, as configured."""
+        return [kind for kind, _ in self.hub.settings.success_rates]
+
+    def by_rates(self, session: Session, boss: AgentRecord, kind: str, budget_usd: float) -> list[str]:
+        """The models for a `kind` of job by measured success: the cheapest of those at or above route_min_rate
+        first, then the rest, most reliable first. Empty for a kind without measurements."""
+        rates = {kind_key(k): rows for k, rows in self.hub.settings.success_rates}.get(kind_key(kind), ())
+        floor = self.hub.settings.route_min_rate
+        good = sorted((r for r in rates if r[1] >= floor), key=lambda r: (r[2], -r[1]))
+        rest = sorted((r for r in rates if r[1] < floor), key=lambda r: -r[1])
+        return self.allowed(session, boss, [m for m, _, _ in good + rest], budget_usd)
+
+    def allowed(self, session: Session, boss: AgentRecord, order: list[str], budget_usd: float) -> list[str]:
+        """`order` minus what the modes, the hire's pool and the hirer's private data rule out."""
         allowed = set(self.hub.hireable())
         order = [m for m in order if m in allowed]
         if self.hub.settings.enforce_budget and budget_usd <= 0:
@@ -56,6 +76,11 @@ class Router:
         local = sorted((m for m in models if is_local(m)), key=lambda m: sizes.get(tag(m), 0))  # small first
         cloud = sorted((m for m in models if not is_local(m)), key=price)                      # cheap first
         return {"easy": local + cloud, "medium": local[::-1] + cloud, "hard": cloud[::-1] + local[::-1]}[difficulty]
+
+
+def kind_key(kind: str) -> str:
+    """'Arithmetic, level 4' and 'arithmetic level 4' are one kind."""
+    return " ".join(re.sub(r"[^\w\s]", " ", kind).casefold().split())
 
 
 def price(model: str) -> float:
