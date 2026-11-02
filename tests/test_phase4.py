@@ -376,3 +376,46 @@ def test_ask_agent_with_attach_sends_the_sections(hub, session, monkeypatch):
                                       {"name": "w1", "text": "Count the rows:", "attach": ["### j1"]}))
     assert out == {"reply": "ok"} and sent == ["Count the rows:\n\n### j1 (data)\nrow\nrow\nrow"]
     assert "attach" in json.dumps(runtime.ASK_TOOL)
+
+
+class ClosingLLM:
+    """Calls check_usage while it is offered tools; answers once it is not."""
+
+    def __init__(self):
+        self.offered: list[bool] = []
+
+    async def chat(self, model, messages, tools=None):
+        self.offered.append(tools is not None)
+        if tools is None:
+            return reply("final answer: " + messages[-1]["content"][:20]), 0.0
+        n = sum(1 for m in messages if m["role"] == "tool")
+        return reply(calls=[SimpleNamespace(id=f"c{n}", function=SimpleNamespace(name="check_usage",
+                                                                                   arguments='{"pool": "ceo"}'))]), 0.0
+
+
+def test_an_agent_at_its_last_turn_answers_instead_of_failing(tmp_path):
+    from hashiru.session import USER
+    llm = ClosingLLM()
+    hub = Hub(make_settings(tmp_path, port=9387, max_turns=3), llm=llm, ollama=FakeOllama())  # type: ignore[arg-type]
+
+    async def go():
+        async with hub.serving():
+            return await runtime.ask_agent(hub, hub.new_session("t"), USER, "ceo", "do the thing")
+    out = asyncio.run(go())
+    assert out.startswith("final answer: ") and llm.offered == [True, True, False]
+
+
+def test_an_agent_whose_pool_pays_only_for_its_answer_answers_now(tmp_path):
+    from hashiru.session import USER
+    llm = ClosingLLM()
+    hub = Hub(make_settings(tmp_path, port=9388, budget_usd=0.0009), llm=llm, ollama=FakeOllama())  # type: ignore[arg-type]
+
+    async def go():
+        async with hub.serving():
+            return await runtime.ask_agent(hub, hub.new_session("t"), USER, "ceo", "do the thing")
+    out = asyncio.run(go())
+    assert out.startswith("final answer: ") and llm.offered == [False]
+
+
+def test_the_rules_tell_agents_to_attach_long_inputs():
+    assert "attach" in runtime.RULES

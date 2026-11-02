@@ -49,6 +49,8 @@ RULES = "\n".join([
     "4. Hire by difficulty (easy, medium or hard): the hub picks a model, local ones first where they can do the "
     "job. Name a model only when the job needs that one.",
     "5. Fire agents once you no longer need them. Firing a local agent frees its memory.",
+    "6. To give an agent a long input from the user's request, name its section in ask_agent's attach (for example "
+    "'### Data') instead of retyping it: the agent gets the section word for word.",
 ])
 
 CEO_PROMPT = ("You are the CEO of HASHIRU. Break the user's request into subtasks, hire agents with hire_agent "
@@ -60,6 +62,11 @@ CEO_PROMPT = ("You are the CEO of HASHIRU. Break the user's request into subtask
 EMPTY_REPLY = ("Your last reply was empty. Reply now with your answer to the message above, using what your tools "
                "and agents told you.")
 NUDGE = [{"role": "assistant", "content": ""}, {"role": "user", "content": EMPTY_REPLY}]
+
+# Sent when an agent has one step left (its last allowed turn, or a pool that pays for an answer but not for another
+# working turn and the answer after it): it answers with what it has instead of ending with nothing.
+CLOSING = ("You have one step left: answer now, without tools, with what you have so far, and say what you could "
+           "not finish.")
 
 ASK_TOOL = {"type": "function", "function": {
     "name": "ask_agent",
@@ -341,6 +348,19 @@ def still_on(hub: "Hub", session: Session, rec: AgentRecord) -> bool:
     return rec.live and hub.sessions.get(session.id) is session
 
 
+def closing(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]] | None, last: bool) -> bool:
+    """Whether this turn must be the agent's answer: its last allowed turn, or (under enforce_budget, for a cloud
+    agent) a pool too small for another working turn plus the answer after it, each of which rereads the messages."""
+    if last:
+        return True
+    if not hub.settings.enforce_budget or rec.tier == "local":
+        return False
+    left = session.ledger.left()[rec.name]
+    _, cost_in = affordable(rec.model, messages, tools, left)
+    return left < 2 * cost_in + 2 * MIN_ANSWER_TOKENS * litellm_output_price(rec.model)
+
+
 def spent_out(hub: "Hub", session: Session, rec: AgentRecord) -> str | None:
     """Why the agent may not make another LLM call, under enforce_budget: a cloud agent needs money left."""
     if hub.settings.enforce_budget and rec.tier != "local" and session.ledger.left()[rec.name] <= 0:
@@ -376,7 +396,7 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
             session.approved = None  # the user approved it this turn (planning.begin): it runs once, as a graph
             return await plangraph.run(plan.program, PlanRunner(hub, session, mcp, plan, text))
         nudged = False
-        for _ in range(hub.settings.max_turns):
+        for n in range(hub.settings.max_turns):
             if not still_on(hub, session, rec):
                 return "failed"
             if refused := spent_out(hub, session, rec) or await approvals.turn(hub, session, rec):
@@ -385,6 +405,9 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
             tools = [to_openai(t) for t in (await mcp.list_tools()).tools
                      if allowed(rec, t.name) and (readable(t) or not planning)]
             tools += [PROPOSE_TOOL] if planning else [ASK_TOOL] if allowed(rec, "ask_agent") else []
+            if closing(hub, session, rec, messages, tools, last=n == hub.settings.max_turns - 1):
+                msg, _, _ = await think(hub, session, rec, [*messages, {"role": "user", "content": CLOSING}], None)
+                return msg.content or empty(rec)
             msg, calls, turn = await think(hub, session, rec, messages, tools)
             if not calls:
                 if (msg.content or "").strip():
