@@ -487,3 +487,52 @@ str` returning `"valid"`, `"invalid"` or `"limit reached"` (3 calls per puzzle, 
   `docs(bench): PURSE readme and plan status`.
 - [ ] **Step 4:** Ask the user before the pilot (`calibrate --levels 1,3,5 --per-cell 5`), with its call count and
   cost estimate.
+
+## Build record (2026-11-01)
+
+Built inline on `feature/whitepaper` (5ffad18..HEAD); final review was a self-review (no review subagents, by the
+user's rule). Mutation checks: 12 of 12 killed, plus 3 on the fix pass. Rulings made during the build, each with
+what it costs if wrong:
+
+- Pre-flight: Ruling: CONFLICT 1: ReplayMarket and cell_stats take the market; for an option of kind "agent" the cost is the option's current per_message_usd and only correctness comes from the table (outside agents are exact programs; HASHIRU charges max(price, reported)) (cost if wrong: replayed agent costs differ from live by the reported-cost part, which is 0 for calc and csp.)
+- Pre-flight: Ruling: CONFLICT 2: drop p_star/rationally_bought; "rational" demand = what oracle_full (knapsack on per-job truth, at the project's budget) buys at each price: oracle_buys(p, table, market, budget) -> set[str]. Prices: sweep_prices(table, pool, market) = c_ref x (0.25, 1, 4, 16), c_ref = median over arithmetic and grids jobs of gpt-6-luna's mean cost; the default (middle) price is c_ref x 1. V6 = oracle buy share of arithmetic+grids jobs at the cheapest price minus at the dearest >= 0.40 (demand responds inside the sweep; not true by construction) (cost if wrong: one check and two functions; the spec §7/§12 wording is updated to match.)
+- Task 1: Ruling: bench/tests needs an __init__.py: tests/ does 'from conftest import ...', and a second top-level conftest module shadows it (cost if wrong: none (bench tests import as tests.*))
+- Task 1: Ruling: ruff isort known-first-party = [hashiru, purse]: purse was sorted as third-party (cost if wrong: none)
+- Task 2: Ruling: a product that would reach 10**(3D) becomes a sum instead of redrawing the tree: with redraws only, level 5 high failed for 23 of 40 seeds (100 tries each) and the cell would be lost (cost if wrong: level 5 high has 31% multiplications instead of up to 50%)
+- Task 3: Ruling: added draw(level, rng), bin_of(splits) and SIZE to grids' interface: the tests need a puzzle without bin targeting and a patchable bin rule (cost if wrong: none)
+- Task 3: Ruling: MAX_ATTEMPTS 300 -> 1000: level 2 high succeeded 1 of 4 seeds at 60 tries (about 76% per job at 300, 99% at 1000; 2 s per job) (cost if wrong: pool generation takes longer)
+- Task 4: Ruling: same_integer moved to purse.jobs and shared by arithmetic and aggregation: DRY (cost if wrong: none)
+- Task 5: Ruling: drop_every uses j in 3..5 (not 2) and a pipeline is redrawn if its answer is empty or has outer spaces: j=2 halves the string each time and 5 drops empty it; outer spaces are stripped by extract_answer (cost if wrong: none)
+- Task 6: Ruling: Record.solved (correct and not refused) is what rates, stats and replay use: the spec says a refusal is a failure; enforcing it in the table means a mislabeled record cannot count as a success (cost if wrong: none)
+- Task 6: Ruling: OutcomeTable.options() and market.lookup() added; tests share builders in bench/tests/helpers.py: cost if wrong: none)
+- Task 7: Ruling: Option gains input_usd_per_m and output_usd_per_m (list prices shown to allocators): project_text must state cloud prices and Option had none (cost if wrong: none)
+- Task 7: Ruling: build_pool retries a failed job with 3 fresh seeds before dropping its whole cell; make_project redraws (level, bin) up to 50 times when a cell has no unused job in the fold: partial cells would bias statistics; redraws bias rho slightly only when cells run out (cost if wrong: realized rho agreement a little off when many projects share a fold (measure it in the runs))
+- Task 8: Ruling: cascade with no option at or above theta sends the job to its most reliable option alone; with two disagreeing answers and no third option it keeps the second (dearer) one; fixed() takes the market so an agent-only option skips jobs it cannot serve: the plan left these cases open (cost if wrong: small changes to the cascade baseline's score)
+- Task 8: Ruling: run_upfront records a refused Attempt ('the pool cannot pay for it') instead of silently skipping: the trace of what each allocator tried stays complete (cost if wrong: none)
+- Task 9: Ruling: visible_stats(hidden, rho) mixes hidden-bin cells by P(bin | level) = rho[bin = level_bin] + (1 - rho)/3; allocators' statistics and the visible oracle use it: uniform averaging over bins made VOI positive even at rho = 1, so V5 could never read 0 and informed allocators would be told the wrong rates for their condition (cost if wrong: the stats shown to allocators change with rho (they should))
+- Task 9: Ruling: run_checks draws each of its 30 projects per rho independently (jobs may recur across projects): at rho = 1 each family has only 20 jobs per fold, fewer than 30 projects need; the main runs use 10 projects per rho (spec §14) which fit (cost if wrong: none for the checks)
+- Task 9: Ruling: level_bin moved to purse.jobs (table needs it; projects re-exports it); oracle_cells and truth price an outside agent from the market given, not the stats: cost if wrong: none)
+- Task 11: Ruling: test_approvals' free_mb patch moved from approvals to hashiru.hub (approvals no longer imports free_mb; every check goes through Hub.free_memory): the plan allowed it if the test broke, and it did (AttributeError) (cost if wrong: none)
+- Task 12: Ruling: the example calc agent stays the arithmetic peer although it refuses level-5 expressions (292 characters > its 200 limit): a real vendor with a limit, recorded by calibration and priced by the oracles; the alternative was a bench-only copy (cost if wrong: arithmetic level 5 cannot be bought (calibration shows it))
+- Task 12: Ruling: same_integer reads the value after the last '=': calc replies 'expr = value', which the checker marked wrong (cost if wrong: a model answering 'a = b' with b right now counts as right (it is))
+- Task 12: Ruling: csp_agent.build_app(url, price_usd) (the plan said build_app(price_usd)) mirrors calc's signature; FakeOllama and serving helpers copied into bench/tests (tests/ is not importable from bench/tests): cost if wrong: none)
+- Task 13: Ruling: plan_to_allocation takes ceo_model (default CEO_MODEL); propose_split passes the hub's: unmatched jobs go to the CEO actually running, not a constant (cost if wrong: none)
+- Task 13: Ruling: HubMarket hires local options with budget 0 and others with reserve_usd; a reply starting 'error:' is a wrong answer, not a refusal (only a refused hire is): calc's refusals are answers the allocator paid for (cost if wrong: refusal counts differ)
+- Task 14: Ruling: replay_live takes the market's options too (run_upfront needs them to price and check the pool): the plan's signature omitted them (cost if wrong: none)
+- Task 14: Ruling: a hire by difficulty takes its model from its first llm or escalate event (hire_agent's result does not name the routed model); a job matches a hire by its task text, else its id (word match): cost if wrong: a CEO that paraphrases a job without its id leaves it unmatched (prompt_fidelity and jobs_of show it))
+- Task 15: Ruling: the run loop lives in purse/runner.py and cli.py keeps argparse, calibration and the live wiring: one file would pass the 400-line rule (cost if wrong: none)
+- Task 15: Ruling: HubMarket takes reserve_usd=None (reserve what is left minus the hub's turn reserve) and bench_settings takes turn_reserve_usd; calibration and live solver replays set it to 0 since their CEO never thinks: HASHIRU keeps $0.01 back for a cloud CEO's turns, so a live replay could not hire with a small pool while the replay Pool could (V8 would compare unlike runs) (cost if wrong: live replays may spend a cent more than HASHIRU's CEO would allow)
+- Task 15: Ruling: calibrate stops on any exception (provider down, max_usd, Ctrl-C) and a rerun resumes; only an attempt's refusal is recorded: recording a transient error as a failure would bias the table (cost if wrong: a permanently failing call needs a manual skip)
+- Task 15: Ruling: the llm-split pays its planning from B (execution gets B minus the CEO's planning spend); live runs drop outside agents that have no --peer URL: cost if wrong: none)
+- Task 16: Ruling: the design's single-agent baseline is fixed:<CEO model> in replay (each job on the CEO's model alone); a live CEO answering all 8 jobs in one context is not built: the replay version needs no money and the 2x2 does not depend on it (cost if wrong: one live baseline to add before Phase E)
+- Task 16: Ruling: purse is not an installed package, so its commands need PYTHONPATH=bench (README and cli docstring say so): cost if wrong: none)
+
+Fixed in the final review: one wallet per batch (`--max-usd` capped each hub), runs stop at `max_usd` instead of
+recording refusals as failures, `calibrate` refuses outside agents without `--peer`, and the live path is tested.
+
+Deferred minors:
+
+- a local CEO's own model memory is not counted under memory_mb (PURSE uses a cloud CEO)
+- the runner parses a project's fold from its id string
+- check and run raise a bare ValueError (traceback) when the table has no gpt-6-luna records for arithmetic or grids
+- jobs_of maps every job to a hire whose message lists all job ids
