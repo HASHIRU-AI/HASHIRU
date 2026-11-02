@@ -5,19 +5,17 @@ Language-model agents can now hold money and hand it to the agents they hire; un
 best split that money could buy, how well they spend it is a matter of belief. \sys{} v2 makes agents allocate, with
 reserved pools in dollars and memory, refunds on firing, and make or buy over open protocols, and records every
 allocation. \bench{} makes the optimum known and holds itself to measuring allocation before any allocator runs. On
-it, agents that hold the money spent it worse than a knapsack solver and than the same model
-splitting the money up front, because they reserved too little, misjudged difficulty and summarized the work they
-delegated.
+it, agents that hold the money first spent it worse than every rule we compared them with, and the traces showed
+why; fixing the money mechanics closed half of the gap, and the half that remains is the agents' own judgment.
 
-\textbf{Roadmap.} The failures point at changes to \sys{}. A reservation should cover what a call can cost (an
-estimate from the input's length and a cap on output tokens) rather than act as a ceiling checked before the call.
-A hirer should be able to hand a job to a hire by reference, so that long inputs reach the hire whole and the CEO does
-not reread them on every turn. And the turn limit should scale with the work a request carries. The next
-measurements are the ones these runs left out: a recalibration with harder top levels and hidden bins that change
-success rates (checks V1, V4 and V5); local models, and with them memory as a
-second currency, on hardware that runs them at speed; a small cloud tier; more calibration attempts per job, so that
-replay carries the models' own variance; outside agents whose reliability is unknown; and the cost in time of the
-protocol boundaries (an A2A hop, a gateway MCP call, a hired hub against an in-process manager).
+\textbf{Roadmap.} The remaining gap points at the agents rather than the mechanics. The CEO never used \texttt{attach},
+so handing work over whole should not depend on the agent remembering to: a hirer could pass a job by reference by
+default. The CEO spends over half its budget rereading the request on every turn; keeping long inputs out of its
+context, or caching them, would leave that money for the work. Declared difficulty barely tracks real difficulty, so
+the router could learn from outcomes instead of trusting the declaration. The next measurements are the ones these runs
+left out: a recalibration with harder top levels and hidden bins that change success rates (checks V1, V4 and V5),
+more projects and seeds, local models (and with them memory as a second currency), a small cloud tier, outside agents
+whose reliability is unknown, and the cost in time of the protocol boundaries.
 
 \textbf{Availability.} \sys{} v2 and \bench{} are source-available under the PolyForm Noncommercial License 1.0.0 at
 \url{https://github.com/HASHIRU-AI/HASHIRU}, with the outcome table, every run's results and traces, and the

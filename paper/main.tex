@@ -10,7 +10,7 @@
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{float}
-\usepackage[section]{placeins}  % floats stay within their section
+\usepackage{placeins}  % \FloatBarrier where a float must not drift into the next section
 \usepackage{flafter}  % and never appear before the text that introduces them
 \usepackage{caption}
 \usepackage[numbers,sort&compress]{natbib}
@@ -119,7 +119,7 @@
   {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
   {\small\bfseries\color{muted}THE FINDINGS}\\[2pt]
   {\bfseries Agents against optimizers}\\[2pt]
-  {\small Agents spent worse than every rule, and we show where the money went.}
+  {\small Agents first spent worse than every rule; fixing what the measurement found closed half the gap.}
 \end{minipage}
 
 \vfill
@@ -147,15 +147,14 @@ do not evaluate the split. This whitepaper presents two artifacts and the first 
 \end{keybox}
 
 \begin{keybox}{What we found}
-On \bench{}'s first calibration, \sys{}'s agents scored 0.37 of the value at equal budgets, against 0.74 for the same
-model splitting the money up front, 0.79 for a knapsack solver and 0.86 for the best possible split.
+As first measured, \sys{}'s agents scored 0.37 of the value at equal budgets, against 0.74 for the same model splitting
+the money up front and 0.79 for a knapsack solver. The traces showed why:
 \begin{itemize}
-  \item \textbf{They reserved too little:} overruns emptied the CEO's pool in three of six projects.
-  \item \textbf{They misjudged difficulty:} declared and real difficulty correlate at 0.07.
-  \item \textbf{They summarized jobs} for their hires instead of forwarding them.
+  \item \textbf{Reservations did not bound spending:} overruns of up to 372 times emptied the CEO's pool.
+  \item \textbf{Declared difficulty did not track real difficulty,} and jobs reached hires as summaries.
 \end{itemize}
-These are minimal runs (\$3.96, six live projects) on a calibration where hidden difficulty is worth under a point:
-they show where agent allocation breaks, not how large the gap is in general.
+Fixing the money mechanics raised the score to 0.57 (no overruns, no run lost): level with the up-front split, still
+below the knapsack. The agents' own judgment is what remains. Minimal runs: \$4.50, six live projects.
 \end{keybox}
 
 {\renewcommand{\sectionbreak}{}\renewcommand{\contentsname}{Contents}\tableofcontents}

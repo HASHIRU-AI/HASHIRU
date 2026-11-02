@@ -47,9 +47,10 @@ To address these limitations, we build both and use them to measure agents again
 \end{itemize}
 \end{keybox}
 
-On \bench{}'s first calibration, agents that hold the money spent it worse than every rule we compared them
+As first measured on \bench{}, agents that hold the money spent it worse than every rule we compared them
 with: \sys{}'s agents scored 0.374 of the value at equal budgets, against 0.738 for the same model splitting the money
-up front and 0.785 for a knapsack solver. The traces show why. The agents reserved far less than their calls cost, so
-overruns emptied the CEO's pool in three of six projects; their declared difficulty did not track the jobs' real
-difficulty (rank correlation 0.07); and they summarized jobs for their hires instead of forwarding them. Each failure
-points at a change in the system (\S\ref{sec:conclusion}).
+up front and 0.785 for a knapsack solver. The traces showed why: a reservation did not bound a call's cost, so
+overruns emptied the CEO's pool; declared difficulty did not track real difficulty; and jobs reached hires as
+summaries. Fixing the first of these, and the CEO's habit of spending its last money on rereading rather than
+answering, raised \sys{} to 0.566, level with the up-front split and still below the knapsack
+(\S\ref{sec:evaluation}). The mechanics now hold; the agents' judgment is what remains.

@@ -58,7 +58,7 @@ A live hire holds its whole reservation; a fired one holds only what it (and eve
  Firing therefore returns the unspent part, and two hires running at once cannot spend the same dollars: each
 holds its reservation from the moment it is hired. Table~\ref{tab:pool} works one session through.
 
-\begin{table}[!tb]
+\begin{table}[!htb]
 \centering
 \caption{One session's pools (dollars). The CEO starts with \$0.50.}
 \label{tab:pool}
@@ -78,7 +78,11 @@ w1 spends 0.03, then the CEO fires it & 0.26 & 0.13 \\
 
 The checks are in code, not in prompts: a hire cannot reserve more than its hirer has left, an agent whose pool is
 spent makes no further cloud call, and a remote agent is paid from its hirer's reservation, which must cover its
-declared price before each message. A local hire is refused if its model does not fit in free memory (or in a cap,
+declared price before each message. No call can cost more than its agent has left: its output is capped to what the
+pool pays for after reading the input, and a call that cannot pay for a short answer is refused before it reaches the
+provider, with its estimated cost, so the hirer can reserve more. An agent with one step left (its last allowed turn,
+or a pool that pays for an answer but not for another working turn) answers with what it has rather than ending
+with nothing. A local hire is refused if its model does not fit in free memory (or in a cap,
 \texttt{memory\_mb}). Separately, \texttt{max\_usd} caps real spend for the whole process. Because every reservation,
 call and fire is in the trace, the ledger can be rebuilt from the trace alone, so budget rules can be checked after the
 fact.
@@ -99,7 +103,8 @@ card, prices it through a small A2A extension (a card declares a price per messa
 the request cost), charges the larger of the declared price and the reported cost to the hire's pool, and pins the
 agent to its configured URL. Since a \sys{} hub is itself an A2A agent, one hub can hire another: a whole team, with
 its own CEO and pools, appears to the hirer as one priced worker. This turns hiring into make or buy: an agent can make
-an answer with a model it pays per token, or buy it from an outside agent at a price.
+an answer with a model it pays per token, or buy it from an outside agent at a price. Either way, a hirer can attach
+sections of the user's request to its message verbatim, so a long input reaches the hire whole.
 
 \subsection{Quotes, authority and sensitivity}
 Three further mechanisms read naturally in economic terms. \emph{Plan mode is a quote:} the CEO may only read and
@@ -112,8 +117,9 @@ cloud or remote model as it is; it is masked with placeholders on the way out an
 recognizers~\cite{presidio2026presidio} and a local model find the values), or refused.
 
 \subsection{Implementation}
-\sys{} v2 is 6,323 lines of Python 3.13 with exact pins for its protocol and model libraries, and 446 tests that run
+\sys{} v2 is 6,429 lines of Python 3.13 with exact pins for its protocol and model libraries, and 455 tests that run
 without API keys or Ollama. The two changes \bench{} needed (a switch that takes the web tools away, so that no answer
-can be looked up, and the memory cap) were added test-first. Running \bench{}'s first real calls found one defect:
-a reasoning model (\texttt{gpt-6-luna}) rejects temperature 0, so \sys{} now lets LiteLLM drop that parameter for such
-models only.
+can be looked up, and the memory cap) were added test-first. Running \bench{} found four defects in \sys{}, each fixed
+test-first: a reasoning model (\texttt{gpt-6-luna}) rejects temperature 0; a reservation did not bound a call's cost;
+a hirer could not hand over a long input except by retyping it; and an agent could spend its last money on rereading
+rather than answering (\S\ref{sec:evaluation}).

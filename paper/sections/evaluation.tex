@@ -3,7 +3,8 @@
 
 We ask three questions. \textbf{RQ1:} given money, how do language-model agents spend it? \textbf{RQ2:} at an equal
 budget, how does agent allocation compare with an optimizer and with an up-front split? \textbf{RQ3:} when outside
-agents sell answers, do agents buy, and does buying pay?
+agents sell answers, do agents buy, and does buying pay? Because the first measurement exposed failures in \sys{}
+itself, we fixed them and measured again; we report both.
 
 \subsection{Setup}
 \paragraph{Models and prices} The CEO is \texttt{gpt-6-luna} (\$0.10 / \$0.50 per million input / output tokens). The
@@ -19,8 +20,8 @@ where the tiers separate.
 
 \paragraph{Runs} Ten projects at $\rho = 0.5$ and $\tau = 0.5$ (mean budget \$0.056). The solver allocators and fixed
 policies are replayed on the outcome table. \sys{} and the LLM split run live on the first six projects (mean budget
-\$0.043), one seed each; the LLM split's plan is made live and carried out by replay. All the money spent, calibration
-included, came to \$3.96.
+\$0.043): the LLM split and the first \sys{} run once each, the fixed \sys{} twice; the LLM split's plan is made live
+and carried out by replay. All the money spent, calibration and every live run included, came to \$4.50.
 
 \begin{table}[!htb]
 \centering
@@ -50,17 +51,26 @@ at $\rho = 0$, far under the 8 we asked for. The last one is decisive for readin
 allocator can gain more than a point by adapting during the task, so the comparison below measures how well each
 allocator uses what it can see, and what its own thinking costs.
 
-\textbf{Agents that hold the money spent it worse than every rule we compared them with.} On the six live projects
-(Table~\ref{tab:main}), \sys{}'s agents scored 0.374 of the value, against 0.738 for the same model splitting the
-money up front, 0.785 for the knapsack and 0.860 for oracle-full. The gap to the up-front LLM split is $-0.364$
-(95\% interval $[-0.608, -0.112]$ over projects), and to the knapsack $-0.412$ ($[-0.674, -0.132]$). Across the two
-crossed factors, allocating during the task did not help either kind of allocator, as the value of information
-predicts: the cascade scored 0.06 below the knapsack, and \sys{} 0.36 below the LLM split.
+\textbf{As first measured, agents that hold the money spent it worse than every rule we compared them with.} On the
+six live projects (Table~\ref{tab:main}), \sys{}'s agents scored 0.374 of the value, against 0.738 for the same model
+splitting the money up front, 0.785 for the knapsack and 0.860 for oracle-full: $-0.364$ against the LLM split (95\%
+interval $[-0.608, -0.112]$ over projects) and $-0.412$ against the knapsack ($[-0.674, -0.132]$). The traces showed
+why, in three ways:
+\begin{itemize}
+  \item \emph{Reservations did not bound spending.} The CEO's 26 hires reserved \$0.043 in all (median \$0.0005) and
+  spent \$0.284; nine spent past their reservation, the worst by a factor of 372, because a reservation was checked
+  before a call and the call's cost charged after it. In three of the six projects the overruns emptied the CEO's pool
+  before it could pay for its answer.
+  \item \emph{Declared difficulty did not track real difficulty.} Over 20 hires, its rank correlation with the jobs'
+  hidden bins was 0.07.
+  \item \emph{Jobs were summarized, not handed over.} The CEO never forwarded a job's text verbatim, and long documents
+  never reached a hire at all.
+\end{itemize}
 
 \begin{table}[!htb]
 \centering
 \caption{Allocators on the six live projects ($\rho = 0.5$, $\tau = 0.5$, mean budget \$0.043). Replayed allocators
-are averaged over three seeds; live ones ran once. Efficiency places a score between every job on Luna (0) and
+are averaged over three seeds, live ones over their runs. Efficiency places a score between every job on Luna (0) and
 oracle-full (1); a negative value is below Luna alone.}
 \label{tab:main}
 \small
@@ -74,30 +84,64 @@ Equal split & 0.748 & 0.005 & 0 & 0.08 \\
 Every job on \texttt{gpt-6-luna} & 0.738 & 0.009 & 0 & 0.00 \\
 LLM split (LLM, up front) & 0.738 & 0.022 & 0.006 & 0.00 \\
 Cascade (solver, during) & 0.726 & 0.054 & 0 & $-0.10$ \\
-Random & 0.624 & 0.061 & 0 & $-0.94$ \\
+\textbf{\sys{} after the fixes} (LLM, during) & \textbf{0.566} & 0.030 & 0.024 & $-1.41$ \\
 Hybrid by level & 0.536 & 0.085 & 0 & $-1.66$ \\
 Every job on \texttt{muse-spark-1.3} & 0.479 & 0.081 & 0 & $-2.12$ \\
-\sys{} (LLM, during) & 0.374 & 0.065 & 0.018 & $-2.99$ \\
+\sys{} as first measured (LLM, during) & 0.374 & 0.065 & 0.018 & $-2.99$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{The agents reserved too little, and the overruns emptied the CEO's pool.} \sys{}'s CEO made 26 hires that
-reserved \$0.043 in all (median \$0.0005 each) and spent \$0.284. Ten spent past their reservation, the worst by a factor
-of 372: a reservation is checked before a call, and a reasoning call over a long document costs what it costs. In
-three of the six projects the overruns came back to the CEO's pool and left it unable to pay for its answer (``failed:
-ceo's pool is spent''), which accounts for most of the gap. Five hires of an outside agent were refused because the
-reservation did not cover its declared \$0.001 price. The CEO's own calls took 54\% of its budget on average, since it
-reads every job, long documents included, on every turn.
+\textbf{Fixing what the measurement found closed half of the gap, and no more.} We made three changes to \sys{}, each
+aimed at a failure the traces showed, and none specific to \bench{}:
+\begin{enumerate}
+  \item \emph{A call cannot cost more than its pool.} Under budget enforcement a cloud call's output is capped to what
+  its agent has left after reading the input, and a call that cannot pay for a short answer is refused before it
+  reaches the provider, with its estimated cost, so the hirer can reserve more.
+  \item \emph{Inputs can be handed over whole.} \texttt{ask\_agent} can attach sections of the user's request to a
+  message verbatim, and the agents' rules say so.
+  \item \emph{An agent with one step left answers.} With the first two changes alone, the CEO no longer went bankrupt
+  through its hires but through its own turns: it rereads every job, long documents included, on every turn, and three
+  of six runs ended because its pool could not pay for its answer. An agent at its last allowed turn, or whose pool pays
+  for an answer but not for another working turn and the answer after it, now answers with what it has.
+\end{enumerate}
+Table~\ref{tab:beforeafter} shows the three stages. After all three changes, no hire spent past its reservation and no
+run ended for a spent pool (0 of 12), and the score rose from 0.374 to 0.566 ($+0.192$, 95\% interval
+$[-0.162, +0.566]$, so six projects cannot rule out chance). The fixed agents are level with the same model splitting
+the money up front and with Luna alone ($-0.172$, $[-0.408, +0.043]$), and still below the knapsack ($-0.219$,
+$[-0.428, -0.014]$) and the cascade ($-0.160$, $[-0.322, -0.038]$).
 
-\textbf{The agents' declared difficulty did not track the jobs' real difficulty.} The CEO declared a difficulty for 20
-jobs; its rank correlation with the jobs' hidden bins is 0.07. It handed 20 of 48 jobs to hires (Luna 11 times, Spark
-8, the grid solver twice) and answered the rest itself, escalating once. It never forwarded a job's text verbatim
-(prompt fidelity 0): it summarized each job for its hire, and for long documents it could not pass the records on at
-all. In the first attempt, with the 12 turns \sys{} allows a chat request, the CEO checked its pool before each hire,
-hired one agent per turn, and ran out of turns before asking any hire in three of five projects.
+\begin{table}[!htb]
+\centering
+\caption{\sys{} before and after the three changes, on the same six projects.}
+\label{tab:beforeafter}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\tablehead & As first measured & Changes 1 and 2 & All three changes \\
+\midrule
+Runs & 6 & 6 & 12 \\
+Mean score & 0.374 & 0.278 & \textbf{0.566} \\
+Hires that spent past their reservation & 9 of 26 & 0 of 25 & 0 of 48 \\
+Largest overrun (spent / reserved) & 372$\times$ & 1.0$\times$ & 1.0$\times$ \\
+Runs that ended for a spent pool & 3 & 3 & 0 \\
+Calls refused with a quote & 0 & 19 & 25 \\
+Spent per project (budget \$0.043) & \$0.065 & \$0.029 & \$0.030 \\
+Declared against hidden difficulty ($\rho_s$) & 0.07 & 0.05 & 0.16 \\
+Jobs whose text reached a hire verbatim & 0\% & 6\% & 19\% \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\textbf{Buying responds to price; the agents rarely bought.} Oracle-full buys 26 of 40 arithmetic and grid jobs from
+\textbf{What the changes did not fix is the agents' own judgment.} The CEO never used \texttt{attach} (0 of 12 runs),
+so most jobs still reached their hires as summaries. Its own calls took 55\% of its budget. It handed 28 of 96 jobs to
+hires and answered the rest itself, and its declared difficulty still tracked real difficulty only weakly (0.16 over 30
+hires). The money mechanics now hold; the gap that remains is how the agent decides.
+
+\textbf{Buying responds to price; the agents bought sometimes.} Oracle-full buys 26 of 40 arithmetic and grid jobs from
 the outside agents at a quarter of $c_\mathrm{ref}$ (\$0.00006 a message), 15 at $c_\mathrm{ref}$, 6 at four times and
-2 at sixteen times. At $c_\mathrm{ref}$, \sys{}'s agents bought two answers from \texttt{csp}, and the LLM split
-planned purchases from \texttt{csp} in four of six projects and from \texttt{calc} in one.
+2 at sixteen times. At $c_\mathrm{ref}$, the fixed \sys{} bought eight answers from \texttt{csp} and one from
+\texttt{calc} over twelve runs (two in the first run), and the LLM split planned purchases from \texttt{csp} in four of
+six projects and from \texttt{calc} in one.
+
+\FloatBarrier  % results tables stay before Limitations
