@@ -69,6 +69,45 @@ def test_local_calls_cost_nothing_and_use_ollama(monkeypatch):
     assert seen[0]["api_base"] == "http://ollama" and seen[0]["temperature"] == 0 and seen[0]["num_retries"] == 2
 
 
+def rate_limited(monkeypatch, failures: int, cost: float = 0.01) -> tuple[list[dict], list[float]]:
+    """acompletion refuses the first `failures` calls with a 429; asyncio.sleep records its waits."""
+    seen: list[dict] = []
+    waits: list[float] = []
+
+    async def acompletion(**kwargs):
+        seen.append(kwargs)
+        if len(seen) <= failures:
+            raise llm.litellm.RateLimitError("Rate limit reached on tokens per min (TPM)", "openai", "gpt-6-luna")
+        return fake_response("hello")
+
+    async def sleep(seconds):
+        waits.append(seconds)
+    monkeypatch.setattr(llm.litellm, "acompletion", acompletion)
+    monkeypatch.setattr(llm.litellm, "completion_cost", lambda completion_response: cost)
+    monkeypatch.setattr(llm.asyncio, "sleep", sleep)
+    return seen, waits
+
+
+def test_a_rate_limited_call_waits_and_is_sent_again(monkeypatch):
+    # a provider's per-minute limit is no fault of the agent: the call waits for the window to pass, and is charged
+    # once, for the attempt that ran (a refused attempt is not billed)
+    seen, waits = rate_limited(monkeypatch, failures=3)
+    model = llm.LLM("http://ollama", llm.Wallet(2.0))
+    msg, cost = asyncio.run(model.chat("gpt-6-luna", []))
+    assert msg.content == "hello" and cost == 0.01 and model.wallet.spent == 0.01
+    assert len(seen) == 4 and len(waits) == 3 and waits == sorted(waits) and waits[0] < waits[-1]
+
+
+def test_a_call_still_rate_limited_after_every_wait_raises(monkeypatch):
+    seen, waits = rate_limited(monkeypatch, failures=100)
+    model = llm.LLM("http://ollama", llm.Wallet(2.0))
+    with pytest.raises(llm.litellm.RateLimitError):
+        asyncio.run(model.chat("gpt-6-luna", []))
+    assert len(waits) == len(llm.RATE_LIMIT_WAITS) and len(seen) == len(waits) + 1
+    assert model.wallet.spent == 0.0
+    assert sum(llm.RATE_LIMIT_WAITS) >= 60  # long enough for a per-minute window to pass
+
+
 def test_wallet_cap_stops_all_further_calls(monkeypatch):
     seen = fake_litellm(monkeypatch, cost=1.5)
     model = llm.LLM("http://ollama", llm.Wallet(2.0))
@@ -135,3 +174,12 @@ def test_affordable_output_is_what_is_left_after_reading_the_input():
     assert abs(cost_in - expected_in) < 1e-12 and tokens == int((0.01 - expected_in) / 1e-5)
     assert llm.affordable(model, messages, None, 0.0)[0] == 0
     assert llm.affordable("ollama_chat/anything", messages, None, 0.01)[0] is None  # local: no dollar cap
+
+
+def test_affordable_output_never_exceeds_what_the_model_can_write():
+    model = "hashiru_test/short"
+    llm.litellm.register_model({model: {"litellm_provider": "openai", "mode": "chat", "input_cost_per_token": 1e-7,
+                                        "output_cost_per_token": 4e-7, "max_output_tokens": 128000}})
+    messages = [{"role": "user", "content": "hi"}]
+    assert llm.affordable(model, messages, None, 5.0)[0] == 128000  # $5 pays for 12.5M tokens; the model writes 128K
+    assert llm.affordable(model, messages, None, 0.001)[0] < 128000  # a small pool still binds first

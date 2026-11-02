@@ -17,6 +17,7 @@ from hashiru.llm import is_local
 from hashiru.memory import MAX_KEY_CHARS
 from hashiru.peers import PEER_PREFIX, fetch_card, pin, price_of
 from hashiru.privacy import MISSED, holds_private, may_hold, refuse
+from hashiru.router import kind_key
 from hashiru.session import USER, Session
 from hashiru.trace import OBFUSCATED, PRIVATE
 from hashiru.web import fetch_page, search_arxiv
@@ -54,7 +55,7 @@ class Tools:
                 f"the job, your pool and the data involved; or name a model: {models} ({PEER_PREFIX}... models are "
                 "remote agents, hired as workers). Reserves budget_usd from your pool (0 means local models only). "
                 "For a manager, tools optionally limits which of your tools it may use (by name, including "
-                "ask_agent)."))(self.hire_agent)
+                "ask_agent)." + self.kinds_note()))(self.hire_agent)
             mcp.tool()(self.fire_agent)
         web = (self.get_website, self.arxiv_search) if self.hub.settings.web_tools else ()
         for reader in (self.check_usage, *web, self.read_file):
@@ -76,9 +77,17 @@ class Tools:
             raise PermissionError(f"{rec.name} has been fired")
         return found[0], rec
 
+    def kinds_note(self) -> str:
+        """The hire tool's note on kinds of job with measured success rates, when there are any."""
+        if not (kinds := [k for k, _ in self.hub.settings.success_rates]):  # read before the router exists
+            return ""
+        return (f" Or give its kind, one of: {', '.join(kinds)}. The hub then hires the cheapest model measured to "
+                f"succeed on that kind at least {self.hub.settings.route_min_rate:.0%} of the time.")
+
     async def hire_agent(self, ctx: Context, name: str, role: str, model: str = "", prompt: str = "",
                          budget_usd: float = 0.0, tools: list[str] | None = None,
-                         difficulty: Literal["easy", "medium", "hard"] | None = None) -> dict[str, Any]:
+                         difficulty: Literal["easy", "medium", "hard"] | None = None,
+                         kind: str = "") -> dict[str, Any]:
         session, boss = self.who(ctx)
         settings, depth = self.hub.settings, boss.depth + 1
         if boss.role != "manager":
@@ -100,17 +109,24 @@ class Tools:
             return {"error": f"agents at depth {boss.depth} cannot hire (max depth {settings.max_depth})"}
         if not NAME.fullmatch(name) or name in RESERVED or session.ledger.get(name) is not None:
             return {"error": f"name {name!r} must be new, not {sorted(RESERVED)}, and use only a-z, 0-9 and _"}
+        measured = kind_key(kind) in {kind_key(k) for k in self.hub.router.kinds()} if kind else False
         if model:
             if model not in self.hub.hireable():
                 return {"error": f"unknown or disabled model {model!r}; choose from {self.hub.hireable()}"}
             candidates = [model]
+        elif measured:
+            candidates = self.hub.router.by_rates(session, boss, kind, budget_usd)
+            if not candidates:
+                return {"error": f"no model you may use has been measured on {kind!r}: check the modes, and give "
+                                 "cloud models a budget_usd above 0"}
         elif difficulty in DIFFICULTIES:
             candidates = await self.hub.router.candidates(session, boss, difficulty, budget_usd)
             if not candidates:
                 return {"error": f"no model you may use fits a {difficulty} job: check the modes, and give cloud "
                                  "models a budget_usd above 0"}
         else:
-            return {"error": "say how hard the job is with difficulty (easy, medium or hard), or name a model"}
+            kinds = f"; or give its kind, one of {self.hub.router.kinds()}" if self.hub.router.kinds() else ""
+            return {"error": f"say how hard the job is with difficulty (easy, medium or hard), or name a model{kinds}"}
         scope = tuple(sorted(set(tools))) if tools is not None else None
         failures = []
         for candidate in candidates:  # a model that does not fit or load gives way to the next one
@@ -120,8 +136,8 @@ class Tools:
             if "hired" in out:
                 if not model:
                     rec = session.ledger.agents[name]
-                    rec.route, rec.difficulty = tuple(candidates), str(difficulty)
-                    out["difficulty"] = difficulty
+                    rec.route, rec.difficulty = tuple(candidates), str(difficulty or "")
+                    out |= {"kind": kind} if measured else {"difficulty": difficulty}
                 return out | {"model": candidate}
             if len(candidates) == 1:
                 return out
