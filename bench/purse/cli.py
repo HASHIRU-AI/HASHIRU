@@ -17,7 +17,7 @@ import json
 import platform
 import subprocess
 import sys
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +25,9 @@ from typing import Any
 
 import httpx
 
+from hashiru.config import Settings
+from hashiru.hub import Hub
+from hashiru.llm import LLM, Wallet, WalletExceeded
 from purse.checks import run_checks
 from purse.jobs import LEVELS, Job
 from purse.market import CEO_MODEL, MARKET, Market, Option, lookup, priced, serves
@@ -35,7 +38,7 @@ from purse.runner import LIVE, RunConfig, is_live, live_extras, run
 from purse.solvers import RunResult, run_upfront
 from purse.table import OutcomeTable, Record
 
-__all__ = ["calibrate", "environment", "load_pool", "main", "planned"]
+__all__ = ["HubFactory", "calibrate", "environment", "load_pool", "main", "planned", "wallet_hit"]
 
 ROOT = Path(__file__).resolve().parents[2]
 RESERVE_USD = 0.25  # what each calibration hire reserves (firing refunds the rest)
@@ -85,27 +88,57 @@ def environment(argv: Sequence[str]) -> dict[str, str]:
             else "bundled", "argv": " ".join(argv), "at": datetime.now(UTC).isoformat()}
 
 
+def _real_hub(settings: Settings, wallet: Wallet) -> Hub:
+    return Hub(settings, llm=LLM(settings.ollama_url, wallet, settings.ollama_num_ctx), wallet=wallet)
+
+
+class HubFactory:
+    """Builds every hub of one command around one wallet, so --max-usd caps the whole batch, not each project."""
+
+    def __init__(self, max_usd: float, make: Callable[[Settings, Wallet], Hub] | None = None) -> None:
+        self.wallet = Wallet(max_usd)
+        self._make = make or _real_hub
+
+    def __call__(self, settings: Settings) -> Hub:
+        return self._make(settings, self.wallet)
+
+
+def wallet_hit(exc: BaseException) -> bool:
+    """Whether `exc` is, or wraps, the hub's WalletExceeded (task groups wrap what their tasks raise)."""
+    if isinstance(exc, WalletExceeded):
+        return True
+    return isinstance(exc, BaseExceptionGroup) and any(wallet_hit(e) for e in exc.exceptions)
+
+
+def _stopped(exc: BaseException, factory: HubFactory, where: str) -> int:
+    if not wallet_hit(exc):
+        raise exc
+    print(f"stopped: --max-usd reached (${factory.wallet.spent:.4f} spent); {where} keeps everything that finished")
+    return 3
+
+
 def _peers(values: Sequence[str]) -> dict[str, str]:
     return {f"a2a/{k.removeprefix('a2a/')}": v for k, _, v in (x.partition("=") for x in values)}
 
 
 @contextlib.asynccontextmanager
-async def _hub_market(p: Project, options: Sequence[Option], out: Path, max_usd: float, peers: dict[str, str],
-                      reserve: float | None) -> AsyncIterator[Market]:
-    from hashiru.hub import Hub  # the live path only: replayed commands never start a hub
+async def _hub_market(p: Project, options: Sequence[Option], out: Path, peers: dict[str, str],
+                      reserve: float | None, factory: HubFactory) -> AsyncIterator[Market]:
     from purse.hashiru_run import HubMarket, bench_settings
-    hub = Hub(bench_settings(p, options, out_dir=out, max_usd=max_usd, max_escalations=0, peer_urls=peers,
-                             turn_reserve_usd=0.0))
+    hub = factory(bench_settings(p, options, out_dir=out, max_usd=factory.wallet.max_usd, max_escalations=0,
+                                 peer_urls=peers, turn_reserve_usd=0.0))
     async with hub.serving(), HubMarket(hub, hub.new_session("purse"), reserve) as market:
         yield market
 
 
 async def _live(cfg: RunConfig, p: Project, text: str, options: Sequence[Option], seed: int,
-                table: OutcomeTable) -> tuple[dict[str, Any], RunResult]:
-    from hashiru.hub import Hub
+                table: OutcomeTable, factory: HubFactory) -> tuple[dict[str, Any], RunResult]:
+    """One live run of HASHIRU (or of the LLM split). Past --max-usd it raises WalletExceeded, which stops the
+    batch: every call would be refused, and the results would record failures that are not the allocator's."""
     from purse.hashiru_run import bench_settings, propose_split, run_hashiru, variant_text
-    hub = Hub(bench_settings(p, options, out_dir=cfg.out, max_usd=cfg.max_usd, peer_urls=dict(cfg.peers),
-                             ceo_model=cfg.ceo))
+    factory.wallet.check()
+    hub = factory(bench_settings(p, options, out_dir=cfg.out, max_usd=factory.wallet.max_usd,
+                                 peer_urls=dict(cfg.peers), ceo_model=cfg.ceo))
     async with hub.serving():
         if cfg.allocator == "llm-split":
             alloc, ceo = await propose_split(hub, p, variant_text(text, "split"))
@@ -175,6 +208,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "calibrate":
         levels = {int(x) for x in args.levels.split(",")}
         jobs = [j for j in pool if j.level in levels and int(j.uid.rsplit("-", 1)[1]) < args.per_cell]
+        missing = [o for o in args.options.split(",") if lookup(MARKET, o).kind == "agent" and o not in peers]
+        if missing:  # without its agent running, every attempt would be recorded as a failure
+            print("outside agents need a running peer: " + " ".join(f"--peer {o.removeprefix('a2a/')}=URL"
+                                                                     for o in missing))
+            return 2
         todo = planned(jobs, args.options.split(","), args.repeats, table, MARKET)
         if not args.spend:
             print(f"calibrate would make {len(todo)} calls to {args.options} (pass --spend to make them)")
@@ -182,10 +220,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         calib = Project("calibration", (), 1.0, budget_usd=args.max_usd + 1, memory_mb=args.memory_mb,
                         deadline_s=600)
 
+        factory = HubFactory(args.max_usd)
+
         async def go() -> int:
-            async with _hub_market(calib, MARKET, args.out, args.max_usd, peers, RESERVE_USD) as market:
+            async with _hub_market(calib, MARKET, args.out, peers, RESERVE_USD, factory) as market:
                 return await calibrate(todo, table, market)
-        print(f"recorded {asyncio.run(go())} attempts in {args.table}")
+        try:
+            print(f"recorded {asyncio.run(go())} attempts in {args.table}")
+        except BaseException as exc:
+            return _stopped(exc, factory, str(args.table))
         return 0
     price = args.price if args.price is not None else sweep_prices(table, pool, MARKET)[1]
     options = priced(MARKET, price)
@@ -199,12 +242,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     cfg.out.mkdir(parents=True, exist_ok=True)
     (cfg.out / "run.json").write_text(json.dumps(environment(argv) | {"price": price}, indent=2))
 
+    factory = HubFactory(cfg.max_usd)  # one cap for the whole batch
+
     def live_market(p: Project) -> Any:
-        return _hub_market(p, options, cfg.out, cfg.max_usd, peers, None)
+        return _hub_market(p, options, cfg.out, peers, None, factory)
 
     async def live(c: RunConfig, p: Project, text: str, opts: Sequence[Option], seed: int) -> Any:
-        return await _live(c, p, text, opts, seed, table)
-    lines = asyncio.run(run(cfg, pool, table, options, live if cfg.allocator in LIVE else None, live_market))
+        return await _live(c, p, text, opts, seed, table, factory)
+    try:
+        lines = asyncio.run(run(cfg, pool, table, options, live if cfg.allocator in LIVE else None, live_market))
+    except BaseException as exc:
+        return _stopped(exc, factory, str(cfg.out / "results.jsonl"))
     mean = sum(x["score"] for x in lines) / len(lines) if lines else 0.0
     print(f"{args.allocator}: {len(lines)} runs, mean score {mean:.3f}, results in {cfg.out / 'results.jsonl'}")
     return 0

@@ -78,6 +78,7 @@ class HubMarket:
         await self._stack.aclose()
 
     async def attempt(self, job: Job, option: str) -> Outcome:
+        self.hub.wallet.check()  # past max_usd every call would be refused: stop rather than record failures
         self._n += 1
         name, start = f"w{self._n}", time.monotonic()
         left = max(0.0, self.session.ledger.left()["ceo"] - self.hub.settings.turn_reserve_usd)

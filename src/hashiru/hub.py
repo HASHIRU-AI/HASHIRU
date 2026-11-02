@@ -49,7 +49,9 @@ LABEL = re.compile(r"[a-z0-9_]{1,32}")
 
 
 class Hub:
-    def __init__(self, settings: Settings, llm: LLM | None = None, ollama: Ollama | None = None) -> None:
+    def __init__(self, settings: Settings, llm: LLM | None = None, ollama: Ollama | None = None,
+                 wallet: Wallet | None = None) -> None:
+        """`wallet` lets several hubs share one cap on real spend (a benchmark's batch); by default each has its own."""
         if settings.models == AUTO:
             raise ValueError("models=auto must be settled first (hashiru.recon.settle)")
         use_cached_map(settings.model_catalog, [*settings.models, settings.ceo_model])  # a refresh's newer prices
@@ -57,7 +59,7 @@ class Hub:
             register_prices(Path(settings.prices_file))
         check_priced([*settings.models, settings.ceo_model])
         self.settings = settings
-        self.wallet = Wallet(settings.max_usd)
+        self.wallet = wallet or Wallet(settings.max_usd)
         self.llm = llm or LLM(settings.ollama_url, self.wallet, settings.ollama_num_ctx)
         known = (*settings.models, settings.ceo_model, settings.private_ceo_model)  # Ollama sizes its local ones
         self.ollama = ollama or Ollama(settings.ollama_url, known, settings.ollama_num_ctx)
