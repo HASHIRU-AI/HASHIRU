@@ -59,6 +59,7 @@ def test_bench_settings_turn_off_web_and_approvals(tmp_path, fake_family):
     assert [(a.name, a.price_usd_per_message) for a in s.a2a_peers] == [("calc", 0.001)]
     assert s.mcp_servers[0].name == "purse" and s.mcp_servers[0].args == ("-m", "purse.peers.grid_check")
     assert str(tmp_path) in s.trace_dir and s.task_timeout == p.deadline_s
+    assert s.max_turns == 40  # a project needs a hire, an ask and a fire per job; chat's 12 ran out
 
 
 def test_hub_market_hires_asks_fires_and_reports_cost(tmp_path, fake_family):

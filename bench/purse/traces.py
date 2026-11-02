@@ -95,7 +95,7 @@ def live_allocation(events: Sequence[Event], p: Project) -> dict[str, list[str]]
     out: dict[str, list[str]] = {}
     for job_id, names in jobs_of(events, p).items():
         for name in names:
-            if name in made:
+            if name in made and made[name].model:  # a hire that never ran a model tried nothing
                 out.setdefault(job_id, []).append(made[name].model)
                 out[job_id] += [to for agent, _, to in moves if agent == name]
     return out

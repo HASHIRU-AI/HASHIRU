@@ -105,3 +105,12 @@ def test_spearman_and_bootstrap_on_known_values():
         ("easy", "low"): 1, ("hard", "low"): 1}
     attempts = [Attempt("j1", "a2a/calc", None), Attempt("j2", CLOUD, None)]  # type: ignore[arg-type]
     assert metrics.buy_share(attempts, (*TEST_MARKET, Option("a2a/calc", "agent", 0.01))) == 0.5
+
+
+def test_a_hire_that_never_ran_a_model_tried_nothing():
+    p = Project("p", (replace(make_job("arithmetic", 1, "low", seed=1, uid="a"), id="j1"),), 0.5)
+    events = [{"kind": "tool", "agent": "ceo", "name": "hire_agent", "args": {"name": "w1", "difficulty": "easy",
+                                                                             "prompt": "", "budget_usd": 0.1},
+               "result": {"hired": "w1"}},
+              {"kind": "msg", "agent": "ceo", "to": "w1", "text": "please do j1", "reply": False}]
+    assert traces.live_allocation(events, p) == {}
