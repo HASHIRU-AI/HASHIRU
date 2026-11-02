@@ -111,3 +111,27 @@ def test_temperature_zero_is_dropped_only_where_a_model_rejects_it(monkeypatch):
     seen = fake_litellm(monkeypatch)
     asyncio.run(llm.LLM("http://ollama", llm.Wallet(2.0)).chat("gpt-4.1-mini", []))
     assert seen[0]["temperature"] == 0 and seen[0]["drop_params"] is True
+
+
+def test_chat_caps_output_tokens_only_when_asked(monkeypatch):
+    seen = fake_litellm(monkeypatch)
+    model = llm.LLM("http://ollama", llm.Wallet(2.0))
+    token = llm.OUTPUT_CAP.set(300)
+    try:
+        asyncio.run(model.chat("gpt-4.1-mini", []))
+    finally:
+        llm.OUTPUT_CAP.reset(token)
+    asyncio.run(model.chat("gpt-4.1-mini", []))
+    assert seen[0]["max_tokens"] == 300 and "max_tokens" not in seen[1]
+
+
+def test_affordable_output_is_what_is_left_after_reading_the_input():
+    model = "hashiru_test/capped"
+    llm.litellm.register_model({model: {"litellm_provider": "openai", "mode": "chat", "input_cost_per_token": 1e-6,
+                                        "output_cost_per_token": 1e-5}})
+    messages = [{"role": "user", "content": "hello " * 200}]
+    tokens, cost_in = llm.affordable(model, messages, None, 0.01)
+    expected_in = llm.litellm.token_counter(model=model, messages=messages) * 1e-6 * llm.INPUT_MARGIN
+    assert abs(cost_in - expected_in) < 1e-12 and tokens == int((0.01 - expected_in) / 1e-5)
+    assert llm.affordable(model, messages, None, 0.0)[0] == 0
+    assert llm.affordable("ollama_chat/anything", messages, None, 0.01)[0] is None  # local: no dollar cap
