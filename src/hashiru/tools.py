@@ -12,7 +12,7 @@ from mcp.types import ToolAnnotations
 
 from hashiru import approvals
 from hashiru.config import DIFFICULTIES
-from hashiru.ledger import AgentRecord, free_mb
+from hashiru.ledger import AgentRecord
 from hashiru.llm import is_local
 from hashiru.memory import MAX_KEY_CHARS
 from hashiru.peers import PEER_PREFIX, fetch_card, pin, price_of
@@ -244,7 +244,7 @@ class Tools:
         if session.ledger.get(pool) is None:
             return {"error": f"no pool named {pool!r}"}
         return {"pool": pool, "api_usd": round(session.ledger.left()[pool], 6),
-                "free_mb": free_mb(), "model_mb": await self.hub.ollama.sizes()}
+                "free_mb": self.hub.free_memory(), "model_mb": await self.hub.ollama.sizes()}
 
     async def get_website(self, ctx: Context, url: str) -> dict[str, Any]:
         """Fetch a public web page and return its text."""

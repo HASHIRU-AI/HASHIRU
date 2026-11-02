@@ -2,8 +2,9 @@
 import asyncio
 
 import pytest
-from conftest import ctx, make_settings
+from conftest import FakeOllama, ctx, make_settings
 
+import hashiru.hub as hub_module
 from hashiru.hub import Hub
 from hashiru.session import USER
 
@@ -93,3 +94,29 @@ def test_a_busy_port_is_a_clear_error(tmp_path):
                 pass
         with pytest.raises(RuntimeError, match="cannot listen"):
             asyncio.run(go())
+
+
+class SizedOllama(FakeOllama):
+    async def sizes(self) -> dict[str, int]:
+        return {"tiny": 50, "other": 50}  # each loads as 100 MB (FakeOllama.load)
+
+
+def test_memory_cap_refuses_a_second_model_that_would_pass_it(tmp_path, monkeypatch):
+    from test_tools import hire
+    monkeypatch.setattr(hub_module, "free_mb", lambda: 10_000)
+    models = ("gpt-4.1-mini", "ollama_chat/tiny", "ollama_chat/other")
+    hub = Hub(make_settings(tmp_path, models=models, memory_mb=120), ollama=SizedOllama())  # type: ignore[arg-type]
+    session = hub.new_session("t", trace=False)
+    assert "hired" in hire(hub, session, name="w1", model="ollama_chat/tiny", budget_usd=0)
+    assert hub.free_memory() == 20  # 120 MB cap, 100 MB held by tiny
+    refused = hire(hub, session, name="w2", model="ollama_chat/other", budget_usd=0)
+    assert "needs 50 MB" in refused["error"] and "20 MB" in refused["error"]
+    assert "hired" in hire(hub, session, name="w3", model="ollama_chat/tiny", budget_usd=0)  # already loaded
+
+
+def test_no_cap_keeps_measured_memory(tmp_path, monkeypatch):
+    monkeypatch.setattr(hub_module, "free_mb", lambda: 777)
+    hub = Hub(make_settings(tmp_path), ollama=SizedOllama())  # type: ignore[arg-type]
+    assert hub.free_memory() == 777
+    capped = Hub(make_settings(tmp_path, memory_mb=500), ollama=SizedOllama())  # type: ignore[arg-type]
+    assert capped.free_memory() == 500

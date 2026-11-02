@@ -83,6 +83,7 @@ class Settings:
     memory_autoinject: bool = False
     a2a_peers: tuple[A2APeer, ...] = ()
     enforce_budget: bool = True
+    memory_mb: int = 0  # the most memory local hires may hold together (MB); 0: measured free memory only
     turn_reserve_usd: float = 0.01  # a cloud manager keeps this much for its own turns when hiring
     allow_hiring: bool = True
     allow_local_agents: bool = True

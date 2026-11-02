@@ -108,7 +108,8 @@ looked up).
 
 Budgets are enforced in code: a hire cannot reserve more than its hirer has left, a local model must fit in free
 memory, and an agent whose pool is spent stops making cloud calls (`enforce_budget=false` only records
-overspending, for policy experiments). `max_usd` caps real API spend for the whole process. `allow_hiring`,
+overspending, for policy experiments). `memory_mb` caps the memory local hires may hold together (a benchmark sets it, so runs do not depend on what
+else the machine is running). `max_usd` caps real API spend for the whole process. `allow_hiring`,
 `allow_local_agents` and `allow_cloud_agents` are v1's mode switches. Each user request has one deadline
 (`task_timeout`) that every agent it reaches must meet; firing an agent or closing a conversation stops its work.
 
