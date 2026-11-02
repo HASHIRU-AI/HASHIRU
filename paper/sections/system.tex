@@ -1,4 +1,4 @@
-\section{\sys{} v2: An Economy for Agents}
+\section{An Economy for Agents}
 \label{sec:system}
 
 \sys{} v2 rebuilds v1~\cite{pai2025hashiru} on open protocols. A user's request goes to a CEO agent, which may hire
@@ -40,7 +40,7 @@ v1 had one level of hierarchy, a hand-written table of resource units, and no an
 trade (its own stated limitations). v2 lets managers hire with money they were given, prices every cloud call from
 LiteLLM's price map~\cite{berriai2026litellm} (local calls cost no dollars but hold the memory their model really uses,
 measured from Ollama~\cite{ollama2026ollama}), and bounds every call by what its agent holds. Rules that v1 left to prompts (who may
-spend what, where private data may go) are enforced in code: in our experience with an earlier prototype, rules stated
+spend what, where private data may go) are enforced in code, because in our experience with an earlier prototype, rules stated
 only in prompts were broken.
 
 \subsection{Budget safety by construction}
@@ -55,7 +55,7 @@ Each agent $a$ holds a reservation $R_a$ carved from its hirer's pool, and one r
 \end{equation}
 A live hire holds its whole reservation; a fired one holds only what it (and everyone below it) actually spent.
 \end{keybox}
-Firing therefore returns the unspent part, and two hires running at once cannot spend the same dollars: each holds its
+Firing therefore returns the unspent part, and two hires running at once cannot spend the same dollars, since each holds its
 reservation from the moment it is hired. Table~\ref{tab:pool} works one session through.
 
 \begin{table}[!htb]
@@ -77,12 +77,12 @@ w1 spends 0.03, then the CEO fires it & 0.26 & 0.13 \\
 \end{table}
 
 A rule is only as good as its enforcement, and \sys{} enforces this one in code at every call, not in the prompt. Three
-guards keep it true. (1) \emph{Reservations:} a hire cannot reserve more than its hirer has left, a local hire must fit
+guards keep it true. (1) \emph{Reservations.} A hire cannot reserve more than its hirer has left, a local hire must fit
 in free memory (or under a cap, \texttt{memory\_mb}), and a remote agent's declared price must fit in its reservation
-before each message. (2) \emph{Bounded calls:} before a cloud call, the hub prices its input and caps its output to what
+before each message. (2) \emph{Bounded calls.} Before a cloud call, the hub prices its input and caps its output to what
 the agent can still pay for, so the call cannot cost more than the agent holds; a call that cannot pay for a short
 answer is refused before it reaches the provider, and its refusal states the price, so the hirer can reserve more.
-(3) \emph{A closing turn:} an agent with one step left (its last allowed turn, or a pool that pays for an answer but not
+(3) \emph{A closing turn.} An agent with one step left (its last allowed turn, or a pool that pays for an answer but not
 for another working turn and the answer after it) answers with what it has instead of ending with nothing. Together
 they hold each agent to what it holds, within the margin of the hub's token estimate, whatever the agent decides;
 \S\ref{sec:evaluation} shows each one at work. Separately,
@@ -92,35 +92,35 @@ the ledger can be rebuilt from the trace alone.
 \subsection{Hiring by declared difficulty}
 A hiring agent may name a model, or declare how hard a job is (easy, medium or hard) and let the hub choose. The hub
 turns a difficulty into a list of models, best first, and hires the first that the modes, the hirer's pool and the
-data's sensitivity allow: an easy job tries small local models, then cheap cloud models; a hard job the dearest cloud
-models first. A worker that fails or answers empty moves up its list and gets the message again, up to a limit
-(\texttt{max\_escalations}, two by default). Which models exist, and their tiers, come from the machine itself:
-Ollama's pulled models that call tools, and every cloud model in LiteLLM's map whose provider key is set, tiered by
-price or by size. Declared difficulty is the agent's own judgment, so \bench{} measures it against the hidden
+data's sensitivity allow. An easy job tries small local models, then cheap cloud models; a hard job tries the dearest
+cloud models first. A worker that fails or answers empty moves up its list and gets the message again, up to a limit
+(\texttt{max\_escalations}, two by default). Which models exist, and their tiers, come from the machine itself
+(Ollama's pulled models that call tools, and every cloud model in LiteLLM's map whose provider key is set, tiered by
+price or by size). Declared difficulty is the agent's own judgment, so \bench{} measures it against the hidden
 difficulty of each job (\S\ref{sec:evaluation}).
 
 \subsection{Make or buy over open protocols}
 Besides models, a manager may hire a remote A2A agent as a worker (\texttt{a2a/<name>}). The hub reads the agent's
 card, prices it through a small A2A extension (a card declares a price per message or per token; a reply reports what
 the request cost), charges the larger of the declared price and the reported cost to the hire's pool, and pins the
-agent to its configured URL. Since a \sys{} hub is itself an A2A agent, one hub can hire another: a whole team, with
-its own CEO and pools, appears to the hirer as one priced worker. This turns hiring into make or buy: an agent can make
+agent to its configured URL. Since a \sys{} hub is itself an A2A agent, one hub can hire another, and a whole team,
+with its own CEO and pools, appears to the hirer as one priced worker. This turns hiring into make or buy. An agent can make
 an answer with a model it pays per token, or buy it from an outside agent at a price. Either way, a hirer can attach
 sections of the user's request to its message verbatim, so a long input reaches the hire whole.
 
 \subsection{Quotes, authority and sensitivity}
-Three further mechanisms read naturally in economic terms. \emph{Plan mode is a quote:} the CEO may only read and
+Three further mechanisms read naturally in economic terms. \emph{Plan mode is a quote.} The CEO may only read and
 propose; the hub previews each proposed hire as it would be made (the model the router picks, what it reserves, the
 memory it takes) and checks the totals against the pool, and approving the plan approves its hires. An approved plan's
 steps compile to a graph (LangGraph~\cite{langchain2026langgraph}) that hires, runs each step once its inputs exist,
-fires each hire after its last step, and lets the CEO answer once. \emph{Approvals are spending authority:} a hire or a
-turn above a threshold waits for the user. \emph{Sensitivity limits where work may go:} private data never reaches a
+fires each hire after its last step, and lets the CEO answer once. \emph{Approvals are spending authority.} A hire or a
+turn above a threshold waits for the user. \emph{Sensitivity limits where work may go.} Private data never reaches a
 cloud or remote model as it is; it is masked with placeholders on the way out and restored on the way back (Presidio's
 recognizers~\cite{presidio2026presidio} and a local model find the values), or refused.
 
 \subsection{Implementation}
 \sys{} v2 is 6,429 lines of Python 3.13 with exact pins for its protocol and model libraries, and 455 tests that run
-without API keys or Ollama. The guards of \S\ref{sec:pools} grew out of measurement: each was written test-first after a
-benchmark run showed what happens without it (\S\ref{sec:evaluation}). So did three smaller features: \texttt{attach},
+without API keys or Ollama. The guards of \S\ref{sec:pools} grew out of measurement, each written test-first after a
+benchmark run showed what happens without it (\S\ref{sec:evaluation}). So did three smaller features, viz. \texttt{attach},
 which lets a hirer pass sections of the user's request to a hire word for word; a switch that takes the web tools away,
 so that no answer can be looked up during an evaluation; and support for reasoning models that reject temperature 0.

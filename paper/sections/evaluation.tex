@@ -12,7 +12,7 @@ dear tier), and the \texttt{calc} and \texttt{csp} agents. Prices are LiteLLM's 
 also left out, since on the laptop available (Apple M5, 24 GB) a 4B thinking model took six minutes on one arithmetic
 job.
 
-\paragraph{Calibration} 120 jobs (two per family, level and bin), one attempt per job and option: \$0.18 on Luna and
+\paragraph{Calibration} We sent 120 jobs (two per family, level and bin) once to each option, for \$0.18 on Luna and
 \$3.18 on Spark (the outside agents are our own programs and cost nothing real). Table~\ref{tab:calibration} shows
 where the tiers separate.
 
@@ -23,15 +23,15 @@ live run included, came to \$4.50.
 
 \begin{table}[!htb]
 \centering
-\caption{Calibration: jobs answered correctly out of six, by level (1 to 5).}
+\caption{Jobs answered correctly out of six at calibration, by level (1 to 5).}
 \label{tab:calibration}
 \small
 \begin{tabular}{@{}lccc@{}}
 \toprule
 \tablehead Family & \texttt{gpt-6-luna} & \texttt{muse-spark-1.3} & Outside agent \\
 \midrule
-Arithmetic & 6 6 6 6 \textbf{0} & 6 6 6 6 6 & \texttt{calc}: 6 6 6 6 \textbf{0} \\
-Logic grids & 5 6 6 5 4 & 6 6 6 6 6 & \texttt{csp}: 6 6 6 6 6 \\
+Arithmetic & 6 6 6 6 \textbf{0} & 6 6 6 6 6 & 6 6 6 6 \textbf{0} (\texttt{calc}) \\
+Logic grids & 5 6 6 5 4 & 6 6 6 6 6 & 6 6 6 6 6 (\texttt{csp}) \\
 Aggregation & 6 \textbf{4 2 1 0} & 6 6 6 6 \textbf{2} & none \\
 String pipelines & 6 6 4 4 \textbf{2} & 6 6 5 6 6 & none \\
 \bottomrule
@@ -39,12 +39,12 @@ String pipelines & 6 6 4 4 \textbf{2} & 6 6 5 6 6 & none \\
 \end{table}
 
 \subsection{What we found}
-Overall, our experiments show the following results:
+Overall, our experiments show five results.
 
 \textbf{Every run stayed within its budget, and every run answered.} Across twelve live runs, none of the 48 hires
 spent past its reservation, and all twelve returned an answer. Twenty-five times a hire's call was refused before it
 reached the provider because its pool could not pay for it; each refusal quoted the price, and in 19 of the 25 cases
-the hirer later reserved more. Together the runs spent 71\% of their budget: eleven of twelve stayed under it, and the
+the hirer later reserved more. Together the runs spent 71\% of their budget. Eleven of twelve stayed under it, and the
 twelfth went 2\% over, within the margin of the hub's token estimate.
 
 \textbf{The agents got more per dollar than spending on strength.} On the six live projects (Table~\ref{tab:main}),
@@ -84,7 +84,7 @@ Every job on \texttt{muse-spark-1.3} & 0.479 & 0.081 & 1.89 & 0 \\
 
 \textbf{Each guard is necessary.} We ran the same projects with \sys{} as first built, without the call bound and the
 closing turn, and with the call bound alone (Table~\ref{tab:ablation}). Without the bound, a reservation was a ceiling
-checked before a call and the call's cost was charged after it: hires that reserved \$0.0005 spent up to 372 times that,
+checked before a call and the call's cost was charged after it. Hires that reserved \$0.0005 spent up to 372 times that,
 the overruns came back to the CEO's pool, and three of six runs ended with no answer at a spend of 153\% of the budget.
 With the bound alone, no hire overran, but the CEO rereads every job, long documents included, on every turn, and three
 of six runs still ended when it could not pay for its own answer. With the closing turn as well, no run was lost and the
@@ -112,7 +112,7 @@ Calls refused with a quote & 0 & 19 & 25 \\
 
 \textbf{The agents used the market.} Over the twelve runs, \sys{}'s agents bought eight exact answers from the grid
 solver and one from the calculator, escalated ten jobs whose first model failed, and handed 28 of 96 jobs to hires
-while answering the rest themselves. The market they bought from responds to price as it should: the best split buys 26
+while answering the rest themselves. The market they bought from responds to price as it should. The best split buys 26
 of 40 arithmetic and grid jobs from the outside agents at a quarter of $c_\mathrm{ref}$ (\$0.00006 a message), 15 at
 $c_\mathrm{ref}$, 6 at four times and 2 at sixteen times.
 

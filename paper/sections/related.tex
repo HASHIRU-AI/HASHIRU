@@ -1,4 +1,4 @@
-\section{Background: Who Splits the Money Today}
+\section{Who Splits the Money Today}
 \label{sec:related}
 
 We organize prior work by who decides how the money is split, and when (Table~\ref{tab:related}).
@@ -12,14 +12,14 @@ execution, and its language-model baseline loses to a knapsack solver. Mixture-o
 runs preset team profiles. In each, the agents that do the work do not hold the money. \bench{} includes this
 arrangement as a baseline (a knapsack over calibrated statistics, \S\ref{sec:purse-allocators}).
 
-\textbf{Routing and cascades.} Model routers pick one model per query: RouteLLM~\cite{ong2025routellm} learns from
+\textbf{Routing and cascades.} Model routers pick one model per query. RouteLLM~\cite{ong2025routellm} learns from
 preference data, Hybrid LLM~\cite{ding2024hybrid} routes between a small and a large model by predicted difficulty, and
 FrugalGPT~\cite{chen2024frugalgpt} cascades from cheap to expensive models until an answer is accepted.
 RouterBench~\cite{hu2024routerbench} evaluates routers on precomputed outputs against an oracle router, the evaluation
 method \bench{}'s replay follows. A router prices one query at a time; \bench{} prices a project whose jobs share one
 budget, so that spending on one job takes money from another.
 
-\textbf{Agents that fund agents.} Agent runtimes released in 2026 let a model fund the agents it spawns: Automaton
+\textbf{Agents that fund agents.} Agent runtimes released in 2026 let a model fund the agents it spawns. Automaton
 transfers credits to a child that runs the same runtime~\cite{conway2026automaton}, and wayland-core's
 \texttt{delegate} tool gives a sub-agent a dollar ceiling within the parent's remaining envelope, charged to the
 sub-agent and its descendants~\cite{ferrox2026waylandcore}. AgentLance~\cite{liu2026markets} lets a manager model set
@@ -40,7 +40,7 @@ tools fail or prices change. In all of them one agent spends on itself.
 PAPILLON~\cite{li2025papillon} pair a local model with a cloud model under a fixed protocol. Virtual agent
 economies~\cite{tomasev2025virtual} and Magentic Marketplace~\cite{bansal2025magentic} study markets between agents;
 payment protocols (AP2~\cite{google2026agent}, the A2A x402 extension~\cite{googleagenticcommerce2025a2a}) settle payments but do not allocate.
-\sys{} v2 speaks the open protocols these build on: MCP for tools~\cite{modelcontextprotocol2026specification} and A2A
+\sys{} v2 speaks the open protocols these build on, MCP for tools~\cite{modelcontextprotocol2026specification} and A2A
 for agents~\cite{a2aproject2026agent2agent}.
 
 \begin{table}[!htb]
@@ -64,7 +64,7 @@ $R^3$-Bench, EcoAgent & one agent, on itself & during & yes \\
 \end{table}
 
 \sys{} v2 shares agent-held budgets with these runtimes and the oracle construction with $R^3$-Bench, but it is
-different in two dimensions: (1) \emph{Bounded before the call:} a hire reserves money (and memory) that firing refunds,
+different in two dimensions. (1) \emph{Bounded before the call.} A hire reserves money (and memory) that firing refunds,
 and each call's output is capped to what its agent holds before the call is made, where wayland-core's sub-agent stops
-itself once it has crossed its cap. (2) \emph{Measured against an optimum:} to our knowledge, it is the first system whose
+itself once it has crossed its cap. (2) \emph{Measured against an optimum.} To our knowledge, it is the first system whose
 agent-held budgets are evaluated across a hiring tree against solver, up-front and fixed-team splits at equal dollars.

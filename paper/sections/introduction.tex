@@ -4,8 +4,8 @@
 Teams of language-model agents cost money, and how a team's budget is split decides what the team can do. A
 hierarchical system (a CEO agent that hires managers and workers, as in \sys{} v1~\cite{pai2025hashiru}, or the
 orchestrators of AutoGen~\cite{wu2024autogen}, MetaGPT~\cite{hong2024metagpt} and Magentic-One~\cite{fourney2024magenticone})
-spends on every hire: a strong cloud model for a hard step, a cheap one for an easy step, an outside agent that sells an
-exact answer. A team that spends its budget on the wrong steps fails on the ones that needed it, and a team that cannot
+spends on every hire, and the hires differ in price (a strong cloud model for a hard step, a cheap one for an easy step,
+an outside agent that sells an exact answer). A team that spends its budget on the wrong steps fails on the ones that needed it, and a team that cannot
 bound its spending cannot be trusted with a budget at all.
 
 Agent software has started to hand this money to the agents. Automaton's \texttt{fund\_child} transfers credits to a
@@ -20,7 +20,7 @@ the case where agents hold the money for a whole hiring tree, every call is boun
 made, and the resulting allocation is measured against a known optimum.
 
 To address these limitations, we built \sys{} v2. Every agent is its own A2A service, every tool is served over MCP,
-and every hire reserves money from its hirer's pool. The hub, not the prompt, keeps spending safe: a call's output is
+and every hire reserves money from its hirer's pool. The hub, not the prompt, keeps spending safe. A call's output is
 capped to what its agent has left, a call that cannot pay for an answer is refused with its price, firing returns what
 was not spent, and an agent with one step left answers with what it has. Because every reservation, call and refund is
 in the trace, the allocation can be measured, and we measured it on a benchmark built so that the best split of the
@@ -28,13 +28,13 @@ money is known.
 
 \begin{keybox}{What this whitepaper contributes}
 \begin{itemize}
-  \item \textbf{\sys{} v2, an economy for agents:} each agent holds a pool reserved from its hirer's, in dollars and,
+  \item \textbf{\sys{} v2, an economy for agents.} Each agent holds a pool reserved from its hirer's, in dollars and,
   for local models, measured memory; it declares how hard a job is and the hub hires the cheapest model that fits, or
   it buys from a priced remote agent or a whole remote team over A2A (\S\ref{sec:system}).
-  \item \textbf{Budget safety by construction:} reserved pools with refunds, calls bounded by their pool before they
-  are made, and a closing turn that turns an empty pool into an answer rather than a failure; on live projects, none
-  of 48 hires spent past its reservation and every run answered (\S\ref{sec:pools}, \S\ref{sec:evaluation}).
-  \item \textbf{Agents measured against optimizers:} on projects whose best split is known, \sys{}'s agents scored
+  \item \textbf{Budget safety by construction.} Pools are reserved and refunded, calls are bounded by their pool before
+  they are made, and a closing turn turns an empty pool into an answer rather than a failure. On live projects, none of
+  48 hires spent past its reservation and every run answered (\S\ref{sec:pools}, \S\ref{sec:evaluation}).
+  \item \textbf{Agents measured against optimizers.} On projects whose best split is known, \sys{}'s agents scored
   above sending every job to the strongest model at 37\% of its spend, matched a team that assigns tiers by level at
   35\% of its spend, and bought, escalated and re-reserved as the market priced their work (\S\ref{sec:evaluation}).
 \end{itemize}

@@ -2,7 +2,7 @@
 \label{sec:purse}
 
 To know whether agents spend well, we need tasks on which the best split of the money is known. Our evaluation suite,
-\bench{}, builds them: each project is a set of jobs that share one budget, every job has an exact answer, and every job
+\bench{}, builds them. Each project is a set of jobs that share one budget, every job has an exact answer, and every job
 has been tried on every option beforehand, so the best split for any budget can be computed. The score then moves with
 the split, and the gap to the best split says how much money an allocator left on the table.
 
@@ -24,7 +24,7 @@ are generated from seeds, so they cannot be looked up, and \sys{}'s web tools ar
 \midrule
 Arithmetic & operators (2 to 22), digits (2 to 8) & multiplications, digit sizes (carries) & \texttt{calc} (levels 1 to 4) \\
 Logic grids & houses, attributes & case splits a propagating solver needs (0, 1, 2+) & \texttt{csp}; a free checker \\
-Aggregation & records (40 to 2{,}500) & condition: 1 field, 2 fields, 2 fields plus near misses & no \\
+Aggregation & records (40 to 2{,}500) & fields in the condition (1, 2, or 2 plus near misses) & no \\
 String pipelines & operations (2 to 10), length & alphabet, position-dependent operations & no \\
 \bottomrule
 \end{tabular}
@@ -36,14 +36,14 @@ high); otherwise it is drawn at random. At $\rho = 1$ the declared level is the 
 the right statistics loses nothing to an allocator that adapts; at $\rho = 0$ difficulty is learned by trying. The
 value of information,
 $\mathrm{VOI} = \mathrm{score}(\text{oracle knowing the bins}) - \mathrm{score}(\text{oracle knowing the levels})$,
-bounds what any adaptive allocator can gain over the best up-front split, and is reported for every condition. The
-statistics an allocator is given are those it would measure on projects of its own $\rho$: each bin's rates, weighted by
+bounds what any adaptive allocator can gain over the best up-front split, and is reported for every condition. An
+allocator is given the statistics it would measure on projects of its own $\rho$, which are each bin's rates weighted by
 $P(\text{bin} \mid \text{level}) = \rho\,[\text{bin is the level's}] + (1 - \rho)/3$.
 
 \subsection{The market}
 \label{sec:purse-market}
 The options are model tiers at different prices (in the runs reported here, a cheap and a dear reasoning model) and
-two outside agents that are exact programs behind A2A: \texttt{calc} (exact arithmetic, \sys{}'s example agent, which reads expressions of up
+two outside agents that are exact programs behind A2A, \texttt{calc} (exact arithmetic, \sys{}'s example agent, which reads expressions of up
 to 200 characters and so refuses level 5) and \texttt{csp} (a constraint solver for grids). Outside agents charge a
 price per message, swept over $c_\mathrm{ref} \times \{0.25, 1, 4, 16\}$, where $c_\mathrm{ref}$ is the cheap model's
 median cost on the jobs they can do. A free \texttt{grid\_check} tool answers whether a grid solution satisfies every
@@ -53,7 +53,7 @@ clue, at most three times per puzzle (checking is cheaper than solving, as unit 
 Every job is sent once, with its canonical prompt, to every option that serves it, through a \sys{} hub (a hire, one
 message, a fire), and the outcome table records the answer, whether it is right, and what it cost. The table serves
 three purposes. It gives informed allocators their statistics, from the other half of the jobs (two folds), so a
-project never sees statistics that include its own jobs. It defines oracles: \emph{oracle-full} is a multiple-choice
+project never sees statistics that include its own jobs. It defines oracles. \emph{Oracle-full} is a multiple-choice
 knapsack over each job's recorded success and cost (as in $R^3$-Bench~\cite{wang2026r3bench}), an upper bound for every
 allocator. And it lets allocators that send canonical prompts be scored by replay on recorded outcomes instead of new
 calls, as RouterBench evaluates routers~\cite{hu2024routerbench}. Budgets are set per project as $B = \tau\,C_\mathrm{full}$,
@@ -74,10 +74,11 @@ with the same project text, prices, statistics and budget for all four (Table~\r
 \toprule
 \tablehead  & Up front & During the task \\
 \midrule
-LLM & \textbf{LLM split}: the CEO plans one hire per job in plan mode; the plan runs unchanged (ZEBRA's LLM baseline) &
-\textbf{\sys{}}: the CEO hires, asks, fires, rehires and escalates as results arrive \\
-Solver & \textbf{Knapsack}: expected points under the budget, from the statistics &
-\textbf{Cascade}: cheapest option expected to succeed, moving up a tier on a failed check or two disagreeing answers \\
+LLM & \textbf{LLM split.} The CEO plans one hire per job in plan mode, and the plan runs unchanged (ZEBRA's LLM
+baseline). & \textbf{\sys{}.} The CEO hires, asks, fires, rehires and escalates as results arrive. \\
+Solver & \textbf{Knapsack.} Maximizes expected points under the budget, from the statistics. &
+\textbf{Cascade.} Takes the cheapest option expected to succeed and moves up a tier on a failed check or two
+disagreeing answers. \\
 \bottomrule
 \end{tabular}
 \end{table}
