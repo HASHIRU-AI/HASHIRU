@@ -1,6 +1,5 @@
 """The validity checks (spec §12, V1 to V7): computed from the outcome table before any allocator runs, they hold the
 benchmark to measuring allocation. V8 (replay matches live) needs live runs and is `purse run --live`."""
-import random
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -52,6 +51,7 @@ def _mean(xs: Sequence[float]) -> float:
 
 
 def run_checks(pool: Sequence[Job], table: OutcomeTable, market: Sequence[Option], seed: int = 0) -> list[Check]:
+    """V1 to V7 on projects drawn from `pool`; deterministic in `seed`."""
     prices = sweep_prices(table, pool, market)
     market = priced(market, prices[1])
     by_rho = {rho: _projects(pool, table, market, rho, seed + k) for k, rho in enumerate((1.0, 0.5, 0.0))}
@@ -108,5 +108,4 @@ def run_checks(pool: Sequence[Job], table: OutcomeTable, market: Sequence[Option
             modes[(f, fold)] = answers.most_common(1)[0][0] if answers else ""
     guess = _mean([score(p, {j.id: modes[(j.family, fold_of(j))] for j in p.jobs}) for p in mid])
     checks.append(Check("V7 no shortcut", guess, "<= 0.10 for the most common answer per family", guess <= 0.10))
-    random.Random(seed)  # the checks are deterministic in `seed` through the project draws
     return checks
