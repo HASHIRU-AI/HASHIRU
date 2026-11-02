@@ -133,3 +133,18 @@ def test_variant_text():
     assert variant_text("base", "") == "base"
     assert "do not give a difficulty" in variant_text("base", "names-models")
     assert "named after the job id" in variant_text("base", "split")
+
+
+def test_hub_market_can_reserve_what_is_left(tmp_path, fake_family):
+    p, job = project(tmp_path, budget=0.01)
+    hub = hub_for(tmp_path, p, ScriptedLLM(), 9365, turn_reserve_usd=0.0)  # the CEO never thinks here
+
+    async def body():
+        async with hub.serving():
+            session = hub.new_session("cal", trace=False)
+            async with HubMarket(hub, session, reserve_usd=None) as market:
+                first = await market.attempt(job, CLOUD)  # reserves all $0.01, spends 0.002, fire refunds the rest
+                second = await market.attempt(job, CLOUD)
+            return first, second, session.ledger.left()["ceo"]
+    first, second, left = asyncio.run(body())
+    assert first.correct and second.correct and abs(left - 0.006) < 1e-9

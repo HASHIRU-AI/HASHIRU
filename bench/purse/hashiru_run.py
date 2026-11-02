@@ -36,9 +36,10 @@ VARIANTS = {"": "", "names-models": "Name a model for every hire; do not give a 
 
 def bench_settings(p: Project, market: Sequence[Option], *, out_dir: Path, max_usd: float, port: int = PORT,
                    max_escalations: int = 2, peer_urls: Mapping[str, str] | None = None,
-                   ceo_model: str = CEO_MODEL) -> Settings:
+                   ceo_model: str = CEO_MODEL, turn_reserve_usd: float = 0.01) -> Settings:
     """The hub for one project: its budget, memory cap and deadline; the market's models and outside agents; the
-    grid_check tool; no web tools and no approvals (nobody is there to answer)."""
+    grid_check tool; no web tools and no approvals (nobody is there to answer). Where the CEO never thinks
+    (calibration, live replays of the solvers), turn_reserve_usd=0 lets a hire take the whole pool."""
     urls = peer_urls or {}
     peers = tuple(A2APeer(o.name.removeprefix("a2a/"), urls[o.name], price_usd_per_message=o.per_message_usd)
                   for o in market if o.kind == "agent" and o.name in urls)
@@ -47,15 +48,17 @@ def bench_settings(p: Project, market: Sequence[Option], *, out_dir: Path, max_u
     return Settings(ceo_model=ceo_model, models=tuple(o.name for o in market if o.kind != "agent"), a2a_peers=peers,
                     mcp_servers=(grid,), budget_usd=p.budget_usd, max_usd=max_usd, memory_mb=p.memory_mb,
                     task_timeout=p.deadline_s, web_tools=False, approve_hire_usd=0, approve_hire_mb=0,
-                    approve_turn_usd=0, max_escalations=max_escalations, trace_dir=str(out_dir / "traces"),
+                    approve_turn_usd=0, max_escalations=max_escalations, turn_reserve_usd=turn_reserve_usd,
+                    trace_dir=str(out_dir / "traces"),
                     data_dir=str(out_dir / "data"), port=port, obfuscate_with="patterns")
 
 
 class HubMarket:
     """A Market that hires one worker per attempt through the hub, as the session's CEO (its own token, the hub's
-    /mcp), asks it the job's canonical prompt and fires it. A refused hire is a refused attempt."""
+    /mcp), asks it the job's canonical prompt and fires it. A refused hire is a refused attempt. Each cloud hire
+    reserves `reserve_usd`, or with None all the CEO has left (attempts run one at a time, and firing refunds)."""
 
-    def __init__(self, hub: Hub, session: Session, reserve_usd: float) -> None:
+    def __init__(self, hub: Hub, session: Session, reserve_usd: float | None) -> None:
         self.hub, self.session, self.reserve_usd = hub, session, reserve_usd
         self._stack = contextlib.AsyncExitStack()
         self._mcp: Any = None
@@ -77,8 +80,10 @@ class HubMarket:
     async def attempt(self, job: Job, option: str) -> Outcome:
         self._n += 1
         name, start = f"w{self._n}", time.monotonic()
+        left = max(0.0, self.session.ledger.left()["ceo"] - self.hub.settings.turn_reserve_usd)
+        reserve = left if self.reserve_usd is None else self.reserve_usd
         args = {"name": name, "role": "worker", "model": option, "prompt": WORKER_PROMPT,
-                "budget_usd": 0.0 if is_local(option) else self.reserve_usd}
+                "budget_usd": 0.0 if is_local(option) else reserve}
         hired = await perform(self.hub, self.session, self._mcp, "ceo", "hire_agent", args)
         if "error" in hired:
             return Outcome("", False, 0.0, time.monotonic() - start, refused=str(hired["error"]))
