@@ -1,0 +1,18 @@
+\section{Limitations}
+\label{sec:limitations}
+
+\textbf{Scale of the runs.} The runs reported here are minimal: one calibration attempt per job and option, and live
+runs on a small number of projects. Replay draws on those single attempts, so its seed variance understates the
+variance of new calls; confidence intervals are over projects.
+
+\textbf{The market.} Prices are list prices on the run date. The small tier's price is the most common list price of
+the same model elsewhere, since its host does not price its hosted API. Local models, and with them memory as a
+second currency, are not in these runs; the mechanism is tested but not measured.
+
+\textbf{What is measured.} Projects state their jobs, so \bench{} measures allocation, not decomposition. Declared
+difficulty is the agent's own judgment; the hub routes on it but does not check it. Outside agents in \bench{} are exact
+programs whose reliability is known; untrustworthy sellers are future work.
+
+\textbf{The system.} Replayed allocators send each job's canonical prompt, while \sys{}'s CEO writes its own messages
+to its hires; prompt fidelity and the replay of its decisions separate the two. One API key is one trust domain, and
+with several agents spending at once, \texttt{max\_usd} can be exceeded by the calls already in flight (one per agent).

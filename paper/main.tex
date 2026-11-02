@@ -1,0 +1,51 @@
+\documentclass[conference]{IEEEtran}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+
+% Open issues for the authors, and numbers still to be filled from the runs.
+\newcommand{\kunal}[1]{\textcolor{blue}{[Kunal: #1]}}
+\newcommand{\res}[1]{\textcolor{red}{#1}}
+\newcommand{\sys}{HASHIRU}
+\newcommand{\bench}{PURSE}
+
+\begin{document}
+
+\title{Agents That Hold the Money:\\Measuring How LLM Agents Spend What They Are Given}
+
+\author{\IEEEauthorblockN{Kunal Pai, Parth Shah, Harshil Patel}
+\IEEEauthorblockA{\kunal{affiliations and emails}}}
+
+\maketitle
+
+\begin{abstract}
+Agent software now lets a language model fund the agents it spawns: a parent hands a child a slice of its budget,
+and the child may hire in turn. Whether such agents spend well has not been measured. The budget-aware systems that
+are evaluated split the money with an optimizer outside the agents, and the runtimes that let a model fund its
+sub-agents do not evaluate the split. We present two artifacts. \sys{} v2 is a multi-agent system in which every agent
+holds a pool reserved from its hirer's (dollars, plus measured memory for local models) and spends it by hiring cloud
+models, local models and priced remote agents over open protocols (A2A for agents, MCP for tools); firing an agent
+returns what it did not spend, and the ledger can be rebuilt from the trace alone. \bench{} is a benchmark built so
+that the best split of the money is known: projects of eight jobs with exact answers, a dial for how much of each job's
+difficulty is hidden until it is tried, outside agents to buy from, and calibrated outcomes for every job on every
+option. On \bench{}, \res{[headline result: agent allocation against the knapsack and the up-front LLM split at equal
+budgets, with the oracle gap]}. \sys{} v2 and \bench{} are source-available.
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/related}
+\input{sections/system}
+\input{sections/purse}
+\input{sections/evaluation}
+\input{sections/limitations}
+\input{sections/conclusion}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

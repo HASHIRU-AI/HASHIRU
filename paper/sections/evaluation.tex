@@ -1,0 +1,56 @@
+\section{Evaluation}
+\label{sec:evaluation}
+
+We ask three questions. \textbf{RQ1:} given money, how do language-model agents spend it? \textbf{RQ2:} at an equal
+budget, how does agent allocation compare with an optimizer and with an up-front split? \textbf{RQ3:} when outside
+agents sell answers, do agents buy, and does buying pay?
+
+\subsection{Setup}
+\textbf{Models and prices.} The CEO is \texttt{gpt-6-luna} (\$0.10 / \$0.50 per million input / output tokens). The
+market is \texttt{gpt-6-luna} (the cheap reasoning tier), \texttt{muse-spark-1.3} from Meta's Model API (\$1.25 /
+\$4.25, the dear tier), \res{[the small tier: Gemma 4 31B on NVIDIA NIM, priced at its most common list price, \$0.14 /
+\$0.40, if NIM answers; otherwise left out]}, and the \texttt{calc} and \texttt{csp} agents. Prices are LiteLLM's map
+of 2026-11-01. Local models are not in these runs: on the laptop available (Apple M5, 24 GB), a 4B thinking model took
+six minutes on one arithmetic job.
+
+\textbf{Calibration.} \res{[N]} jobs (two per family, level and bin), one attempt per job and option, \res{[\$X]} in
+all. \textbf{Runs.} \res{[N]} projects at $\rho = 0.5$ and $\tau = 0.5$; replayed allocators on every project and
+\res{[3]} seeds; \sys{} and the LLM split live, \res{[one seed]}. All runs, the outcome table and each run's environment
+(commit, lock file hash, price map date) are released with the paper.
+
+\subsection{Results}
+Overall, our experiments show the following results:
+
+\textbf{\res{[Finding 1: validity.]}} \res{[Which of V1 to V7 hold on the real table, with the numbers; what was
+retuned.]}
+
+\textbf{\res{[Finding 2: agents against optimizers (RQ2).]}} \res{[Table~\ref{tab:main}: score, spend, allocator
+overhead and efficiency per allocator; the 2x2 contrasts with paired intervals; differences inside the seed spread
+reported as within seed variance, with both numbers.]}
+
+\textbf{\res{[Finding 3: how agents spend (RQ1).]}} \res{[Declared difficulty against hidden bin (confusion and
+Spearman's $\rho_s$); tiers chosen against the knapsack's; refunds (slack); escalations; prompt fidelity; live score
+against the replay of its own decisions.]}
+
+\textbf{\res{[Finding 4: make or buy (RQ3).]}} \res{[Oracle demand across the price sweep against \sys{}'s buy share at
+the default price.]}
+
+\begin{table}[t]
+\centering
+\caption{Allocators at $\rho = 0.5$, $\tau = 0.5$ (mean over projects and seeds).}
+\label{tab:main}
+\footnotesize
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Allocator & Score & Spent (\$) & Own calls (\$) & Efficiency \\
+\midrule
+Oracle-full & \res{--} & \res{--} & 0 & 1.00 \\
+\sys{} (LLM, during) & \res{--} & \res{--} & \res{--} & \res{--} \\
+LLM split (LLM, up front) & \res{--} & \res{--} & \res{--} & \res{--} \\
+Knapsack (solver, up front) & \res{--} & \res{--} & 0 & \res{--} \\
+Cascade (solver, during) & \res{--} & \res{--} & 0 & \res{--} \\
+Hybrid by level & \res{--} & \res{--} & 0 & \res{--} \\
+Every job on the cheap model & \res{--} & \res{--} & 0 & \res{--} \\
+\bottomrule
+\end{tabular}
+\end{table}

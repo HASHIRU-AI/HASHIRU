@@ -1,0 +1,112 @@
+\section{\bench{}: A Benchmark with a Known Optimum}
+\label{sec:purse}
+
+\bench{} measures how an allocator splits one budget across the jobs of a project by hiring priced options. It is built
+so that the score moves with the split, the best split is computable for every project and budget, and some conditions
+leave adapting during the task nothing to gain. Any system that can hire models within a budget can be run on it.
+
+\subsection{Jobs and projects}
+A project is eight jobs, two from each of four families (Table~\ref{tab:families}), with one budget $B$. Each job has a
+visible level from 1 to 5 (its declared size parameters), a hidden difficulty bin (low, mid or high), a value of 1, 2
+or 4 points drawn independently of difficulty, a canonical prompt and an exact checker. The allocator reads every job
+with its level and value and answers with one JSON object; the score is the share of value answered correctly. Jobs
+are generated from seeds, so they cannot be looked up, and \sys{}'s web tools are switched off for every run.
+
+\begin{table}[t]
+\centering
+\caption{\bench{}'s four job families.}
+\label{tab:families}
+\footnotesize
+\begin{tabular}{@{}p{1.35cm}p{2.15cm}p{2.15cm}p{1.3cm}@{}}
+\toprule
+Family & Level sets & Hidden bin sets & Can be bought \\
+\midrule
+Arithmetic & operators (2 to 22), digits (2 to 8) & multiplications, digit sizes (carries) & \texttt{calc} (levels 1 to 4) \\
+Logic grids & houses, attributes & case splits a propagating solver needs (0, 1, 2+) & \texttt{csp}; a free checker \\
+Aggregation & records (40 to 2{,}500) & condition: 1 field, 2 fields, 2 fields plus near misses & no \\
+String pipelines & operations (2 to 10), length & alphabet, position-dependent operations & no \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Hidden difficulty and the observability dial}
+With probability $\rho$ a job's hidden bin is the one its visible level suggests (levels 1 and 2 low, 3 mid, 4 and 5
+high); otherwise it is drawn at random. At $\rho = 1$ the declared level is the whole story, so an up-front split with
+the right statistics loses nothing to an allocator that adapts; at $\rho = 0$ difficulty is learned by trying. The
+value of information,
+$\mathrm{VOI} = \mathrm{score}(\text{oracle knowing the bins}) - \mathrm{score}(\text{oracle knowing the levels})$,
+bounds what any adaptive allocator can gain over the best up-front split, and is reported for every condition. The
+statistics an allocator is given are those it would measure on projects of its own $\rho$: each bin's rates, weighted by
+$P(\text{bin} \mid \text{level}) = \rho\,[\text{bin is the level's}] + (1 - \rho)/3$.
+
+\subsection{The market}
+\label{sec:purse-market}
+The options are a small cloud model, a cheap reasoning model and a dear reasoning model, and two outside agents that
+are exact programs behind A2A: \texttt{calc} (exact arithmetic, \sys{}'s example agent, which reads expressions of up
+to 200 characters and so refuses level 5) and \texttt{csp} (a constraint solver for grids). Outside agents charge a
+price per message, swept over $c_\mathrm{ref} \times \{0.25, 1, 4, 16\}$, where $c_\mathrm{ref}$ is the cheap model's
+median cost on the jobs they can do. A free \texttt{grid\_check} tool answers whether a grid solution satisfies every
+clue, at most three times per puzzle (checking is cheaper than solving, as unit tests are).
+
+\subsection{Calibration, replay and oracles}
+Every job is sent once, with its canonical prompt, to every option that serves it, through a \sys{} hub (a hire, one
+message, a fire), and the outcome table records the answer, whether it is right, and what it cost. The table serves
+three purposes. It gives informed allocators their statistics, from the other half of the jobs (two folds), so a
+project never sees statistics that include its own jobs. It defines oracles: \emph{oracle-full} is a multiple-choice
+knapsack over each job's recorded success and cost (as in $R^3$-Bench~\cite{wang2026r3bench}), an upper bound for every
+allocator. And it lets allocators that send canonical prompts be scored by replay on recorded outcomes instead of new
+calls, as RouterBench evaluates routers~\cite{hu2024routerbench}. Budgets are set per project as $B = \tau\,C_\mathrm{full}$,
+where $C_\mathrm{full}$ is what oracle-full spends at its best score with unlimited money; $\tau = 1$ is a control in
+which money does not bind.
+
+\subsection{Allocators}
+\label{sec:purse-allocators}
+The main comparison crosses who allocates (a language model or a solver) with when (up front, or during the task),
+with the same project text, prices, statistics and budget for all four (Table~\ref{tab:twobytwo}).
+
+\begin{table}[t]
+\centering
+\caption{The four allocators in the main comparison.}
+\label{tab:twobytwo}
+\footnotesize
+\begin{tabular}{@{}p{1.2cm}p{3.2cm}p{3.2cm}@{}}
+\toprule
+ & Up front & During the task \\
+\midrule
+LLM & \textbf{LLM split}: the CEO plans one hire per job in plan mode; the plan runs unchanged (ZEBRA's LLM baseline) &
+\textbf{\sys{}}: the CEO hires, asks, fires, rehires and escalates as results arrive \\
+Solver & \textbf{Knapsack}: expected points under the budget, from the statistics &
+\textbf{Cascade}: cheapest option expected to succeed, moving up a tier on a failed check or two disagreeing answers \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Around them are oracle-full, fixed policies (every job on one model; a hybrid by visible level in AgentCARD's
+style~\cite{jiang2026specialize}; an equal split; a random choice) and \sys{} variants (the CEO naming models as in v1,
+and an uninformed CEO that sees prices but no statistics).
+
+\subsection{Validity checks}
+Before any allocator runs, seven checks computed from the outcome table hold \bench{} to measuring allocation
+(Table~\ref{tab:checks}); a failed check means a generator is retuned and its cells calibrated again. They are tested on
+synthetic tables built to pass, and on one table per check built to break exactly that check. Check V8 (replay agrees
+with live runs) needs live runs.
+
+\begin{table}[t]
+\centering
+\caption{Validity checks, from the outcome table, before any allocator runs.}
+\label{tab:checks}
+\footnotesize
+\begin{tabular}{@{}p{2.4cm}p{5.2cm}@{}}
+\toprule
+Check & Holds when \\
+\midrule
+V1 Allocation matters & oracle-full beats the best fixed policy by $\geq$ 10 points at $\tau = 0.5$ \\
+V2 The budget binds & the dear model alone covers $<$ 60\% of the value at $\tau = 0.5$ \\
+V3 Tiers separate & per family, a level where the cheap reasoning model succeeds $\geq$ 80\% and the small model $\leq$ 40\%, and one where the dear model leads the cheap by $\geq$ 20 points \\
+V4 Headroom & the dear model succeeds $\leq$ 60\% at level 5 in $\geq$ 2 families \\
+V5 Observability & VOI $\leq$ 0.02 at $\rho = 1$ and $\geq$ 0.08 at $\rho = 0$ \\
+V6 Make or buy responds & oracle buying falls $\geq$ 40 points across the price sweep \\
+V7 No shortcut & the most common answer per family scores $\leq$ 10\% \\
+\bottomrule
+\end{tabular}
+\end{table}
