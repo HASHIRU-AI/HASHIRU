@@ -34,6 +34,16 @@ def test_check_priced_rejects_unknown_cloud_model():
         llm.check_priced(["made-up-provider/model-x"])
 
 
+def test_check_priced_rejects_a_cloud_model_litellm_names_but_does_not_price():
+    # LiteLLM can know a model without knowing its price (gpt-6-luna under the pinned 1.103.4 map): its info then
+    # says $0, and every call would be billed by the provider but never charged to a pool or the wallet
+    model = "hashiru_test/name-only"
+    llm.litellm.register_model({model: {"litellm_provider": "openai", "mode": "chat"}})
+    assert not llm.has_price(model)
+    with pytest.raises(ValueError, match="no price"):
+        llm.check_priced([model])
+
+
 def test_prices_file_fills_gaps_in_litellms_price_map(tmp_path):
     model = "hashiru_test/priced-model"
     assert not llm.has_price(model)
@@ -93,3 +103,35 @@ def test_loading_uses_the_same_context_window_and_reports_the_loaded_size(monkey
     assert calls[0][1]["options"] == {"num_ctx": 16384}
     loaded["models"] = []  # Ollama did not report it: fall back to the file size
     assert asyncio.run(ollama.load("ollama_chat/qwen3.5:4b")) == 3232
+
+
+def test_temperature_zero_is_dropped_only_where_a_model_rejects_it(monkeypatch):
+    # gpt-6-luna rejects temperature=0 while it reasons (found on the first real call, 2026-11-01): LiteLLM drops
+    # the parameter for such models when asked, and keeps it for every other model
+    seen = fake_litellm(monkeypatch)
+    asyncio.run(llm.LLM("http://ollama", llm.Wallet(2.0)).chat("gpt-4.1-mini", []))
+    assert seen[0]["temperature"] == 0 and seen[0]["drop_params"] is True
+
+
+def test_chat_caps_output_tokens_only_when_asked(monkeypatch):
+    seen = fake_litellm(monkeypatch)
+    model = llm.LLM("http://ollama", llm.Wallet(2.0))
+    token = llm.OUTPUT_CAP.set(300)
+    try:
+        asyncio.run(model.chat("gpt-4.1-mini", []))
+    finally:
+        llm.OUTPUT_CAP.reset(token)
+    asyncio.run(model.chat("gpt-4.1-mini", []))
+    assert seen[0]["max_tokens"] == 300 and "max_tokens" not in seen[1]
+
+
+def test_affordable_output_is_what_is_left_after_reading_the_input():
+    model = "hashiru_test/capped"
+    llm.litellm.register_model({model: {"litellm_provider": "openai", "mode": "chat", "input_cost_per_token": 1e-6,
+                                        "output_cost_per_token": 1e-5}})
+    messages = [{"role": "user", "content": "hello " * 200}]
+    tokens, cost_in = llm.affordable(model, messages, None, 0.01)
+    expected_in = llm.litellm.token_counter(model=model, messages=messages) * 1e-6 * llm.INPUT_MARGIN
+    assert abs(cost_in - expected_in) < 1e-12 and tokens == int((0.01 - expected_in) / 1e-5)
+    assert llm.affordable(model, messages, None, 0.0)[0] == 0
+    assert llm.affordable("ollama_chat/anything", messages, None, 0.01)[0] is None  # local: no dollar cap

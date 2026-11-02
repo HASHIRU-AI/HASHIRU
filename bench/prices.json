@@ -1,0 +1,11 @@
+{
+  "nvidia_nim/google/gemma-4-31b-it": {
+    "litellm_provider": "nvidia_nim",
+    "mode": "chat",
+    "input_cost_per_token": 1.4e-07,
+    "output_cost_per_token": 4.0e-07,
+    "max_input_tokens": 131072,
+    "max_output_tokens": 8192,
+    "comment": "NIM's hosted API runs on trial credits; priced at Gemma 4 31B's most common list price in LiteLLM's map (2026-11-01): Bedrock, Novita, FriendliAI, AIHubMix"
+  }
+}

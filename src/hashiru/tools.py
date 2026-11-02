@@ -12,7 +12,7 @@ from mcp.types import ToolAnnotations
 
 from hashiru import approvals
 from hashiru.config import DIFFICULTIES
-from hashiru.ledger import AgentRecord, free_mb
+from hashiru.ledger import AgentRecord
 from hashiru.llm import is_local
 from hashiru.memory import MAX_KEY_CHARS
 from hashiru.peers import PEER_PREFIX, fetch_card, pin, price_of
@@ -56,7 +56,8 @@ class Tools:
                 "For a manager, tools optionally limits which of your tools it may use (by name, including "
                 "ask_agent)."))(self.hire_agent)
             mcp.tool()(self.fire_agent)
-        for reader in (self.check_usage, self.get_website, self.arxiv_search, self.read_file):
+        web = (self.get_website, self.arxiv_search) if self.hub.settings.web_tools else ()
+        for reader in (self.check_usage, *web, self.read_file):
             mcp.tool(annotations=READ_ONLY)(reader)  # what plan mode offers (planning.readable)
         mcp.tool()(self.memory)
         mcp.tool()(self.deliver_to_user)
@@ -243,7 +244,7 @@ class Tools:
         if session.ledger.get(pool) is None:
             return {"error": f"no pool named {pool!r}"}
         return {"pool": pool, "api_usd": round(session.ledger.left()[pool], 6),
-                "free_mb": free_mb(), "model_mb": await self.hub.ollama.sizes()}
+                "free_mb": self.hub.free_memory(), "model_mb": await self.hub.ollama.sizes()}
 
     async def get_website(self, ctx: Context, url: str) -> dict[str, Any]:
         """Fetch a public web page and return its text."""
