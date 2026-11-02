@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from hashiru.hub import Hub
 from hashiru.planning import Hire, Plan
+from hashiru.runtime import outline
 from purse.hashiru_run import HubMarket, bench_settings, plan_to_allocation, propose_split, run_hashiru, variant_text
 from purse.jobs import WORKER_PROMPT, make_job
 from purse.market import CEO_MODEL, MARKET, Option
@@ -137,6 +138,13 @@ def test_variant_text():
     assert "named after the job id" in variant_text("base", "split")
 
 
+def test_a_variants_instruction_comes_before_the_jobs_so_the_ceo_reads_it_under_by_reference():
+    base = "You have $0.05.\n\n### j1 (strings, level 5, value 4)\n" + "a long prompt line\n" * 200
+    text = variant_text(base, "split")
+    assert "named after the job id" in outline(text, 100)
+    assert text.index("named after the job id") < text.index("### j1")
+
+
 def test_hub_market_can_reserve_what_is_left(tmp_path, fake_family):
     p, job = project(tmp_path, budget=0.01)
     hub = hub_for(tmp_path, p, ScriptedLLM(), 9365, turn_reserve_usd=0.0)  # the CEO never thinks here
@@ -150,3 +158,38 @@ def test_hub_market_can_reserve_what_is_left(tmp_path, fake_family):
             return first, second, session.ledger.left()["ceo"]
     first, second, left = asyncio.run(body())
     assert first.correct and second.correct and abs(left - 0.006) < 1e-9
+
+
+def test_measured_rates_come_from_the_statistics_an_allocator_is_told():
+    from purse.hashiru_run import success_rates
+    from purse.table import CellStat
+    stats = {("arithmetic", 4, None, "meta/muse-spark-1.3"): CellStat(1.0, 0.02, 8),
+             ("arithmetic", 4, None, "gpt-6-luna"): CellStat(0.5, 0.001, 8),
+             ("arithmetic", 4, "high", "gpt-6-luna"): CellStat(0.0, 0.001, 2)}  # a hidden-bin cell: not told
+    assert success_rates(stats) == (("arithmetic level 4", (("gpt-6-luna", 0.5, 0.001),
+                                                            ("meta/muse-spark-1.3", 1.0, 0.02))),)
+
+
+def test_bench_settings_switch_routing_on_rates_and_holding_back_long_sections(tmp_path, fake_family):
+    p, _ = project(tmp_path)
+    rates = (("arithmetic level 4", (("gpt-6-luna", 0.5, 0.001),)),)
+    s = bench_settings(p, MARKET, out_dir=tmp_path, max_usd=1.0, success_rates=rates, by_reference=True)
+    assert s.success_rates == rates and s.request_by_reference
+    default = bench_settings(p, MARKET, out_dir=tmp_path, max_usd=1.0)
+    assert default.success_rates == () and not default.request_by_reference
+
+
+def test_hub_market_marks_a_provider_error_as_one(tmp_path, fake_family):
+    from purse.market import PROVIDER_ERROR
+    p, job = project(tmp_path)
+
+    class Down:
+        async def chat(self, model, messages, tools=None):
+            raise RuntimeError("max_tokens is too large")
+    hub = hub_for(tmp_path, p, Down(), 9363)
+
+    async def body():
+        async with hub.serving(), HubMarket(hub, hub.new_session("cal", trace=False), reserve_usd=0.25) as market:
+            return await market.attempt(job, CLOUD)
+    out = asyncio.run(body())
+    assert out.refused.startswith(PROVIDER_ERROR) and "max_tokens is too large" in out.refused and not out.correct

@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
 import purse.families  # noqa: F401  (registers the four families)
-from purse.jobs import BINS, LEVELS, InfeasibleCell, Job, family, level_bin, make_job
+from purse.jobs import BINS, LEVELS, WIDE, InfeasibleCell, Job, family, level_bin, make_job
 from purse.market import Option
 from purse.table import Stats
 
@@ -30,8 +30,18 @@ def draw_hidden(level: int, rho: float, rng: random.Random) -> str:
     return level_bin(level) if rng.random() < rho else rng.choice(BINS)
 
 
-def build_pool(seed: int, per_cell: int = 8, families: Sequence[str] = ALL) -> tuple[list[Job], list[str]]:
-    """Every (family, level, bin) cell with `per_cell` jobs, and the cells skipped because a job could not be made."""
+def build_pool(seed: int, per_cell: int = 8, families: Sequence[str] = ALL,
+               wide: bool = False) -> tuple[list[Job], list[str]]:
+    """Every (family, level, bin) cell with `per_cell` jobs, and the cells skipped because a job could not be made.
+    `wide` uses the wider hidden bins (WIDE)."""
+    token = WIDE.set(wide)
+    try:
+        return _build_pool(seed, per_cell, families)
+    finally:
+        WIDE.reset(token)
+
+
+def _build_pool(seed: int, per_cell: int, families: Sequence[str]) -> tuple[list[Job], list[str]]:
     jobs, skipped, index = [], [], 0
     for name in families:
         for level in LEVELS:
@@ -109,11 +119,11 @@ def _describe(o: Option) -> str:
 
 
 def project_text(p: Project, options: Sequence[Option], stats: Stats | None) -> str:
+    """Budget, market, statistics and answer format first, then one section per job. Nothing follows the last job:
+    a section runs to the next heading, so text after it would be held back with it (request_by_reference)."""
     lines = [f"You have ${p.budget_usd:.4f} for this project (it also pays for your own model calls) and "
              f"{p.memory_mb} MB of memory for local models. Each job is worth its value in points; answer as many as "
              "you can.", ""]
-    for j in p.jobs:
-        lines += [f"### {j.id} ({j.family}, level {j.level}, value {j.value})", j.prompt, ""]
     lines += ["Who you can hire:", *(_describe(o) for o in options), ""]
     if stats:
         lines += ["Success rate and mean cost per attempt, measured on similar jobs:", "",
@@ -121,8 +131,10 @@ def project_text(p: Project, options: Sequence[Option], stats: Stats | None) -> 
         lines += [f"| {f} | {lvl} | {o} | {s.rate:.0%} | ${s.cost_usd:.4f} |"
                   for (f, lvl, _, o), s in sorted(stats.items())]
         lines.append("")
-    lines.append('Answer with one JSON object mapping each job id to its answer, e.g. {"j1": "..."}.')
-    return "\n".join(lines)
+    lines += ['Answer with one JSON object mapping each job id to its answer, e.g. {"j1": "..."}.', ""]
+    for j in p.jobs:
+        lines += [f"### {j.id} ({j.family}, level {j.level}, value {j.value})", j.prompt, ""]
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _objects(text: str) -> list[str]:

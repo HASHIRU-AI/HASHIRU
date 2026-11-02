@@ -5,11 +5,13 @@ from typing import Literal, Protocol
 
 from purse.jobs import Job
 
-__all__ = ["ALL_OPTIONS", "CEO_MODEL", "MARKET", "SMALL", "SMALL_OPTION", "Market", "Option", "Outcome",
+__all__ = ["ALL_OPTIONS", "CEO_MODEL", "MARKET", "PROVIDER_ERROR", "SMALL", "SMALL_OPTION", "UNRELIABLE", "Market",
+           "Option", "Outcome",
            "calibrated", "lookup", "priced", "serves"]
 
 CEO_MODEL = "gpt-6-luna"
-SMALL = "nvidia_nim/google/gemma-4-31b-it"  # the small tier, hosted on NVIDIA NIM (bench/prices.json)
+PROVIDER_ERROR = "provider error: "  # an attempt the provider or the hub failed, not the model: calibration retries it
+SMALL = "gpt-5-nano"  # the small tier: cheaper per token than gpt-6-luna
 
 
 @dataclass(frozen=True)
@@ -22,11 +24,15 @@ class Option:
     families: tuple[str, ...] = ()  # empty: it serves every family
     input_usd_per_m: float = 0.0  # a cloud model's list prices per million tokens, as allocators are told them
     output_usd_per_m: float = 0.0
+    price_factor: float = 1.0  # an outside agent's price relative to the others' (priced)
 
 
-# The small tier (Gemma 4 31B on NIM, priced in bench/prices.json) is out of the 2026-11-01 runs: NIM did not answer.
-# Local models are out too: a 4B thinking model took 6 minutes a job on the laptop the runs used.
-SMALL_OPTION = Option(SMALL, "cloud", input_usd_per_m=0.14, output_usd_per_m=0.40)
+# The small tier is out of the 2026-11-01 runs: Gemma 4 31B on NVIDIA NIM did not answer then. Round 2 uses
+# gpt-5-nano ($0.05 / $0.40, priced in LiteLLM's map), cheaper per token than gpt-6-luna. Set aside: gpt-4.1-nano
+# (OpenAI lists it but answers that it is deprecated), Muse Glimmer 30B on NIM (dearer per token than gpt-6-luna, and
+# NIM's trial rate limits) and Gemma 4 31B on OpenRouter (no credits); the last two stay priced in prices.json. Local
+# models are out: a 4B thinking model took 6 minutes a job on the runs' laptop.
+SMALL_OPTION = Option(SMALL, "cloud", input_usd_per_m=0.05, output_usd_per_m=0.40)
 MARKET: tuple[Option, ...] = (
     Option("gpt-6-luna", "cloud", input_usd_per_m=0.10, output_usd_per_m=0.50),
     Option("meta/muse-spark-1.3", "cloud", input_usd_per_m=1.25, output_usd_per_m=4.25),
@@ -35,7 +41,11 @@ MARKET: tuple[Option, ...] = (
 )
 
 
-ALL_OPTIONS = (SMALL_OPTION, *MARKET)
+# A cheap, unreliable seller beside csp: the same grids at a quarter of the price, wrong on 40% of them (run it with
+# `purse.peers.csp_agent --name gridfast --wrong 0.4`). Out of MARKET: a table holds it only once it is calibrated.
+UNRELIABLE = Option("a2a/gridfast", "agent", 0.001, ("grids",), price_factor=0.25)
+
+ALL_OPTIONS = (SMALL_OPTION, *MARKET, UNRELIABLE)
 
 
 def calibrated(names: set[str]) -> tuple[Option, ...]:
@@ -63,8 +73,9 @@ def serves(o: Option, job: Job) -> bool:
 
 
 def priced(market: Sequence[Option], agent_price_usd: float) -> tuple[Option, ...]:
-    """The market with every outside agent at `agent_price_usd` a message."""
-    return tuple(replace(o, per_message_usd=agent_price_usd) if o.kind == "agent" else o for o in market)
+    """The market with every outside agent at `agent_price_usd` a message (times its price_factor)."""
+    return tuple(replace(o, per_message_usd=agent_price_usd * o.price_factor) if o.kind == "agent" else o
+                 for o in market)
 
 
 def lookup(market: Sequence[Option], name: str) -> Option:

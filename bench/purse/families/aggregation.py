@@ -3,7 +3,7 @@ context cannot hold the longest); the hidden bin sets the condition: one field (
 threshold, with near misses that look like matches (high)."""
 import random
 
-from purse.jobs import register_family, same_integer
+from purse.jobs import WIDE, register_family, same_integer
 
 __all__ = ["AGGREGATION", "RECORDS", "Aggregation"]
 
@@ -34,8 +34,9 @@ class Aggregation:
     checkable = False
 
     def generate(self, level: int, hidden: str, rng: random.Random) -> tuple[str, str, dict[str, int]]:
-        n = RECORDS[level]
-        region = rng.choice(tuple(NEAR_REGIONS) if hidden == "high" else REGIONS)
+        n, wide = RECORDS[level], WIDE.get()
+        near = hidden == "high" or (wide and hidden == "mid")  # --wide: the mid bin has near-miss regions too
+        region = rng.choice(tuple(NEAR_REGIONS) if near else REGIONS)
         status = "shipped" if hidden == "high" else rng.choice(STATUSES)
         threshold = rng.randint(200, 800) if hidden == "high" else None
 
@@ -43,19 +44,27 @@ class Aggregation:
             return (o["region"] == region and (hidden == "low" or o["status"] == status)
                     and (threshold is None or float(o["total"]) > threshold))  # type: ignore[arg-type]
 
-        count = rng.randint(3, max(3, n // 5))
+        if wide:  # --wide: the bin also sets how many orders match (a handful, about n/12, about n/7)
+            low, high = {"low": (2, 4), "mid": (max(3, n // 25), max(3, n // 12)),
+                         "high": (max(3, n // 10), max(3, n // 5))}[hidden]
+            count = rng.randint(low, high)
+        else:
+            count = rng.randint(3, max(3, n // 5))
         orders = []
         for _ in range(count):
             total = rng.randint(threshold * 100 + 1, 99_999) / 100 if threshold else _total(rng)
             orders.append(_order(rng, region, status if hidden != "low" else rng.choice(STATUSES), total))
-        if hidden == "high":  # at least one of each near miss, none of which counts
-            assert threshold is not None
+        if wide and hidden == "mid":  # near-miss regions with the right status, none of which counts
             for _ in range(max(1, n // 50)):
+                orders.append(_order(rng, rng.choice(NEAR_REGIONS[region]), status, _total(rng)))
+        if hidden == "high":  # at least one of each near miss, none of which counts (--wide: over three times as many)
+            assert threshold is not None
+            for _ in range(max(1, n // (15 if wide else 50))):
                 orders.append(_order(rng, rng.choice(NEAR_REGIONS[region]), status, rng.randint(threshold * 100 + 1,
                                                                                                     99_999) / 100))
                 orders.append(_order(rng, region, "shipped-late", rng.randint(threshold * 100 + 1, 99_999) / 100))
                 orders.append(_order(rng, region, status, float(threshold)))
-        regions = REGIONS + (NEAR_REGIONS[region] if hidden == "high" else ())
+        regions = REGIONS + (NEAR_REGIONS[region] if near else ())
         statuses = STATUSES + (("shipped-late",) if hidden == "high" else ())
         while len(orders) < n:
             o = _order(rng, rng.choice(regions), rng.choice(statuses), _total(rng))

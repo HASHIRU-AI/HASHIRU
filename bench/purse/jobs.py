@@ -1,10 +1,11 @@
 """A job: one task with an exact answer, from one family of generators, at a visible level and a hidden difficulty."""
 import random
 import re
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Protocol
 
-__all__ = ["ANSWER_NOTE", "BINS", "FAMILIES", "LEVELS", "WORKER_PROMPT", "Family", "InfeasibleCell", "Job",
+__all__ = ["ANSWER_NOTE", "BINS", "FAMILIES", "LEVELS", "WIDE", "WORKER_PROMPT", "Family", "InfeasibleCell", "Job",
            "extract_answer", "family", "level_bin", "make_job", "register_family", "same_integer"]
 
 BINS = ("low", "mid", "high")
@@ -15,6 +16,10 @@ WORKER_PROMPT = "Solve the task exactly. " + ANSWER_NOTE
 TAGGED = re.compile(r"<answer>(.*?)</answer>", re.S | re.I)
 FENCE = re.compile(r"^```[\w-]*\n?(.*?)\n?```$", re.S)
 NOISE = re.compile(r"[\s,_]")
+
+# Wider hidden bins (purse pool --wide): within a level, the hidden bin moves difficulty further, so that knowing it is
+# worth more (V5). Off, the generators make exactly the first round's pool.
+WIDE: ContextVar[bool] = ContextVar("purse_wide_bins", default=False)
 
 
 @dataclass(frozen=True)

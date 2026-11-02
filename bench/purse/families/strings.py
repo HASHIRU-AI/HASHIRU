@@ -4,7 +4,7 @@ import math
 import random
 import string
 
-from purse.jobs import extract_answer, register_family
+from purse.jobs import WIDE, extract_answer, register_family
 
 __all__ = ["LENGTH", "OPERATIONS", "STRINGS", "Strings", "caesar", "double_vowels", "drop_every", "reverse",
            "rotate_left", "swapcase"]
@@ -68,6 +68,8 @@ class Strings:
 
     def generate(self, level: int, hidden: str, rng: random.Random) -> tuple[str, str, dict[str, int]]:
         k, length = OPERATIONS[level], LENGTH[level]
+        if WIDE.get():  # --wide: the bin also sets the start string's length (half, as is, double)
+            length = {"low": max(4, length // 2), "mid": length, "high": 2 * length}[hidden]
         for _ in range(ATTEMPTS):
             start = "".join(rng.choice(ALPHABET[hidden]) for _ in range(length))
             s, ops = start, []
@@ -84,11 +86,14 @@ class Strings:
         raise ValueError(f"strings level {level} {hidden}: no pipeline with a nonempty answer")  # not seen in tests
 
     def _names(self, k: int, hidden: str, rng: random.Random) -> list[str]:
+        wide = WIDE.get()  # --wide: the low bin loses the Caesar shift; all but one high-bin step is positional
         if hidden == "low":
-            return [rng.choice(("reverse", "caesar", "swapcase")) for _ in range(k)]
+            simple = ("reverse", "swapcase") if wide else ("reverse", "caesar", "swapcase")
+            return [rng.choice(simple) for _ in range(k)]
         names = [rng.choice(tuple(APPLY)) for _ in range(k)]
         if hidden == "high":
-            names[:math.ceil(k / 2)] = [rng.choice(POSITIONAL) for _ in range(math.ceil(k / 2))]
+            m = k - 1 if wide else math.ceil(k / 2)
+            names[:m] = [rng.choice(POSITIONAL) for _ in range(m)]
             rng.shuffle(names)
         return names
 

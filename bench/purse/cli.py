@@ -14,6 +14,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import logging
 import platform
 import subprocess
 import sys
@@ -30,16 +31,17 @@ from hashiru.hub import Hub
 from hashiru.llm import LLM, Wallet, WalletExceeded
 from purse.checks import run_checks
 from purse.jobs import LEVELS, Job
-from purse.market import CEO_MODEL, MARKET, Market, Option, calibrated, lookup, priced, serves
+from purse.market import ALL_OPTIONS, CEO_MODEL, PROVIDER_ERROR, Market, Option, calibrated, lookup, priced, serves
 from purse.oracles import sweep_prices
 from purse.projects import Project, build_pool, with_budget
 from purse.replay import ReplayMarket
 from purse.runner import LIVE, RunConfig, is_live, live_extras, run
 from purse.solvers import RunResult, run_upfront
-from purse.table import OutcomeTable, Record
+from purse.table import OutcomeTable, Record, Stats
 
 __all__ = ["HubFactory", "calibrate", "environment", "load_pool", "main", "planned", "wallet_hit"]
 
+log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[2]
 RESERVE_USD = 0.25  # what each calibration hire reserves (firing refunds the rest)
 
@@ -60,12 +62,18 @@ def planned(jobs: Sequence[Job], options: Sequence[str], repeats: int, table: Ou
 
 
 async def calibrate(todo: Sequence[tuple[Job, str, int]], table: OutcomeTable, market: Market) -> int:
-    """Attempt each and record it as it finishes. A refusal is recorded with its reason; an exception (a provider
-    down, max_usd reached, Ctrl-C) stops the run, and a rerun resumes after the last record."""
+    """Attempt each and record it as it finishes; returns how many were recorded. A refusal is recorded with its
+    reason; a provider error is left out (a rerun tries it again); an exception (max_usd reached, Ctrl-C) stops the
+    run, and a rerun resumes after the last record."""
+    recorded = 0
     for j, option, repeat in todo:
         out = await market.attempt(j, option)
+        if out.refused.startswith(PROVIDER_ERROR):
+            log.warning("%s on %s, attempt %d, not recorded: %s", j.uid, option, repeat, out.refused[:200])
+            continue
         table.add(Record(j.uid, option, repeat, out.answer, out.correct, out.cost_usd, out.seconds, out.refused))
-    return len(todo)
+        recorded += 1
+    return recorded
 
 
 def environment(argv: Sequence[str]) -> dict[str, str]:
@@ -132,18 +140,21 @@ async def _hub_market(p: Project, options: Sequence[Option], out: Path, peers: d
 
 
 async def _live(cfg: RunConfig, p: Project, text: str, options: Sequence[Option], seed: int,
-                table: OutcomeTable, factory: HubFactory) -> tuple[dict[str, Any], RunResult]:
+                table: OutcomeTable, factory: HubFactory,
+                stats: Stats | None = None) -> tuple[dict[str, Any], RunResult]:
     """One live run of HASHIRU (or of the LLM split). Past --max-usd it raises WalletExceeded, which stops the
     batch: every call would be refused, and the results would record failures that are not the allocator's."""
-    from purse.hashiru_run import bench_settings, propose_split, run_hashiru, variant_text
+    from purse.hashiru_run import bench_settings, propose_split, run_hashiru, success_rates, variant_text
     factory.wallet.check()
+    rates = success_rates(stats) if cfg.route_on_rates and stats else ()
     hub = factory(bench_settings(p, options, out_dir=cfg.out, max_usd=factory.wallet.max_usd,
-                                 peer_urls=dict(cfg.peers), ceo_model=cfg.ceo, port=cfg.port))
+                                 peer_urls=dict(cfg.peers), ceo_model=cfg.ceo, port=cfg.port,
+                                 success_rates=rates, by_reference=cfg.by_reference))
     async with hub.serving():
         if cfg.allocator == "llm-split":
             alloc, ceo = await propose_split(hub, p, variant_text(text, "split"))
             result = await run_upfront(with_budget(p, max(0.0, p.budget_usd - ceo)), alloc,
-                                       ReplayMarket(table, options, draw=seed), options)
+                                       ReplayMarket(table, options, draw=seed), options, cfg.bounded)
             return {"allocation": alloc}, replace(result, spent_usd=result.spent_usd + ceo, allocator_usd=ceo)
         live = await run_hashiru(hub, p, variant_text(text, "names-models" if cfg.allocator.endswith("models")
                                                       else ""))
@@ -158,6 +169,8 @@ def _parser() -> argparse.ArgumentParser:
     pool.add_argument("--seed", type=int, default=1)
     pool.add_argument("--per-cell", type=int, default=8)
     pool.add_argument("--out", type=Path, required=True)
+    pool.add_argument("--wide", action="store_true",
+                      help="wider hidden bins, so that knowing a job's bin is worth more")
     cal = sub.add_parser("calibrate", help="record outcomes of jobs on options (calls real models)")
     check = sub.add_parser("check", help="the validity checks V1 to V7")
     runp = sub.add_parser("run", help="an allocator on a condition's projects")
@@ -172,6 +185,7 @@ def _parser() -> argparse.ArgumentParser:
     cal.add_argument("--options", required=True, help="comma-separated market options")
     cal.add_argument("--repeats", type=int, default=1)
     cal.add_argument("--levels", default=",".join(map(str, LEVELS)))
+    cal.add_argument("--families", default="", help="comma-separated families (default: all)")
     cal.add_argument("--per-cell", type=int, default=8, help="jobs per cell (the pilot uses 5)")
     cal.add_argument("--memory-mb", type=int, default=24576)
     cal.add_argument("--out", type=Path, default=Path("bench/out/calibration"))
@@ -181,11 +195,18 @@ def _parser() -> argparse.ArgumentParser:
     runp.add_argument("--tau", type=float, default=0.5)
     runp.add_argument("--projects", type=int, default=10)
     runp.add_argument("--seeds", type=int, default=3)
+    runp.add_argument("--first-seed", type=int, default=0, help="the first seed (seeds run from it upward)")
     runp.add_argument("--price", type=float, help="outside agents' price (default: c_ref, the sweep's middle)")
     runp.add_argument("--memory-mb", type=int, default=12288)
     runp.add_argument("--ceo", default=CEO_MODEL)
     runp.add_argument("--uninformed", action="store_true")
     runp.add_argument("--live", action="store_true", help="run a replayed allocator through a live hub (V8)")
+    runp.add_argument("--by-reference", action="store_true",
+                      help="live: hold long sections back from the CEO; messages naming one carry it")
+    runp.add_argument("--route-on-rates", action="store_true",
+                      help="live: hires may give a job's kind and route on its measured success rates")
+    runp.add_argument("--bounded", action="store_true",
+                      help="replay under v2's pool rule: a call is bounded by its pool before it is made")
     runp.add_argument("--out", type=Path, required=True)
     return parser
 
@@ -194,7 +215,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     argv = list(sys.argv if argv is None else argv)
     if args.command == "pool":
-        jobs, skipped = build_pool(args.seed, args.per_cell)
+        jobs, skipped = build_pool(args.seed, args.per_cell, wide=args.wide)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text("".join(json.dumps(asdict(j)) + "\n" for j in jobs))
         print(f"{len(jobs)} jobs in {args.out}" + (f"; skipped cells: {', '.join(skipped)}" if skipped else ""))
@@ -208,13 +229,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     peers = _peers(args.peer)
     if args.command == "calibrate":
         levels = {int(x) for x in args.levels.split(",")}
-        jobs = [j for j in pool if j.level in levels and int(j.uid.rsplit("-", 1)[1]) < args.per_cell]
-        missing = [o for o in args.options.split(",") if lookup(MARKET, o).kind == "agent" and o not in peers]
+        families = {f for f in args.families.split(",") if f} or {j.family for j in pool}
+        if unknown := sorted(families - {j.family for j in pool}):
+            print(f"unknown families: {unknown}")
+            return 2
+        jobs = [j for j in pool if j.level in levels and j.family in families
+                and int(j.uid.rsplit("-", 1)[1]) < args.per_cell]
+        missing = [o for o in args.options.split(",") if lookup(ALL_OPTIONS, o).kind == "agent" and o not in peers]
         if missing:  # without its agent running, every attempt would be recorded as a failure
             print("outside agents need a running peer: " + " ".join(f"--peer {o.removeprefix('a2a/')}=URL"
                                                                      for o in missing))
             return 2
-        todo = planned(jobs, args.options.split(","), args.repeats, table, MARKET)
+        todo = planned(jobs, args.options.split(","), args.repeats, table, ALL_OPTIONS)
         if not args.spend:
             print(f"calibrate would make {len(todo)} calls to {args.options} (pass --spend to make them)")
             return 2
@@ -224,7 +250,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         factory = HubFactory(args.max_usd)
 
         async def go() -> int:
-            async with _hub_market(calib, MARKET, args.out, peers, RESERVE_USD, factory, args.port) as market:
+            async with _hub_market(calib, ALL_OPTIONS, args.out, peers, RESERVE_USD, factory, args.port) as market:
                 return await calibrate(todo, table, market)
         try:
             print(f"recorded {asyncio.run(go())} attempts in {args.table}")
@@ -235,7 +261,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     price = args.price if args.price is not None else sweep_prices(table, pool, market)[1]
     options = priced(market, price)
     cfg = RunConfig(args.allocator, args.rho, args.tau, args.projects, args.seeds, args.memory_mb, args.ceo,
-                    not args.uninformed, args.live, args.max_usd, args.out, peers, args.port)
+                    not args.uninformed, args.live, args.max_usd, args.out, peers, args.port, args.bounded,
+                    args.by_reference, args.route_on_rates, args.first_seed)
     if is_live(cfg):
         options = tuple(o for o in options if o.kind != "agent" or o.name in peers)
         if not args.spend:
@@ -249,8 +276,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     def live_market(p: Project) -> Any:
         return _hub_market(p, options, cfg.out, peers, None, factory, cfg.port)
 
-    async def live(c: RunConfig, p: Project, text: str, opts: Sequence[Option], seed: int) -> Any:
-        return await _live(c, p, text, opts, seed, table, factory)
+    async def live(c: RunConfig, p: Project, text: str, opts: Sequence[Option], seed: int,
+                   stats: Stats | None = None) -> Any:
+        return await _live(c, p, text, opts, seed, table, factory, stats)
     try:
         lines = asyncio.run(run(cfg, pool, table, options, live if cfg.allocator in LIVE else None, live_market))
     except BaseException as exc:

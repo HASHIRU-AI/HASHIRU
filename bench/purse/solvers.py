@@ -1,5 +1,7 @@
 """Allocators that are not LLMs: a knapsack that splits the money up front, fixed policies, and a cascade that
-adapts during the task. All of them run against a Market, live or replayed, under the same pool rule as the hub."""
+adapts during the task. All of them run against a Market, live or replayed, under one of two pool rules: the first
+hub's (a call needs money left and is charged in full, even past the pool) or v2's (bounded=True: a call is bounded
+by its pool before it is made)."""
 import math
 import random
 from collections.abc import Mapping, Sequence
@@ -10,30 +12,47 @@ from purse.market import Market, Option, Outcome, lookup, serves
 from purse.projects import Project, score
 from purse.table import Stats
 
-__all__ = ["SKIP", "UNIT", "Allocation", "Attempt", "Pool", "RunResult", "cascade", "fit_theta", "fixed", "hybrid",
-           "knapsack", "plan_knapsack", "random_allocation", "run_upfront", "uniform"]
+__all__ = ["INPUT_MARGIN", "MIN_ANSWER_TOKENS", "SKIP", "UNIT", "Allocation", "Attempt", "Pool", "RunResult", "cascade",
+           "fit_theta", "fixed", "hybrid", "knapsack", "plan_knapsack", "random_allocation", "run_upfront",
+           "short_answer_usd", "uniform"]
 
 Allocation = dict[str, str]  # job id -> option name, or SKIP
 SKIP = "skip"
 UNIT = 1e-4  # the knapsack counts dollars in units of $0.0001, costs rounded up
 MAX_CHECKS = 3  # grid_check answers at most this many times per puzzle
+MIN_ANSWER_TOKENS = 256  # v2's rule, as the hub's: a call that cannot pay for this much output is refused
+INPUT_MARGIN = 1.1  # and the input is priced a little high (both are hashiru's values; a test keeps them equal)
+CHARS_PER_TOKEN = 4  # replay has the job's prompt but not its token count
+CUT = "cut off at the pool"
 HYBRID = {1: "gpt-6-luna", 2: "gpt-6-luna", 3: "gpt-6-luna", 4: "meta/muse-spark-1.3",
           5: "meta/muse-spark-1.3"}  # AgentCARD-style: the tier follows the visible level
 
 
-class Pool:
-    """The allocator's money, under the hub's rule: a cloud call needs money left, an outside agent its price, and
-    a call's cost is charged in full afterwards (it may take the pool below zero, as in the hub)."""
+def short_answer_usd(o: Option, j: Job) -> float:
+    """What a cloud call on `o` must be able to pay under v2's rule: reading the job's prompt, and a short answer."""
+    tokens_in = len(j.prompt) / CHARS_PER_TOKEN
+    return (tokens_in * o.input_usd_per_m * INPUT_MARGIN + MIN_ANSWER_TOKENS * o.output_usd_per_m) / 1e6
 
-    def __init__(self, budget_usd: float) -> None:
-        self.budget_usd, self.spent_usd = budget_usd, 0.0
+
+class Pool:
+    """The allocator's money. Under the first hub's rule a cloud call needs money left, an outside agent its price,
+    and a call's cost is charged in full afterwards (it may take the pool below zero). Under v2's rule (`bounded`) a
+    cloud call must also pay for reading its prompt and a short answer, and the executors cut a call that would cost
+    more than the pool holds at what it holds (replay does not know what a cut call would have answered: nothing)."""
+
+    def __init__(self, budget_usd: float, bounded: bool = False) -> None:
+        self.budget_usd, self.spent_usd, self.bounded = budget_usd, 0.0, bounded
 
     @property
     def left(self) -> float:
         return self.budget_usd - self.spent_usd
 
-    def allows(self, o: Option) -> bool:
-        return o.kind == "local" or (self.left > 0 if o.kind == "cloud" else self.left >= o.per_message_usd)
+    def allows(self, o: Option, j: Job | None = None) -> bool:
+        if o.kind == "local":
+            return True
+        if o.kind == "agent":
+            return self.left >= o.per_message_usd
+        return self.left > 0 and (not self.bounded or j is None or self.left >= short_answer_usd(o, j))
 
     def charge(self, usd: float) -> None:
         self.spent_usd += usd
@@ -111,18 +130,21 @@ def random_allocation(p: Project, market: Sequence[Option], seed: int) -> Alloca
 
 
 async def _try(j: Job, o: Option, pool: Pool, market: Market, log: list[Attempt]) -> Outcome:
-    if not pool.allows(o):
+    if not pool.allows(o, j):
         out = Outcome("", False, 0.0, 0.0, refused="the pool cannot pay for it")
     else:
         out = await market.attempt(j, o.name)
+        if pool.bounded and o.kind == "cloud" and out.cost_usd > pool.left:
+            out = Outcome("", False, pool.left, out.seconds, refused=CUT)
         pool.charge(out.cost_usd)
     log.append(Attempt(j.id, o.name, out))
     return out
 
 
-async def run_upfront(p: Project, alloc: Mapping[str, str], market: Market, options: Sequence[Option]) -> RunResult:
+async def run_upfront(p: Project, alloc: Mapping[str, str], market: Market, options: Sequence[Option],
+                      bounded: bool = False) -> RunResult:
     """Carry out a fixed allocation: jobs by value (then id), each once, nothing changed on the way."""
-    pool, log, answers = Pool(p.budget_usd), list[Attempt](), dict[str, str]()
+    pool, log, answers = Pool(p.budget_usd, bounded), list[Attempt](), dict[str, str]()
     for j in sorted(p.jobs, key=lambda x: (-x.value, x.id)):
         if (name := alloc.get(j.id, SKIP)) == SKIP:
             continue
@@ -132,11 +154,12 @@ async def run_upfront(p: Project, alloc: Mapping[str, str], market: Market, opti
     return RunResult(answers, pool.spent_usd, tuple(log))
 
 
-async def cascade(p: Project, stats: Stats, market: Market, options: Sequence[Option], theta: float) -> RunResult:
+async def cascade(p: Project, stats: Stats, market: Market, options: Sequence[Option], theta: float,
+                  bounded: bool = False) -> RunResult:
     """The solver that adapts: per job, the options expected to succeed at least `theta` of the time, cheapest first.
     A checkable job moves up until the check passes (at most MAX_CHECKS tries); any other job asks the two cheapest
     and, if they disagree, a third. Without a qualifying option, the most reliable one answers alone."""
-    pool, log, answers = Pool(p.budget_usd), list[Attempt](), dict[str, str]()
+    pool, log, answers = Pool(p.budget_usd, bounded), list[Attempt](), dict[str, str]()
 
     def ranked(j: Job) -> list[tuple[Option, float, float]]:
         known = [(o, *c) for o in options if serves(o, j) if (c := _cell(stats, j, o.name, False)) is not None]
@@ -172,11 +195,11 @@ async def cascade(p: Project, stats: Stats, market: Market, options: Sequence[Op
 
 
 async def fit_theta(projects: Sequence[Project], stats: Stats, market: Market, options: Sequence[Option],
-                    grid: Sequence[float] = (0.3, 0.5, 0.7, 0.9)) -> float:
+                    grid: Sequence[float] = (0.3, 0.5, 0.7, 0.9), bounded: bool = False) -> float:
     """The threshold with the best mean score on `projects` (the other fold's), the smallest on a tie."""
     best, best_score = grid[0], -1.0
     for theta in grid:
-        results = [await cascade(p, stats, market, options, theta) for p in projects]
+        results = [await cascade(p, stats, market, options, theta, bounded) for p in projects]
         mean = sum(score(p, r.answers) for p, r in zip(projects, results, strict=True)) / max(len(projects), 1)
         if mean > best_score + 1e-12:
             best, best_score = theta, mean

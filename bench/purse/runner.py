@@ -46,6 +46,10 @@ class RunConfig:
     out: Path = Path("bench/out")
     peers: Mapping[str, str] = field(default_factory=dict)
     port: int = 9250
+    bounded: bool = False  # replay under v2's pool rule (a call bounded by its pool) instead of the first hub's
+    by_reference: bool = False  # live: the CEO reads long sections as an outline; messages naming one carry it
+    route_on_rates: bool = False  # live: hires may route on the measured success rates an informed allocator is told
+    first_seed: int = 0  # seeds run are first_seed .. first_seed + seeds - 1 (one process per seed, in parallel)
 
 
 def is_live(cfg: RunConfig) -> bool:
@@ -71,23 +75,24 @@ async def _replayed(cfg: RunConfig, p: Project, stats: Stats, market: Market, op
                     table: OutcomeTable, seed: int, theta: float) -> RunResult:
     name = cfg.allocator
     if name == "cascade":
-        return await cascade(p, stats, market, options, theta)
+        return await cascade(p, stats, market, options, theta, cfg.bounded)
     alloc = (plan_knapsack(p, stats, options) if name == "knapsack" else hybrid(p) if name == "hybrid"
              else uniform(p, stats, options) if name == "uniform" else random_allocation(p, options, seed)
              if name == "random" else oracle_full(p, table, options, p.budget_usd) if name == "oracle"
              else fixed(p, name.removeprefix("fixed:"), options))
-    return await run_upfront(p, alloc, market, options)
+    return await run_upfront(p, alloc, market, options, cfg.bounded)
 
 
 def _line(cfg: RunConfig, p: Project, seed: int, result: RunResult, **extra: Any) -> dict[str, Any]:
     return {"allocator": cfg.allocator, "project": p.id, "seed": seed, "rho": cfg.rho, "tau": cfg.tau,
-            "budget_usd": p.budget_usd, "score": score(p, result.answers), "spent_usd": result.spent_usd,
+            "budget_usd": p.budget_usd, "pool_rule": "v2" if cfg.bounded else "first",
+            "score": score(p, result.answers), "spent_usd": result.spent_usd,
             "allocator_usd": result.allocator_usd,
             "attempts": [[a.job_id, a.option, a.outcome.correct, a.outcome.cost_usd, a.outcome.refused]
                          for a in result.attempts]} | extra
 
 
-LiveRunner = Callable[[RunConfig, Project, str, Sequence[Option], int], Any]  # async -> (extras, RunResult)
+LiveRunner = Callable[[RunConfig, Project, str, Sequence[Option], int, Stats | None], Any]  # -> (extras, RunResult)
 
 
 async def run(cfg: RunConfig, pool: Sequence[Job], table: OutcomeTable, options: Sequence[Option],
@@ -99,17 +104,20 @@ async def run(cfg: RunConfig, pool: Sequence[Job], table: OutcomeTable, options:
     if cfg.allocator == "cascade":
         for fold in (0, 1):
             others = [p for p in projects if int(p.id.split("-f")[1][0]) != fold]
-            thetas[fold] = await fit_theta(others, stats[1 - fold], ReplayMarket(table, options), options)
+            thetas[fold] = await fit_theta(others, stats[1 - fold], ReplayMarket(table, options), options,
+                                           bounded=cfg.bounded)
     cfg.out.mkdir(parents=True, exist_ok=True)
     lines = []
     for p in projects:
         fold = int(p.id.split("-f")[1][0])
-        for seed in range(cfg.seeds):
+        for seed in range(cfg.first_seed, cfg.first_seed + cfg.seeds):
             if cfg.allocator in LIVE:
                 assert live is not None
-                text = project_text(p, options, stats[fold] if cfg.informed else None)
-                extra, result = await live(cfg, p, text, options, seed)
-                line = _line(cfg, p, seed, result, **extra)
+                told = stats[fold] if cfg.informed else None
+                text = project_text(p, options, told)
+                extra, result = await live(cfg, p, text, options, seed, told)
+                line = _line(cfg, p, seed, result, by_reference=cfg.by_reference,
+                             route_on_rates=cfg.route_on_rates, **extra)
             elif cfg.live:
                 assert live_market is not None
                 async with live_market(p) as market:

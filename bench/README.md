@@ -34,7 +34,26 @@ PYTHONPATH=bench uv run python -m purse run --allocator knapsack --pool ... --ta
 ```
 
 `run` replays `knapsack`, `cascade`, `oracle`, `hybrid`, `uniform`, `random` and `fixed:<option>` on the outcome
-table at no cost. These call real models and refuse unless `--spend` is given:
+table at no cost. By default replay uses the first hub's pool rule (a call is charged in full, even past the pool);
+`--bounded` uses v2's (a call is bounded by its pool before it is made, and a call cut at its pool answers nothing).
+
+Round 2 (2026-11-02) added:
+
+- `pool --wide` makes wider hidden bins, so that knowing a job's bin is worth more (V5); without it, `pool` makes the
+  first round's jobs exactly.
+- `run --allocator hashiru --route-on-rates` lets hires name a job's kind (`arithmetic level 4`) and route on the
+  success rates an informed allocator is told; `--by-reference` holds long sections back from the CEO and attaches
+  what a message names. Each is a switch, so each can be ablated.
+- The small tier is `gpt-5-nano` ($0.05 / $0.40 per million tokens), cheaper per token than `gpt-6-luna`. Muse
+  Glimmer 30B on NIM and Gemma 4 31B on OpenRouter stay priced in `prices.json` but are unused.
+- `a2a/gridfast` is a cheap, unreliable seller beside `csp`: run `python -m purse.peers.csp_agent --port 9303
+  --price 0.00025 --name gridfast --wrong 0.4` and calibrate it like any option.
+- The project text gives the budget, the market, the statistics and the answer format before the jobs, so that
+  `--by-reference`, which holds back long sections (a section runs to the next heading), never holds them back.
+- Live runs share one provider's per-minute token limit (2M for `gpt-6-luna`): round 2 ran at most five processes at
+  once, and a rate-limited call waits and is sent again instead of failing the agent.
+
+These call real models and refuse unless `--spend` is given:
 
 - `calibrate` sends jobs to options through a HASHIRU hub (`--levels 1,3,5 --per-cell 5` is the pilot);
 - `run --allocator hashiru` (and `hashiru-names-models`, `llm-split`) runs the CEO live;

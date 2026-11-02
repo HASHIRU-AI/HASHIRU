@@ -97,3 +97,26 @@ def test_grid_check_is_offered_to_agents_over_mcp(tmp_path):
                 return names, " ".join(getattr(c, "text", "") for c in result.content)
     names, result = asyncio.run(body())
     assert "purse__grid_check" in names and json.loads(result) == {"result": "valid"}  # the gateway wraps results
+
+
+def test_an_unreliable_csp_agent_is_wrong_at_its_rate_and_always_sounds_sure():
+    jobs = [make_job("grids", lv, "mid", seed=s, uid=f"g{lv}{s}") for lv in (2, 3, 4) for s in range(20)]
+    texts = [f"Solve:\n\n{j.prompt}" for j in jobs]
+    replies = [csp_agent.solve_text(t, wrong_rate=0.4, seed=7) for t in texts]
+    wrong = sum(not GRIDS.correct(j.answer, r) for j, r in zip(jobs, replies, strict=True))
+    assert 0.25 <= wrong / len(jobs) <= 0.55 and all(r.startswith("<answer>{") for r in replies)
+    assert replies == [csp_agent.solve_text(t, wrong_rate=0.4, seed=7) for t in texts]  # a puzzle always gets one reply
+    assert all(GRIDS.correct(j.answer, csp_agent.solve_text(t)) for j, t in zip(jobs, texts, strict=True))
+
+
+def test_an_unreliable_csp_agent_has_its_own_name_and_price():
+    card = csp_agent.agent_card("http://127.0.0.1:9303/", 0.0002, name="gridfast")
+    assert card.name == "gridfast" and "gridfast" in csp_agent.agent_card("x", 0.001, name="gridfast").description
+
+
+def test_the_market_can_price_an_outside_agent_below_the_others():
+    from purse.market import MARKET, UNRELIABLE, priced
+    market = priced((*MARKET, UNRELIABLE), 0.001)
+    prices = {o.name: o.per_message_usd for o in market if o.kind == "agent"}
+    assert prices == {"a2a/calc": 0.001, "a2a/csp": 0.001, "a2a/gridfast": 0.001 * UNRELIABLE.price_factor}
+    assert UNRELIABLE.price_factor < 1 and UNRELIABLE.families == ("grids",) and UNRELIABLE not in MARKET

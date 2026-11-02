@@ -110,3 +110,54 @@ def test_an_outside_agent_needs_its_price_left_in_the_pool():
     assert pool.allows(Option(LUNA, "cloud")) and pool.allows(Option(QWEN, "local"))
     pool.charge(0.006)
     assert not pool.allows(Option(LUNA, "cloud")) and pool.allows(Option(QWEN, "local"))
+
+
+# The v2 pool rule (bounded=True): a call is bounded by its pool before it is made, as the hub bounds it.
+PRICED = Option(LUNA, "cloud", input_usd_per_m=100.0, output_usd_per_m=1000.0)  # a short answer: about $0.256
+
+
+def test_bounded_pool_refuses_a_call_that_cannot_pay_for_a_short_answer():
+    from purse.solvers import MIN_ANSWER_TOKENS, Pool, short_answer_usd
+    j = job("a", id="j1")
+    need = short_answer_usd(PRICED, j)
+    assert need > MIN_ANSWER_TOKENS * PRICED.output_usd_per_m / 1e6  # reading the prompt costs something too
+    assert Pool(need, bounded=True).allows(PRICED, j) and not Pool(need * 0.99, bounded=True).allows(PRICED, j)
+    assert Pool(need * 0.99).allows(PRICED, j)  # the old rule asks only for money left
+    assert Pool(0.0, bounded=True).allows(Option(QWEN, "local"), j)
+
+
+def test_bounded_executor_cuts_an_overrunning_call_at_the_pool():
+    jobs = (job("a", id="j1", value=4), job("b", id="j2", value=2))
+    p = Project("p", jobs, 1.0, budget_usd=0.3)
+    market = FakeMarket({("j1", LUNA): ok(cost=0.5), ("j2", LUNA): ok(cost=0.001)})
+    old = asyncio.run(run_upfront(p, {"j1": LUNA, "j2": LUNA}, market, (PRICED,)))
+    assert set(old.answers) == {"j1"} and abs(old.spent_usd - 0.5) < 1e-12  # charged in full, past the pool
+    market.calls.clear()
+    new = asyncio.run(run_upfront(p, {"j1": LUNA, "j2": LUNA}, market, (PRICED,), bounded=True))
+    assert market.calls == [("j1", LUNA)]  # j2 is refused: nothing is left for a short answer
+    assert new.answers == {} and abs(new.spent_usd - 0.3) < 1e-12  # the cut call spends the pool and answers nothing
+    assert [a.outcome.refused for a in new.attempts] == ["cut off at the pool", "the pool cannot pay for it"]
+
+
+def test_bounded_executor_leaves_a_call_that_fits_alone():
+    p = Project("p", (job("a", id="j1"),), 1.0, budget_usd=1.0)
+    market = FakeMarket({("j1", LUNA): ok(cost=0.4)})
+    result = asyncio.run(run_upfront(p, {"j1": LUNA}, market, (PRICED,), bounded=True))
+    assert set(result.answers) == {"j1"} and abs(result.spent_usd - 0.4) < 1e-12
+
+
+def test_bounded_cascade_cannot_spend_past_its_pool():
+    j = job("a", id="j1", family="strings")
+    p = Project("p", (j,), 1.0, budget_usd=0.3)
+    spark = Option(SPARK, "cloud", input_usd_per_m=100.0, output_usd_per_m=1000.0)
+    stats = stats_for(j, {LUNA: (0.8, 0.1), SPARK: (0.9, 0.2)})
+    market = FakeMarket({("j1", LUNA): ok("x", cost=0.2), ("j1", SPARK): ok("y", cost=0.2)})
+    result = asyncio.run(cascade(p, stats, market, (PRICED, spark), theta=0.5, bounded=True))
+    assert result.spent_usd <= p.budget_usd + 1e-12 and market.calls == [("j1", LUNA)]
+
+
+def test_bounded_rule_uses_the_hubs_constants():
+    from hashiru.llm import INPUT_MARGIN
+    from hashiru.runtime import MIN_ANSWER_TOKENS
+    from purse import solvers
+    assert (solvers.MIN_ANSWER_TOKENS, solvers.INPUT_MARGIN) == (MIN_ANSWER_TOKENS, INPUT_MARGIN)
