@@ -73,6 +73,7 @@ class Settings:
     trace_dir: str = "traces"
     prices_file: str = ""
     tool_creation: bool = False
+    web_tools: bool = True  # get_website and arxiv_search; a benchmark turns them off so no answer is looked up
     tools_dir: str = "user_tools"
     tool_start_timeout: float = 180.0
     tool_call_timeout: float = 60.0

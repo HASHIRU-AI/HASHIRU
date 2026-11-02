@@ -56,7 +56,8 @@ class Tools:
                 "For a manager, tools optionally limits which of your tools it may use (by name, including "
                 "ask_agent)."))(self.hire_agent)
             mcp.tool()(self.fire_agent)
-        for reader in (self.check_usage, self.get_website, self.arxiv_search, self.read_file):
+        web = (self.get_website, self.arxiv_search) if self.hub.settings.web_tools else ()
+        for reader in (self.check_usage, *web, self.read_file):
             mcp.tool(annotations=READ_ONLY)(reader)  # what plan mode offers (planning.readable)
         mcp.tool()(self.memory)
         mcp.tool()(self.deliver_to_user)
