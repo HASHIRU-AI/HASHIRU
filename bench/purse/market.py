@@ -18,13 +18,15 @@ class Option:
     kind: Literal["local", "cloud", "agent"]
     per_message_usd: float = 0.0
     families: tuple[str, ...] = ()  # empty: it serves every family
+    input_usd_per_m: float = 0.0  # a cloud model's list prices per million tokens, as allocators are told them
+    output_usd_per_m: float = 0.0
 
 
 MARKET: tuple[Option, ...] = (
     Option("ollama_chat/qwen3.5:4b", "local"),
     Option("ollama_chat/gemma4:12b", "local"),
-    Option("gpt-6-luna", "cloud"),
-    Option("meta/muse-spark-1.3", "cloud"),
+    Option("gpt-6-luna", "cloud", input_usd_per_m=0.10, output_usd_per_m=0.50),
+    Option("meta/muse-spark-1.3", "cloud", input_usd_per_m=1.25, output_usd_per_m=4.25),
     Option("a2a/calc", "agent", 0.001, ("arithmetic",)),
     Option("a2a/csp", "agent", 0.001, ("grids",)),
 )
