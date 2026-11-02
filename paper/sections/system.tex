@@ -1,11 +1,11 @@
 \section{An Economy for Agents}
 \label{sec:system}
 
-\sys{} v2 rebuilds v1~\cite{pai2025hashiru} on open protocols. A user's request goes to a CEO agent, which may hire
-\emph{managers} (agents that use tools and may hire) and \emph{workers} (agents that answer once), to a configurable
-depth (two levels below the CEO by default). Every agent is its own A2A service with its own Agent Card, every tool is
-served over MCP, and \sys{} itself is reachable as an OpenAI-compatible model, an A2A agent and an MCP server. One
-process serves everything on one port. Every model call, tool call and message is written to a JSONL trace.
+\sys{} v2 rebuilds v1~\cite{pai2025hashiru} on open protocols. A user's request goes to a CEO agent. The CEO may hire
+\emph{managers} (agents that use tools and can hire others) and \emph{workers} (agents that answer once), up to a set
+depth (two levels below the CEO by default). Every agent runs as its own A2A service with its own Agent Card, and every
+tool is served over MCP. \sys{} itself can be reached as an OpenAI-compatible model, an A2A agent or an MCP server, all
+from one process on one port. Every model call, tool call and message is written to a log (a JSONL trace).
 Figure~\ref{fig:tree} shows one hiring tree.
 
 \begin{figure}[!htb]
@@ -17,11 +17,11 @@ Figure~\ref{fig:tree} shows one hiring tree.
   lab/.style={font=\scriptsize\color{muted},fill=white,inner sep=1.5pt},
   node distance=1.1cm and 0.5cm]
   \node[font=\small\bfseries] (user) {You};
-  \node[agent,below=0.7cm of user,fill=accentsoft!35,draw=accent] (ceo) {\textbf{CEO}\\pool \$0.50};
-  \node[agent,below left=1.2cm and 1.6cm of ceo] (m1) {\textbf{manager m1}\\reserves \$0.20};
+  \node[agent,below=0.7cm of user,fill=accentsoft!35,draw=accent] (ceo) {\textbf{CEO}\\budget \$0.50};
+  \node[agent,below left=1.2cm and 1.6cm of ceo] (m1) {\textbf{manager m1}\\given \$0.20};
   \node[agent,below=1.2cm of ceo] (w1) {\textbf{worker w1}, local model\\\$0.10 and 3.5 GB};
   \node[remote,below right=1.2cm and 1.6cm of ceo] (calc) {\textbf{a2a/calc}, remote agent\\\$0.001 a message};
-  \node[agent,below=1.0cm of m1] (w2) {\textbf{worker w2}, cloud model\\reserves \$0.05};
+  \node[agent,below=1.0cm of m1] (w2) {\textbf{worker w2}, cloud model\\given \$0.05};
   \node[draw=rulecolor,rounded corners=3pt,font=\small,inner sep=5pt,right=1.4cm of ceo] (mcp) {MCP tools};
   \draw[edge] (user) -- (ceo);
   \draw[edge] (ceo) -- node[lab]{A2A} (m1);
@@ -30,37 +30,39 @@ Figure~\ref{fig:tree} shows one hiring tree.
   \draw[edge] (m1) -- node[lab]{A2A} (w2);
   \draw[edge,dashed] (ceo) -- (mcp);
 \end{tikzpicture}
-\caption{One hiring tree. Each hire reserves money from its hirer's pool (and a local model, the memory it uses);
-firing returns what it did not spend. A remote agent is paid its declared price from its hirer's reservation.}
+\caption{One hiring tree. Each hire takes its budget out of its parent's (and a local model also takes the memory it
+uses). Firing returns what the hire did not spend. A remote agent is paid its stated price out of the budget of the
+agent that hired it.}
 \label{fig:tree}
 \end{figure}
 
 \subsection{From v1 to v2}
-v1 had one level of hierarchy, a hand-written table of resource units, and no analysis of the local-against-cloud
-trade (its own stated limitations). v2 lets managers hire with money they were given, prices every cloud call from
-LiteLLM's price map~\cite{berriai2026litellm} (local calls cost no dollars but hold the memory their model really uses,
-measured from Ollama~\cite{ollama2026ollama}), and bounds every call by what its agent holds. Rules that v1 left to prompts (who may
-spend what, where private data may go) are enforced in code, because in our experience with an earlier prototype, rules stated
-only in prompts were broken.
+v1 had one level of hiring, a hand-written table of resource costs, and no study of when a local model beats a cloud
+one (limits it stated itself). v2 lets managers hire with money they were given. It prices every cloud call from
+LiteLLM's price list~\cite{berriai2026litellm}. Local calls cost no dollars but take the memory their model really uses,
+measured from Ollama~\cite{ollama2026ollama}. And it caps every call at what its agent has left. Rules that v1 left to
+prompts (who may spend what, and where private data may go) are now enforced in code, because in an earlier prototype,
+rules written only in prompts were broken.
 
-\subsection{Budget safety by construction}
+\subsection{Built-in spending limits}
 \label{sec:pools}
-Each agent $a$ holds a reservation $R_a$ carved from its hirer's pool, and one rule says what it can still spend.
+Each agent $a$ is given an amount $R_a$ out of its parent's budget, and one rule says what it can still spend.
 
-\begin{keybox}{One rule for every pool}
+\begin{keybox}{One rule for every budget}
 \vspace{-6pt}
 \begin{equation}
 \mathrm{left}(a) = R_a - \mathrm{spent}(a) - \sum_{c \in \mathrm{hires}(a)} \mathrm{hold}(c)
 \label{eq:left}
 \end{equation}
-A live hire holds its whole reservation; a fired one holds only what it (and everyone below it) actually spent.
+A hire that is still working holds its whole amount. A fired hire holds only what it (and every agent below it)
+actually spent.
 \end{keybox}
-Firing therefore returns the unspent part, and two hires running at once cannot spend the same dollars, since each holds its
-reservation from the moment it is hired. Table~\ref{tab:pool} works one session through.
+So firing returns the unspent part. Two hires running at the same time cannot spend the same dollars, because each
+holds its amount from the moment it is hired. Table~\ref{tab:pool} walks through one session.
 
 \begin{table}[!htb]
 \centering
-\caption{One session's pools (dollars). The CEO starts with \$0.50.}
+\caption{One session's budgets, in dollars. The CEO starts with \$0.50.}
 \label{tab:pool}
 \footnotesize
 \begin{tabular}{@{}lrr@{}}
@@ -76,51 +78,125 @@ w1 spends 0.03, then the CEO fires it & 0.26 & 0.13 \\
 \end{tabular}
 \end{table}
 
-A rule is only as good as its enforcement, and \sys{} enforces this one in code at every call, not in the prompt. Three
-guards keep it true. (1) \emph{Reservations.} A hire cannot reserve more than its hirer has left, a local hire must fit
-in free memory (or under a cap, \texttt{memory\_mb}), and a remote agent's declared price must fit in its reservation
-before each message. (2) \emph{Bounded calls.} Before a cloud call, the hub prices its input and caps its output to what
-the agent can still pay for, so the call cannot cost more than the agent holds; a call that cannot pay for a short
-answer is refused before it reaches the provider, and its refusal states the price, so the hirer can reserve more.
-(3) \emph{A closing turn.} An agent with one step left (its last allowed turn, or a pool that pays for an answer but not
-for another working turn and the answer after it) answers with what it has instead of ending with nothing. Together
-they hold each agent to what it holds, within the margin of the hub's token estimate, whatever the agent decides;
-\S\ref{sec:evaluation} shows each one at work. Separately,
-\texttt{max\_usd} caps real spend for the whole process, and because every reservation, call and fire is in the trace,
-the ledger can be rebuilt from the trace alone.
+A rule only works if it is enforced, and \sys{} enforces this one in code on every call, not in the prompt. Three
+guards keep it true.
+\begin{enumerate}[label=(\arabic*)]
+  \item \emph{Reservations.} A hire cannot take more than its parent has left. A local hire must fit in free memory (or
+  under a cap, \texttt{memory\_mb}). A remote agent's stated price must fit in its budget before each message.
+  \item \emph{Capped calls.} Before a cloud call, the hub prices the input and caps the output at what the agent can
+  still pay for, so the call cannot cost more than the agent has. A call that cannot pay for even a short answer is
+  refused before it reaches the provider, and the refusal says what the call would cost, so the parent can give more.
+  \item \emph{A last turn.} An agent with one step left (its last allowed turn, or a budget that covers an answer but
+  not another working turn) answers with what it has instead of ending with nothing.
+\end{enumerate}
+Together, these keep each agent within its budget, up to the hub's error in estimating tokens, whatever the agent
+decides. Section~\ref{sec:evaluation} shows each one at work. Separately, \texttt{max\_usd} caps real spending for the
+whole process. Because every reservation, call and firing is in the log, the accounts can be rebuilt from the log alone.
+Figure~\ref{fig:hire} follows one hire from its reservation to its refund.
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[
+  lane/.style={draw=rulecolor,fill=sand,rounded corners=3pt,font=\small\bfseries,minimum width=2.4cm,inner sep=5pt},
+  life/.style={draw=rulecolor,line width=0.8pt},
+  msg/.style={-{Stealth[length=2mm]},draw=ink,line width=0.6pt},
+  refusal/.style={msg,draw=accent},
+  lab/.style={font=\scriptsize,fill=white,inner sep=1.2pt,align=center,text=ink}]
+  \foreach \x/\n/\t in {0/ceo/CEO (parent), 4.3/hub/Hub, 8.6/hire/Hire, 12.9/prov/Provider} {
+    \node[lane] (\n) at (\x,0) {\t};
+    \draw[life] (\x,-0.4) -- (\x,-9.3);
+  }
+  \draw[msg] (0,-1.0) -- node[lab,above]{\texttt{hire\_agent}, give \$0.005} (4.3,-1.0);
+  \draw[msg] (4.3,-1.6) -- node[lab,above]{hired, with \$0.005} (8.6,-1.6);
+  \draw[msg] (8.6,-2.5) -- node[lab,above]{call} (4.3,-2.5);
+  \draw[msg] (4.3,-3.4) -- node[lab,above]{output capped to\\what the hire has} (12.9,-3.4);
+  \draw[msg] (12.9,-4.0) -- node[lab,above]{reply, billed \$0.0046} (4.3,-4.0);
+  \draw[msg] (4.3,-4.5) -- node[lab,above]{reply} (8.6,-4.5);
+  \draw[msg] (8.6,-5.3) -- node[lab,above]{next call} (4.3,-5.3);
+  \draw[refusal] (4.3,-5.9) -- node[lab,below=2pt,text=accent]{refused before the provider: a short\\answer costs about \$0.0011, give more} (8.6,-5.9);
+  \draw[msg] (8.6,-7.5) -- node[lab,above,pos=0.25]{last turn: answers with what it has} (0,-7.5);
+  \draw[msg] (0,-8.3) -- node[lab,above]{fire} (4.3,-8.3);
+  \draw[msg] (4.3,-8.9) -- node[lab,above]{returns the \$0.0004 not spent} (0,-8.9);
+\end{tikzpicture}
+\caption{One hire's money, from reservation to refund, using the amounts of the median \texttt{muse-spark-1.3} hire in
+\S\ref{sec:evaluation}. The hub takes the hire's budget out of its parent's, caps each call's output at what the hire
+has, refuses a call that cannot pay for a short answer before it reaches the provider (and quotes the price), and
+returns what was not spent when the hire is fired.}
+\label{fig:hire}
+\end{figure}
 
 \subsection{Hiring by declared difficulty}
-A hiring agent may name a model, or declare how hard a job is (easy, medium or hard) and let the hub choose. The hub
-turns a difficulty into a list of models, best first, and hires the first that the modes, the hirer's pool and the
-data's sensitivity allow. An easy job tries small local models, then cheap cloud models; a hard job tries the dearest
-cloud models first. A worker that fails or answers empty moves up its list and gets the message again, up to a limit
-(\texttt{max\_escalations}, two by default). Which models exist, and their tiers, come from the machine itself
-(Ollama's pulled models that call tools, and every cloud model in LiteLLM's map whose provider key is set, tiered by
-price or by size). Declared difficulty is the agent's own judgment, so \bench{} measures it against the hidden
-difficulty of each job (\S\ref{sec:evaluation}).
+An agent that hires may name a model, or say how hard a job is (easy, medium or hard) and let the hub choose. The hub
+turns a difficulty into a list of models, best first, and hires the first one that the settings, the parent's budget
+and the data's privacy allow. An easy job tries small local models first, then cheap cloud models. A hard job tries the
+most expensive cloud models first. A worker that fails or gives an empty answer moves up its list and gets the message
+again, up to a limit (\texttt{max\_escalations}, two by default). The list of models comes from the machine itself
+(Ollama models that are downloaded and can call tools, and every cloud model in LiteLLM's list whose provider key is
+set, ranked by price or size). The declared difficulty is the agent's own guess, so \bench{} checks it against each
+job's hidden difficulty (\S\ref{sec:evaluation}).
+
+An agent can instead name the kind of job (\texttt{kind}) and let the hub choose by measured success. Given a table of
+each model's success rate and mean cost for each kind of job (\texttt{success\_rates}, which can come from the hub's
+own logs), the hub hires the cheapest model that succeeds at least 70\% of the time on that kind
+(\texttt{route\_min\_rate}), then the others, most reliable first. The hiring tool lists the kinds the table knows, so
+the agent can name one.
 
 \subsection{Make or buy over open protocols}
 Besides models, a manager may hire a remote A2A agent as a worker (\texttt{a2a/<name>}). The hub reads the agent's
-card, prices it through a small A2A extension (a card declares a price per message or per token; a reply reports what
-the request cost), charges the larger of the declared price and the reported cost to the hire's pool, and pins the
-agent to its configured URL. Since a \sys{} hub is itself an A2A agent, one hub can hire another, and a whole team,
-with its own CEO and pools, appears to the hirer as one priced worker. This turns hiring into make or buy. An agent can make
-an answer with a model it pays per token, or buy it from an outside agent at a price. Either way, a hirer can attach
-sections of the user's request to its message verbatim, so a long input reaches the hire whole.
+card and prices it through a small A2A extension. The card states a price per message or per token, and each reply
+reports what the request cost. The hub charges the larger of the two to the hire's budget, and only talks to the agent
+at its configured URL. Since a \sys{} hub is itself an A2A agent, one hub can hire another. A whole team, with its own
+CEO and budgets, then looks like one priced worker to the agent that hired it. This makes hiring a make-or-buy choice.
+An agent can make an answer with a model it pays per token, or buy it from an outside agent at a set price. Either way,
+it can attach parts of the user's request to its message word for word, so a long input reaches the hire in full. With
+\texttt{request\_by\_reference} on, the CEO never reads a long section at all. It sees each section of 2,000
+characters or more cut down to its heading and first two lines, with a note on how to pass it on. A message to a hire
+that names a section by its key (\texttt{j3} for ``\#\#\# j3 (logic grids, ...)'') carries the whole section. The CEO
+then pays to read the request's outline on every turn, instead of the whole request.
 
-\subsection{Quotes, authority and sensitivity}
-Three further mechanisms read naturally in economic terms. \emph{Plan mode is a quote.} The CEO may only read and
-propose; the hub previews each proposed hire as it would be made (the model the router picks, what it reserves, the
-memory it takes) and checks the totals against the pool, and approving the plan approves its hires. An approved plan's
-steps compile to a graph (LangGraph~\cite{langchain2026langgraph}) that hires, runs each step once its inputs exist,
-fires each hire after its last step, and lets the CEO answer once. \emph{Approvals are spending authority.} A hire or a
-turn above a threshold waits for the user. \emph{Sensitivity limits where work may go.} Private data never reaches a
-cloud or remote model as it is; it is masked with placeholders on the way out and restored on the way back (Presidio's
-recognizers~\cite{presidio2026presidio} and a local model find the values), or refused.
+\subsection{Quotes, approvals and privacy}
+Three more features read naturally in money terms. \emph{Plan mode is a quote.} The CEO may only read and propose. The
+hub previews each proposed hire as it would be made (the model the router picks, the money it takes, the memory it
+uses) and checks the totals against the budget, and approving the plan approves its hires. An approved plan becomes a
+graph (LangGraph~\cite{langchain2026langgraph}) that hires, runs each step once its inputs are ready, fires each hire
+after its last step, and lets the CEO answer once. \emph{Approvals are spending authority.} A hire or a turn above a set
+amount waits for the user. \emph{Privacy limits where work may go.} Private data never reaches a cloud or remote model
+as it is. It is replaced with placeholders on the way out and restored on the way back (Presidio's
+recognizers~\cite{presidio2026presidio} and a local model find the values), or the call is refused.
+
+\subsection{Giving a team a budget}
+A team is one YAML file and one command (Figure~\ref{fig:team}). This file sets up the market from our evaluation,
+with three cloud models, a priced logic-grid solver over A2A, and the second round's measured success rates for level-5
+arithmetic (Table~\ref{tab:calibration}). Every request then gets a CEO with a budget of \texttt{budget\_usd}, the whole
+process stops at \texttt{max\_usd}, and the log records every reservation, call and refund.
+
+\begin{figure}[!htb]
+\begin{codebox}
+# team.yaml
+ceo_model: gpt-6-luna
+models: [gpt-5-nano, gpt-6-luna, meta/muse-spark-1.3]
+budget_usd: 0.10              # the CEO's budget for each request
+max_usd: 5.00                 # real spend, for the whole process
+request_by_reference: true    # long sections stay out of the CEO's context
+a2a_peers:
+  csp: {url: http://127.0.0.1:9512/}    # a priced logic-grid solver, hired as a2a/csp
+success_rates:                # kind of job -> model -> [success rate, mean cost in $]
+  arithmetic level 5: {gpt-6-luna: [0.25, 0.0031], gpt-5-nano: [0.53, 0.0073],
+                       meta/muse-spark-1.3: [0.92, 0.0961]}
+
+$ uv run --env-file .env hashiru ask --config team.yaml "Answer the jobs below ..."
+\end{codebox}
+\vspace{-4pt}
+\caption{A team with a budget. The market from our evaluation in one config file, and the command that sends it a
+request. Every key is described in this section.}
+\label{fig:team}
+\end{figure}
 
 \subsection{Implementation}
-\sys{} v2 is 6,429 lines of Python 3.13 with exact pins for its protocol and model libraries, and 455 tests that run
-without API keys or Ollama. The guards of \S\ref{sec:pools} grew out of measurement, each written test-first after a
-benchmark run showed what happens without it (\S\ref{sec:evaluation}). So did three smaller features, viz. \texttt{attach},
-which lets a hirer pass sections of the user's request to a hire word for word; a switch that takes the web tools away,
-so that no answer can be looked up during an evaluation; and support for reasoning models that reject temperature 0.
+\sys{} v2 is 6,578 lines of Python 3.13, with exact versions pinned for its protocol and model libraries. Its 468
+tests (and 157 more for the benchmark) run without API keys or Ollama. The guards in \S\ref{sec:pools} came out of measurement. Each was written
+test-first after a benchmark run showed what happens without it (\S\ref{sec:evaluation}). So were routing by measured
+success, hiding long sections from the CEO, and four smaller features. \texttt{attach} lets an agent pass sections of
+the user's request to a hire word for word. A switch turns off the web tools, so no answer can be looked up during an
+evaluation. Reasoning models that reject temperature 0 are supported. And a call refused because of a provider's rate
+limit now waits and retries (for up to 104 seconds, without being billed) instead of failing.

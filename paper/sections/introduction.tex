@@ -1,47 +1,55 @@
 \section{Introduction}
 \label{sec:intro}
 
-Teams of language-model agents cost money, and how a team's budget is split decides what the team can do. A
-hierarchical system (a CEO agent that hires managers and workers, as in \sys{} v1~\cite{pai2025hashiru}, or the
-orchestrators of AutoGen~\cite{wu2024autogen}, MetaGPT~\cite{hong2024metagpt} and Magentic-One~\cite{fourney2024magenticone})
-spends on every hire, and the hires differ in price (a strong cloud model for a hard step, a cheap one for an easy step,
-an outside agent that sells an exact answer). A team that spends its budget on the wrong steps fails on the ones that needed it, and a team that cannot
-bound its spending cannot be trusted with a budget at all.
+Teams of AI agents cost money, and how a team splits its budget decides what it can do. In a hierarchical system, a
+CEO agent hires managers and workers, as in \sys{} v1~\cite{pai2025hashiru} or the orchestrators of
+AutoGen~\cite{wu2024autogen}, MetaGPT~\cite{hong2024metagpt} and Magentic-One~\cite{fourney2024magenticone}. Every hire
+costs something, and prices differ a lot. A strong cloud model costs more than a cheap one, and an outside agent may
+charge for each exact answer it sells. A team that spends on the wrong steps fails the steps that needed the money, and
+a team that cannot limit its spending cannot be trusted with a budget at all.
 
-Agent software has started to hand this money to the agents. Automaton's \texttt{fund\_child} transfers credits to a
-child agent~\cite{conway2026automaton}; wayland-core's \texttt{delegate} gives a sub-agent a dollar ceiling charged to
-it and its descendants~\cite{ferrox2026waylandcore}; AgentLance lets a manager model set budgets for subtasks within
-its payment~\cite{liu2026markets}. Budget-aware systems that are evaluated split the money with an optimizer outside the
-agents instead (BAMAS~\cite{yang2026bamas}, ZEBRA~\cite{hamri2026zebra}), and benchmarks of budget awareness
-(BAGEN~\cite{lin2026bagen}, $R^3$-Bench~\cite{wang2026r3bench}, EcoAgent-Bench~\cite{wu2026ecoagent}) measure one agent
-spending its own tokens or actions. A ceiling that is checked after a call crosses it does not keep the call from
-crossing it, and none of these systems is measured against the best split its money could buy. No arrangement covers
-the case where agents hold the money for a whole hiring tree, every call is bounded by what its agent holds before it is
-made, and the resulting allocation is measured against a known optimum.
+Some agent software already hands money to the agents. Automaton's \texttt{fund\_child} sends credits to a child
+agent~\cite{conway2026automaton}, wayland-core's \texttt{delegate} gives a sub-agent a dollar limit
+\cite{ferrox2026waylandcore}, and AgentLance lets a manager model set budgets for subtasks~\cite{liu2026markets}. Other
+systems leave the agents out and split the money with an optimizer instead (BAMAS~\cite{yang2026bamas},
+ZEBRA~\cite{hamri2026zebra}). Benchmarks of budget awareness (BAGEN~\cite{lin2026bagen}, $R^3$-Bench~\cite{wang2026r3bench},
+EcoAgent-Bench~\cite{wu2026ecoagent}) measure one agent spending its own tokens or actions. Two things are missing. A
+limit that is checked after a call does not stop the call from going over it. And none of these systems compares the
+agents' split with the best split the money could buy. No system lets agents hold the money for a whole hiring tree,
+limits every call before it is made, and measures the result against a known best split.
 
-To address these limitations, we built \sys{} v2. Every agent is its own A2A service, every tool is served over MCP,
-and every hire reserves money from its hirer's pool. The hub, not the prompt, keeps spending safe. A call's output is
-capped to what its agent has left, a call that cannot pay for an answer is refused with its price, firing returns what
-was not spent, and an agent with one step left answers with what it has. Because every reservation, call and refund is
-in the trace, the allocation can be measured, and we measured it on a benchmark built so that the best split of the
-money is known.
+To address these limitations, we built \sys{} v2. Every agent runs as its own A2A service, every tool is served over
+MCP, and every hire takes its budget out of its parent's budget. The runtime (the \emph{hub}), not the prompt, keeps
+spending safe. It caps each call at what the agent has left. It refuses a call that cannot pay for an answer and says
+what the call would cost. It returns unspent money when a hire is fired, and it makes an agent on its last step answer
+with what it has. Every reservation, call and refund is logged, so we can measure how well the agents split the money,
+and we measured it on a benchmark where the best split is known.
 
 \begin{keybox}{What this whitepaper contributes}
 \begin{itemize}
-  \item \textbf{\sys{} v2, an economy for agents.} Each agent holds a pool reserved from its hirer's, in dollars and,
-  for local models, measured memory; it declares how hard a job is and the hub hires the cheapest model that fits, or
-  it buys from a priced remote agent or a whole remote team over A2A (\S\ref{sec:system}).
-  \item \textbf{Budget safety by construction.} Pools are reserved and refunded, calls are bounded by their pool before
-  they are made, and a closing turn turns an empty pool into an answer rather than a failure. On live projects, none of
-  48 hires spent past its reservation and every run answered (\S\ref{sec:pools}, \S\ref{sec:evaluation}).
-  \item \textbf{Agents measured against optimizers.} On projects whose best split is known, \sys{}'s agents scored
-  above sending every job to the strongest model at 37\% of its spend, matched a team that assigns tiers by level at
-  35\% of its spend, and bought, escalated and re-reserved as the market priced their work (\S\ref{sec:evaluation}).
+  \item \textbf{\sys{} v2, an economy for agents.} Each agent gets a budget from its parent, in dollars and, for local
+  models, in memory. It can say how hard a job is and let the hub hire the cheapest model that fits, or buy from a
+  priced remote agent or a whole remote team over A2A (\S\ref{sec:system}).
+  \item \textbf{Built-in spending limits.} Budgets are set aside when an agent is hired and refunded when it is fired.
+  Every call is capped at what its agent has left before it is made (as accurately as the hub counts tokens), and an
+  agent on its last step gets one final turn in which it must answer (\S\ref{sec:pools}).
+  \item \textbf{Limits that hold, and a measured account of where agents win.} Across 551 live hires, none spent more
+  than 1.11 times its budget, where the first version let one spend 372 times. Keeping long inputs away from the CEO
+  raised the agents' score (the share of points answered right) by 0.136. With enough budget to run the CEO, the agents
+  beat the cheap model alone on hard jobs that a specialist can do (79\% against 69\% right) and match it overall.
+  Re-scoring at four budget levels shows where a strategy that adapts pulls ahead (\S\ref{sec:evaluation}).
 \end{itemize}
 \end{keybox}
 
-Each of the three safety mechanisms earns its place in the measurements. Run as first built, without the call bound
-and the closing turn, the same agents overran a reservation by up to 372 times and lost half their runs to an empty
-pool; with both, they lost none and spent 71\% of their budget. The remaining distance to the best split, and to a solver that
-knows each job type's success rate in advance, is in how the agents judge difficulty, which is where \sys{} goes next
-(\S\ref{sec:conclusion}).
+The limits matter. Without them, the same agents spent up to 372 times a hire's budget and lost half their runs to an
+empty budget. With them, no hire went over by more than the hub's error in counting tokens. How the agents split the
+money is the open problem, and the logs turned it into something we could work on. They showed the CEO paying to reread
+every long document on every turn, and hiding those documents raised the score by 0.136. They also show where the
+agents win and why they do not win more. The agents send hard logic grids to an exact solver and retry hard jobs on more
+expensive models, which puts them ahead of the cheap model on hard jobs that a specialist can do. But they give the
+expensive model less money than it needs, so its hires took 55\% of the spending and got 12 of 79 answers right.
+Re-scoring the same projects at other budgets shows what is at stake. As the budget grows eightfold (from a quarter of
+what the best answers cost to twice that), the cheap model alone stays near 0.75, while a strategy that adapts during
+the task, as the agents do, rises from 0.70 to 0.88. The remaining problems are just as specific. The expensive model
+is underfunded, a CEO that pays for every turn cannot work below a minimum budget, and the CEO answers some jobs itself
+instead of handing them off. Section~\ref{sec:conclusion} takes each one in turn.

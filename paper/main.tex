@@ -24,6 +24,8 @@
 \usepackage[most]{tcolorbox}
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta,calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
 \usepackage[colorlinks,linkcolor=accent,citecolor=accent,urlcolor=accent]{hyperref}
 
 % ---- palette (from the HASHIRU logo and chat page) ----
@@ -34,6 +36,11 @@
 \definecolor{sand}{HTML}{F5EFE6}
 \definecolor{muted}{HTML}{6B675F}
 \definecolor{rulecolor}{HTML}{DCD3C4}
+% chart series (the dataviz reference palette, slots 1 to 4 in order; validated for colour-blind separation)
+\definecolor{vizblue}{HTML}{2A78D6}
+\definecolor{vizorange}{HTML}{EB6834}
+\definecolor{vizaqua}{HTML}{1BAF7A}
+\definecolor{vizyellow}{HTML}{EDA100}
 \color{ink}
 
 % ---- open issues, and numbers still to be filled from the runs ----
@@ -77,6 +84,10 @@
   borderline west={3pt}{0pt}{accent},left=14pt,right=12pt,top=9pt,bottom=9pt,
   title={#1},coltitle=accent,fonttitle=\bfseries\large,attach title to upper={\par\smallskip},
   before skip=12pt,after skip=14pt}
+\newtcblisting{codebox}{enhanced,listing only,colback=sand,colframe=sand,boxrule=0pt,arc=0pt,
+  borderline west={3pt}{0pt}{rulecolor},left=10pt,right=8pt,top=5pt,bottom=5pt,before skip=8pt,after skip=10pt,
+  listing options={basicstyle=\ttfamily\footnotesize\color{ink},columns=fullflexible,keepspaces=true,
+  showstringspaces=false,upquote=true,aboveskip=0pt,belowskip=0pt}}
 \newtcolorbox{pullquote}{enhanced,colback=white,colframe=white,boxrule=0pt,arc=0pt,
   borderline north={1pt}{0pt}{accentsoft},borderline south={1pt}{0pt}{accentsoft},
   left=4pt,right=4pt,top=10pt,bottom=10pt,fontupper=\large\itshape\color{accent},before skip=12pt,after skip=14pt}
@@ -96,8 +107,8 @@
     at ([xshift=1.15in,yshift=-4.9cm]current page.north west) {%
     {\color{accentsoft}\small\bfseries WHITEPAPER\quad\textbullet\quad NOVEMBER 2026}\\[16pt]
     {\fontsize{38}{44}\selectfont\bfseries Agents That Hold the Money}\\[14pt]
-    {\Large\color{white!82!night}\sys{} v2 builds teams of language-model agents that hire,\\[2pt]
-     spend and answer within the money they are given}};
+    {\Large\color{white!82!night}\sys{} v2 gives teams of AI agents a budget to hire models\\[2pt]
+     and other agents, and keeps them within it}};
 \end{tikzpicture}
 \vspace*{11.4cm}
 
@@ -105,29 +116,30 @@
 \begin{minipage}[t]{0.31\textwidth}
   {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
   {\small\bfseries\color{muted}THE SYSTEM}\\[2pt]
-  {\bfseries An economy for agents}\\[2pt]
-  {\small Each agent holds a pool reserved from its hirer's and hires models and priced agents over A2A and MCP.}
+  {\bfseries Agents with their own budgets}\\[2pt]
+  {\small Each agent gets a budget from the agent that hired it, and spends it hiring models and other agents.}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.31\textwidth}
   {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
-  {\small\bfseries\color{muted}THE GUARANTEE}\\[2pt]
-  {\bfseries Budget safety by construction}\\[2pt]
-  {\small No call costs more than its agent holds, firing refunds what was not spent, and every agent answers.}
+  {\small\bfseries\color{muted}THE GUARDS}\\[2pt]
+  {\bfseries Built-in spending limits}\\[2pt]
+  {\small Every call is capped at what its agent has left, unspent money comes back when a hire is fired, and an
+  agent on its last step must answer.}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.31\textwidth}
   {\color{accent}\rule{\linewidth}{1.5pt}}\\[4pt]
   {\small\bfseries\color{muted}THE RESULT}\\[2pt]
-  {\bfseries More per dollar}\\[2pt]
-  {\small Above the strongest model alone at 37\% of its spend, with no hire over its reservation.}
+  {\bfseries Limits that hold}\\[2pt]
+  {\small Across 551 live hires, none spent more than 1.11 times its budget. The first version let one spend 372
+  times.}
 \end{minipage}
 
 \vfill
 \noindent
-\begin{tabular}{@{}l@{\hspace{2.2em}}l@{\hspace{2.2em}}l@{}}
-{\large\bfseries Kunal Pai} & {\large\bfseries Parth Shah} & {\large\bfseries Harshil Patel} \\[1pt]
-{\color{muted}UCLA} & {\color{muted}Independent Researcher} & {\color{muted}UC Davis} \\
-{\small\href{mailto:kunpai@ucla.edu}{kunpai@ucla.edu}} & {\small\href{mailto:helloparthshah@gmail.com}{helloparthshah@gmail.com}} &
-{\small\href{mailto:hpppatel@ucdavis.edu}{hpppatel@ucdavis.edu}} \\
+\begin{tabular}{@{}l@{\hspace{2.2em}}l@{}}
+{\large\bfseries Kunal Pai} & {\large\bfseries Harshil Patel} \\[1pt]
+{\color{muted}UCLA} & {\color{muted}UC Davis} \\
+{\small\href{mailto:kunpai@ucla.edu}{kunpai@ucla.edu}} & {\small\href{mailto:hpppatel@ucdavis.edu}{hpppatel@ucdavis.edu}} \\
 \end{tabular}\\[10pt]
 {\small\color{muted}\sys{} v2 is source-available under the PolyForm Noncommercial License 1.0.0 at
 \url{https://github.com/HASHIRU-AI/HASHIRU}}
@@ -136,29 +148,30 @@
 % ================= executive summary and contents =================
 \section*{Executive Summary}
 \markboth{Executive Summary}{}
-A team of language-model agents spends money every time it hires a strong cloud model for a hard step, a cheap one
-for an easy step, or an outside agent that sells an exact answer. \sys{} v2 gives that money to the agents themselves.
-Each agent holds a pool reserved from its hirer's and spends it by hiring, over the open protocols agents and tools now
-share (A2A and MCP). The hub makes that spending safe. A call cannot cost more than its agent holds, firing returns
-what was not spent, and an agent near the end of its pool answers instead of failing.
+A team of AI agents spends money every time it uses a model or another agent, and a strong cloud model costs more than
+a cheap one. \sys{} v2 gives this money to the agents themselves. Each agent gets a budget from the agent that hired it
+and spends it by hiring models and other agents (over A2A and MCP). \sys{}'s runtime, the hub, keeps this safe. It caps
+every call at what the agent has left, returns unspent money when a hire is fired, and makes an agent on its last step
+answer.
 
 \begin{keybox}{What \sys{} v2 delivers}
 \begin{itemize}
-  \item \textbf{Budget safety by construction.} On live projects, none of 48 hires spent past its reservation, every
-  run returned an answer, and the runs spent 71\% of their budget.
-  \item \textbf{More per dollar than spending on strength.} \sys{}'s agents scored 0.566 of the value, above sending
-  every job to the strongest model (0.479) at 37\% of its spend, and level with a team that assigns tiers by level
-  (0.536) at 35\% of its spend.
-  \item \textbf{A real market.} The agents bought nine exact answers from priced outside agents, escalated ten jobs
-  that failed, and in 19 of 25 cases reserved more after the hub quoted a call they could not yet afford.
+  \item \textbf{Limits that hold.} Across 551 hires in 120 live runs, no hire spent more than 1.11 times its budget
+  (13 went over by 9 to 11\%, because the hub undercounted tokens in long inputs). The first version let a hire spend
+  372 times its budget and lost half its runs.
+  \item \textbf{Long inputs kept away from the CEO.} Not showing long documents to the CEO agent raised the score (the
+  share of points answered right) from 0.463 to 0.599, a gain of 0.136 (95\% interval +0.067 to +0.216).
+  \item \textbf{Where the agents win, and what holds them back.} With enough budget to run the CEO, the agents beat the
+  cheap model alone on hard jobs where the market has a specialist (79\% against 69\% right) and match it overall
+  (0.737 against 0.740). But they give the expensive model too little money, so its 79 hires took 55\% of the spending
+  and got 12 answers right.
 \end{itemize}
 \end{keybox}
 
-\begin{keybox}{Where it stands, and where it goes}
-The same agents are level with one model splitting the money up front and still trail a solver that knows each job
-type's success rate in advance (0.785), which marks the headroom in how agents judge difficulty. \sys{} v2 is a step
-toward agent economies in which agents hold budgets, buy from one another across organizations and account for every
-dollar. These are first, small runs (\$4.50 in all).
+\begin{keybox}{Where it stands}
+These are small experiments (\$33.21 in total), and our results tables fail three of seven validity checks
+(\S\ref{sec:checks}). Re-scored at larger budgets, a strategy that adapts during the task climbs to 0.88 while the
+cheap model alone stays near 0.75, but we have run the agents live only at the smaller budget.
 \end{keybox}
 
 {\renewcommand{\sectionbreak}{}\renewcommand{\contentsname}{Contents}\tableofcontents}
@@ -171,6 +184,12 @@ dollar. These are first, small runs (\$4.50 in all).
 \input{sections/evaluation}
 \input{sections/limitations}
 \input{sections/conclusion}
+
+\section*{Acknowledgements}
+\markboth{Acknowledgements}{}
+We thank Parth Shah for building much of \sys{} v1, on which this work builds. We thank Hugging Face, Groq and Lambda
+Labs for sponsoring \sys{} and providing the resources for its development, and
+Y Combinator's Startup School for API credits.
 
 \renewcommand{\refname}{References}
 {\small

@@ -1,28 +1,54 @@
 \section{Toward Economies of Agents}
 \label{sec:conclusion}
 
-\sys{} v2 shows that language-model agents can be handed money and trusted with it. Each agent holds a pool reserved
-from its hirer's, every call is bounded by what its agent holds, firing returns what was not spent, and an agent near
-the end of its pool answers instead of failing. On live projects that meant no hire over its reservation, no run
-without an answer, and more value per dollar than spending on the strongest model. Because every reservation, call and
-refund is in the trace, the spending can be checked, measured and improved, which is how the guards themselves came
-about.
+\sys{} v2 shows that AI agents can be given money and held to it. Each agent gets a budget from its parent, every call
+is capped at what its agent has left, firing returns what was not spent, and an agent on its last step must answer.
+Over 551 hires in 120 live runs, no hire spent more than 1.11 times its budget, where \sys{} as first built let one
+spend 372 times. Keeping long inputs away from the CEO raised the agents' score by 0.136. On projects with enough budget
+to run the CEO, the agents beat the cheap model alone on hard jobs that a specialist can do (79\% against 69\% right)
+and match it overall (0.737 against 0.740), at 3.9 times its spend. Because every reservation, call and refund is in
+the log, the spending can be checked, measured and improved. That is how we built the guards and both changes, and how
+we found what is left to fix.
 
-This is a step toward agent economies in which teams of agents hold budgets, buy from one another and account for every
+\begin{keybox}{When to use \sys{} v2 today}
+Our runs support five rules of thumb, each limited to the market we measured.
+\begin{itemize}
+  \item \textbf{A hard spending limit.} Use \sys{} when a team must stay within its money. Every hire stayed within
+  1.11 times its budget, while the same agents without the call cap overspent one by 372 times.
+  \item \textbf{Hard jobs that a specialist can do.} Hire through \sys{} when the market sells exact answers. On hard
+  arithmetic and logic grids, the agents were right 79\% of the time, against 69\% for the cheap model alone.
+  \item \textbf{A budget too small for the expensive model.} Expect the cheap model's score at a higher cost. At the
+  budgets we ran, the agents matched \texttt{gpt-6-luna} alone (0.737 against 0.740) at 3.9 times its spend.
+  \item \textbf{A very small budget.} Below about \$0.006 a project, send each job to one cheap model. A CEO that pays
+  for each turn used up the budget before it answered (0.046 against 0.724).
+  \item \textbf{A budget with room.} Split the money instead of using one model. In replay, the cheap model alone
+  stayed near 0.75 as the budget grew eightfold while the cascade reached 0.88. We have not yet run the agents at these
+  budgets.
+\end{itemize}
+\end{keybox}
+
+This is a step toward agent economies, where teams of agents hold budgets, buy from each other and account for every
 dollar. The pieces are already in \sys{}. Priced remote agents and whole remote teams are hired like any model, prices
 travel in an A2A extension, and payment protocols (AP2~\cite{google2026agent}, the A2A x402
-extension~\cite{googleagenticcommerce2025a2a}) can settle what the ledger records. An organization could give a team of
-agents a budget the way it gives one to a department, and get back an answer, a spend within that budget, and a trace of
+extension~\cite{googleagenticcommerce2025a2a}) can settle what the accounts record. An organization could give a team of
+agents a budget the way it gives one to a department, and get back an answer, spending within that budget, and a log of
 where each dollar went.
 
-\textbf{Roadmap.} The distance that remains to the best split is in the agents' judgment, and each part of it has a
-concrete next step. Declared difficulty tracks real difficulty only weakly, so the hub can route on success rates it
-measures from its own traces, the same statistics that make the knapsack strong. The CEO spends over half its budget
-rereading the request, so long inputs can stay out of its context and travel to hires by reference, by default rather
-than through \texttt{attach}. And the measurements can grow, with a harder calibration that brings out the value of
-adapting, more projects and seeds, local models with memory as a second currency, and outside agents whose reliability
-is unknown.
+\textbf{Roadmap.} Each remaining gap has a concrete next step, listed by payoff per dollar. The agents pick the
+expensive model for hard jobs but give it too little money, so more than half of what they spent went to its hires, and
+only 12 of 79 answered right. The hub already knows what an attempt on each model costs, from the same statistics it
+routes on, so it can quote that price when the hire is made, instead of after the money is spent. The CEO can then fund
+the hire in full or buy something cheaper. With that in place, the agents should be run at larger budgets, where the
+replays show a strategy pulling ahead of the cheap model (0.133 ahead at twice the cost of the best answers). The agents
+cannot work below a minimum budget, since a CEO that hires, asks and fires pays for a turn at each step. Below it, the
+hub can plan up front in one call, as the LLM split does, or answer cheap projects with one model. The CEO answers the
+jobs it keeps worse than a fresh call (85\% against 91\%), which argues for handing jobs off by default. The call cap is
+only as tight as the hub's token count, which can be checked against billed usage in the log, and its margin learned
+from it. The two changes of the second round should be tested separately. And a results table that passes V5 needs
+more than four jobs per group, since a difficulty's rate from twelve attempts is as noisy as the differences it is
+meant to show. Without it, the value of adapting during the task cannot be measured. Finally, the market can grow to
+include local models, with memory as a second currency, which \sys{} already supports.
 
 \textbf{Availability.} \sys{} v2 is source-available under the PolyForm Noncommercial License 1.0.0 at
-\url{https://github.com/HASHIRU-AI/HASHIRU}. The evaluation suite and the run data are available from the authors on
-request. \sys{} v1's code is preserved at tag \texttt{v1.0-paper}.
+\url{https://github.com/HASHIRU-AI/HASHIRU}. The benchmark and the run data are available from the authors on request.
+\sys{} v1's code is preserved at tag \texttt{v1.0-paper}.

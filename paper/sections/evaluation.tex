@@ -1,124 +1,318 @@
 \section{Results}
 \label{sec:evaluation}
 
-We ask whether agents that hold the money keep to it, how much they get for it, and whether they use the market that
-\sys{} gives them.
+We ask three questions. Do agents that hold the money stay within it? Do they use the market that \sys{} gives them?
+And how well do they split the money?
 
 \subsection{Setup}
+We ran two rounds. The first (2026-11-01) built the guards and measured them. The second (2026-11-02) added a third
+model and an unreliable seller, measured the models again on a wider set of jobs, and tested the agents on more
+projects.
+
 \paragraph{Models and prices} The CEO is \texttt{gpt-6-luna} (\$0.10 / \$0.50 per million input / output tokens). The
-market is \texttt{gpt-6-luna} (the cheap tier), \texttt{muse-spark-1.3} from Meta's Model API (\$1.25 / \$4.25, the
-dear tier), and the \texttt{calc} and \texttt{csp} agents. Prices are LiteLLM's map of 2026-11-01. A small tier (Gemma
-4 31B on NVIDIA NIM) was planned and left out, since its hosted endpoint did not answer on the run date; local models are
-also left out, since on the laptop available (Apple M5, 24 GB) a 4B thinking model took six minutes on one arithmetic
-job.
+first round's market has \texttt{gpt-6-luna} (the cheap model), \texttt{muse-spark-1.3} from Meta's Model API (\$1.25 /
+\$4.25, the expensive model), and the \texttt{calc} and \texttt{csp} agents. The second adds \texttt{gpt-5-nano}
+(\$0.05 / \$0.40) and \texttt{gridfast}. Prices are LiteLLM's list prices on the run dates. \texttt{gpt-5-nano} is the
+cheapest per token, but it reasons for longer, so one attempt on it costs three times as much as one on
+\texttt{gpt-6-luna} (\$0.0030 against \$0.0010). We tried other small models and dropped them (Gemma 4 31B, whose
+hosted endpoint did not answer, and Muse Glimmer 30B, which costs more per token than \texttt{gpt-6-luna}). We left out
+local models, since on the laptop we had (Apple M5, 24 GB) a 4B thinking model took six minutes on one arithmetic job.
 
-\paragraph{Calibration} We sent 120 jobs (two per family, level and bin) once to each option, for \$0.18 on Luna and
-\$3.18 on Spark (the outside agents are our own programs and cost nothing real). Table~\ref{tab:calibration} shows
-where the tiers separate.
-
-\paragraph{Runs} Ten projects at $\rho = 0.5$ and $\tau = 0.5$ (mean budget \$0.056). The solver allocators and fixed
-policies are replayed on the outcome table; \sys{} v2 runs live, twice on each of the first six projects (mean budget
-\$0.043), and the LLM split's plan is made live and carried out by replay. All the money spent, calibration and every
-live run included, came to \$4.50.
+\paragraph{Calibration} The first round sent 120 jobs (two per job type, level and difficulty) once to each option, for
+\$0.18 on \texttt{gpt-6-luna} and \$3.18 on \texttt{muse-spark-1.3}. The outside agents are our own programs and cost
+nothing real. The second round sent 240 jobs (four per group) three times to each option, for \$0.70 on
+\texttt{gpt-6-luna}, \$2.17 on \texttt{gpt-5-nano} and \$20.32 on \texttt{muse-spark-1.3}. Table~\ref{tab:calibration}
+shows where the second round's models differ, and where they cross over.
 
 \begin{table}[!htb]
 \centering
-\caption{Jobs answered correctly out of six at calibration, by level (1 to 5).}
+\caption{Share of attempts answered right in the second round's calibration, by level (1 to 5; 36 attempts each).}
 \label{tab:calibration}
-\small
-\begin{tabular}{@{}lccc@{}}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lllll@{}}
 \toprule
-\tablehead Family & \texttt{gpt-6-luna} & \texttt{muse-spark-1.3} & Outside agent \\
+\tablehead Job type & \texttt{gpt-5-nano} & \texttt{gpt-6-luna} & \texttt{muse-spark-1.3} & Outside agent \\
 \midrule
-Arithmetic & 6 6 6 6 \textbf{0} & 6 6 6 6 6 & 6 6 6 6 \textbf{0} (\texttt{calc}) \\
-Logic grids & 5 6 6 5 4 & 6 6 6 6 6 & 6 6 6 6 6 (\texttt{csp}) \\
-Aggregation & 6 \textbf{4 2 1 0} & 6 6 6 6 \textbf{2} & none \\
-String pipelines & 6 6 4 4 \textbf{2} & 6 6 5 6 6 & none \\
+Arithmetic & 100 100 100 81 \textbf{53} & 94 100 97 \textbf{64 25} & 100 100 100 92 92 & 100 100 100 100 \textbf{0} (\texttt{calc}) \\
+Logic grids & 94 100 100 100 94 & 100 94 94 94 94 & 100 100 100 100 100 & 100 at every level (\texttt{csp}) \\
+ & & & & 67 67 50 58 50 (\texttt{gridfast}) \\
+Aggregation & 100 92 \textbf{44 25 0} & 92 86 64 53 \textbf{36} & 100 100 92 100 \textbf{47} & none \\
+String pipelines & 100 94 92 64 \textbf{47} & 92 83 94 86 67 & 100 100 100 94 100 & none \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\paragraph{What these tables can show} Three of the seven validity checks fail on each table (\S\ref{sec:checks}), and
+each failure limits what this section can claim. V5 fails on both (knowing the hidden difficulty is worth at most 0.009
+of the points at $\rho = 0$), so these runs cannot show what adapting during the task is worth, for any strategy. We
+compare the up-front and during-the-task strategies of Table~\ref{tab:twobytwo} on what they score and spend, not on how
+well they adapt. V4 fails, so the expensive model solves nearly every job it is given (it drops to 60\% or below only on
+level-5 aggregation). V3 fails on the second table, so its three models do not line up from weak to strong, since
+\texttt{gpt-5-nano} beats \texttt{gpt-6-luna} on arithmetic and loses to it on aggregation and strings.
+
+\paragraph{Runs} The first round drew ten projects at $\rho = 0.5$ and $\tau = 0.5$ (mean budget \$0.056), and ran
+\sys{} v2 live twice on each of the first six (mean budget \$0.043). Its outside agents charged \$0.001 a message live,
+against the $c_\mathrm{ref}$ of \$0.00023 that the replayed strategies paid. The second round draws twenty projects with
+the same $\rho$ and $\tau$ (mean budget \$0.058) and runs every strategy three times on each. \sys{} v2 and the LLM split
+use three seeds, and the replayed strategies use three of each job's recorded attempts. Its outside agents charge
+$c_\mathrm{ref}$ (\$0.000215 a message, and a quarter of that for \texttt{gridfast}), live and in replay alike. The
+solvers and fixed strategies are replayed on the results table. The LLM split makes its plan live and carries it out by
+replay. Each is scored under two budget rules. Under the first hub's rule, a call only needs some money left and is
+charged in full, even past the budget. Under v2's rule, a call is capped at what is left before it is made, as it is for
+\sys{} v2. Replay cannot know what a capped call would have answered, so it counts it as no answer. In the first
+round's live runs, all ten calls by hires that hit their cap returned nothing.
+
+We threw away two attempts at the second round's live runs. The first sent nine processes at once, went over the
+provider's limit of two million tokens a minute, and lost runs to refused calls. We made a rate-limited call wait and
+retry (for up to 104 seconds), and no call in the runs we report failed for this reason. In the second attempt, the
+project text put the market, the statistics and the answer format after the last job, inside that job's section, which
+\texttt{--by-reference} hides from the CEO. The text now puts them before the jobs, for every version. In total we spent
+\$33.21. The first round cost \$4.50. The second cost \$23.42 to calibrate (\$20.32 of it on \texttt{muse-spark-1.3},
+and \$0.23 on pilots), \$4.30 for its live runs and \$0.99 for the two discarded attempts.
 
 \subsection{What we found}
-Overall, our experiments show five results.
+Overall, our experiments show the following results:
 
-\textbf{Every run stayed within its budget, and every run answered.} Across twelve live runs, none of the 48 hires
-spent past its reservation, and all twelve returned an answer. Twenty-five times a hire's call was refused before it
-reached the provider because its pool could not pay for it; each refusal quoted the price, and in 19 of the 25 cases
-the hirer later reserved more. Together the runs spent 71\% of their budget. Eleven of twelve stayed under it, and the
-twelfth went 2\% over, within the margin of the hub's token estimate.
+\textbf{The guards cap every hire.} The second round made 120 live runs of \sys{} v2 (two versions, twenty projects,
+three seeds) with 551 hires. No hire spent more than 1.11 times its budget. Thirteen went over, by 9 to 11\%, each on a
+single call, and all thirteen were aggregation jobs, whose inputs are long lists of records. A call's output is capped at
+what the budget has left after the estimated cost of its input, so an overrun can only happen when the hub undercounts
+the input's tokens by more than its 10\% margin. In the first round, none of 48 hires went over (Table~\ref{tab:ablation}).
 
-\textbf{The agents got more per dollar than spending on strength.} On the six live projects (Table~\ref{tab:main}),
-\sys{}'s agents scored 0.566 of the value. Sending every job to the strongest model scored 0.479 while spending 2.7
-times as much (\$0.081 against \$0.030); a team that assigns tiers by visible level, in AgentCARD's
-style~\cite{jiang2026specialize}, scored 0.536 at 2.8 times the spend. Both of those replayed baselines run under the
-older rule that charges a call in full even past the pool, so each effectively spent beyond its budget and still scored
-lower. \sys{}'s agents are level with one model doing every job and with the same model splitting the money up front
-(0.738, a difference of $-0.172$ with a 95\% interval of $[-0.408, +0.043]$ over projects), and four of the six projects
-scored between 0.68 and 0.82. The one allocator they clearly trail is the knapsack (0.785, $-0.219$,
-$[-0.428, -0.014]$), which is handed each job type's measured success rate on every model before it starts.
+\textbf{Each guard is needed.} In the first round we ran the same projects with \sys{} as first built (without the call
+cap and the last turn), and with the call cap alone (Table~\ref{tab:ablation}). Without the cap, a budget was a limit
+checked before a call, and the call's cost was charged after it. Hires given \$0.0005 spent up to 372 times that, the
+overruns were charged to the CEO's budget, and three of six runs ended with no answer after spending 153\% of the
+budget. With the cap alone, no hire went over, but the CEO reread every job, long documents included, on every turn,
+and four of six runs ended without an answer (three because the CEO could not pay for its own answer, one at its
+40-turn limit). With the last turn added, two of twelve runs were lost and the score rose to 0.566.
 
 \begin{table}[!htb]
 \centering
-\caption{Allocators on the six live projects ($\rho = 0.5$, $\tau = 0.5$, mean budget \$0.043). Replayed allocators
-are averaged over three seeds, \sys{} v2 over its twelve live runs. Replayed allocators charge a call in full even past
-the pool, so their spend can exceed the budget.}
-\label{tab:main}
-\small
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-\tablehead Allocator & Score & Spent (\$) & Spent / budget & Own calls (\$) \\
-\midrule
-Oracle-full (knows every outcome) & 0.860 & 0.032 & 0.75 & 0 \\
-Knapsack (solver, up front) & 0.785 & 0.020 & 0.48 & 0 \\
-Equal split & 0.748 & 0.005 & 0.11 & 0 \\
-Every job on \texttt{gpt-6-luna} & 0.738 & 0.009 & 0.21 & 0 \\
-LLM split (LLM, up front) & 0.738 & 0.022 & 0.52 & 0.006 \\
-Cascade (solver, during) & 0.726 & 0.054 & 1.27 & 0 \\
-Random & 0.624 & 0.061 & 1.44 & 0 \\
-\textbf{\sys{} v2 (agents, during)} & \textbf{0.566} & \textbf{0.030} & \textbf{0.71} & 0.024 \\
-Hybrid by level & 0.536 & 0.085 & 2.00 & 0 \\
-Every job on \texttt{muse-spark-1.3} & 0.479 & 0.081 & 1.89 & 0 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{Each guard is necessary.} We ran the same projects with \sys{} as first built, without the call bound and the
-closing turn, and with the call bound alone (Table~\ref{tab:ablation}). Without the bound, a reservation was a ceiling
-checked before a call and the call's cost was charged after it. Hires that reserved \$0.0005 spent up to 372 times that,
-the overruns came back to the CEO's pool, and three of six runs ended with no answer at a spend of 153\% of the budget.
-With the bound alone, no hire overran, but the CEO rereads every job, long documents included, on every turn, and three
-of six runs still ended when it could not pay for its own answer. With the closing turn as well, no run was lost and the
-score rose to 0.566.
-
-\begin{table}[!htb]
-\centering
-\caption{\sys{} with and without its guards, on the same six projects.}
+\caption{\sys{} with and without its guards, on the first round's six projects.}
 \label{tab:ablation}
 \small
 \begin{tabular}{@{}lrrr@{}}
 \toprule
-\tablehead & As first built & Bounded calls only & \sys{} v2 \\
+\tablehead & As first built & Capped calls only & \sys{} v2 \\
 \midrule
 Runs & 6 & 6 & 12 \\
 Mean score & 0.374 & 0.278 & \textbf{0.566} \\
-Hires that spent past their reservation & 9 of 26 & 0 of 25 & \textbf{0 of 48} \\
-Largest overrun (spent / reserved) & 372$\times$ & 1.0$\times$ & \textbf{1.0$\times$} \\
-Runs that ended without an answer & 3 & 3 & \textbf{0} \\
+Hires that spent past their budget & 9 of 26 & 0 of 25 & \textbf{0 of 48} \\
+Largest overrun (spent / given) & 372$\times$ & 1.0$\times$ & \textbf{1.0$\times$} \\
+Runs that ended without an answer & 3 of 6 & 4 of 6 & \textbf{2 of 12} \\
 Spent / budget & 1.53 & 0.62 & \textbf{0.71} \\
-Calls refused with a quote & 0 & 19 & 25 \\
+Calls refused with a price quote & 0 & 19 & 25 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{The agents used the market.} Over the twelve runs, \sys{}'s agents bought eight exact answers from the grid
-solver and one from the calculator, escalated ten jobs whose first model failed, and handed 28 of 96 jobs to hires
-while answering the rest themselves. The market they bought from responds to price as it should. The best split buys 26
-of 40 arithmetic and grid jobs from the outside agents at a quarter of $c_\mathrm{ref}$ (\$0.00006 a message), 15 at
-$c_\mathrm{ref}$, 6 at four times and 2 at sixteen times.
+\textbf{Keeping long inputs away from the CEO raises the agents' score by 0.136.} The second round ran \sys{} v2 as it
+was, and with two changes. Long sections were hidden from the CEO (\texttt{request\_by\_\allowbreak reference}), and hires were
+chosen by the success rates the CEO is shown (\texttt{success\_rates}). With both, the agents scored 0.599 against
+0.463, a difference of $+0.136$ over the twenty projects (95\% interval $[+0.067, +0.216]$). The CEO reads the request's
+outline (8.7 thousand characters on the first project) instead of the whole request (264 thousand), and its own calls
+fell from 43\% of the budget to 32\%. Messages to outside agents now carry the puzzle the CEO names, so \texttt{csp}
+answered 48 of its 49 messages right, where before, 24 of its 44 replies had been ``no grid puzzle in the text''. The
+outside agents together answered 74 of 119 right, against 30 of 122. Runs where the CEO could not afford to read its
+request once fell from 12 to 0, and lost runs from 17 to 11. We did not test the two changes separately. Every effect
+above comes from hiding long sections, and what choosing by success rates adds on its own is not measured.
 
-\textbf{What separates the agents from the best split is their judgment, not the mechanics.} The CEO's declared
-difficulty tracks the jobs' real difficulty only weakly (rank correlation 0.16 over 30 hires); its own calls take 55\%
-of its budget, since it rereads the whole request on every turn; and it did not use \texttt{attach}, so most jobs reached
-their hires as summaries. Each of these is a target for the next version (\S\ref{sec:conclusion}). On this first
-calibration, knowing each job's hidden difficulty is worth under one point (validity check V5), so these runs cannot
-yet show what adapting during the task is worth.
+\textbf{With enough budget to run the CEO, the agents match the cheap model alone.} Table~\ref{tab:main} scores every
+strategy under v2's budget rule, with the first rule's scores beside them. On the sixteen projects whose budget is
+\$0.006 or more, the agents scored 0.737. That is about the same as \texttt{gpt-6-luna} alone (0.740; difference
+$-0.003$, interval $[-0.038, +0.030]$) and the equal split (0.761; $-0.024$, $[-0.056, +0.007]$), and better than
+random choice ($+0.067$, $[+0.005, +0.134]$). The agents also scored above the cascade, the LLM split and
+\texttt{gpt-5-nano} alone, but by margins too small for sixteen projects to settle. They trail the knapsack ($-0.080$,
+$[-0.129, -0.023]$), and they spent 3.9 times what the cheap model alone spent.
+
+\textbf{The agents win on hard jobs that a specialist can do.} Two job types have an outside agent in the market
+(\texttt{calc} for arithmetic, \texttt{csp} and \texttt{gridfast} for logic grids). On the sixteen projects, over the
+hard jobs of those two types (26 jobs, three runs each), the agents answered 62 of 78 right (79\%), against 54 of 78
+for \texttt{gpt-6-luna} alone (69\%). That is 24 against 18 on hard arithmetic, and 38 against 36 on hard grids. They
+were ahead on six projects and behind on two, and the interval over projects only just reaches zero. They send grids to
+\texttt{csp}, which answered all 41 of its messages on these projects right, and they give hard jobs a second hire more
+often than easy ones (46 of the 81 jobs that went to more than one hire were hard, while hard jobs are 37\% of all
+jobs). On the other jobs they do worse than the cheap model (226 of 306 right, 74\%, against 239, 78\%), and the two
+cancel out to the matching overall score above.
+
+\textbf{Below a minimum budget, the agents cannot work.} Four of the twenty projects have budgets of \$0.0009 to
+\$0.0051, because their jobs are cheap to solve and $B = \tau\,C_\mathrm{full}$. On them, \texttt{gpt-6-luna} alone
+scores 0.724, and the LLM split, whose one planning call comes out of the budget, scores 0.635. The agents score 0.046.
+A CEO that hires, asks and fires pays for a turn at each step. All eleven runs the agents lost were on these four
+projects, where the CEO came back empty after spending most or all of the budget on its own calls. On the other sixteen
+they lost none of 48. Over all twenty projects, the agents' 0.599 is below the cheap model alone (0.736).
+
+\begin{table}[!htb]
+\centering
+\caption{Strategies on the second round's twenty projects ($\rho = 0.5$, $\tau = 0.5$, mean budget \$0.058), sorted by
+score under v2's budget rule, and on the sixteen projects whose budget is \$0.006 or more. Each runs three times per
+project (sixty runs). ``Vs.\ Luna'' is spending divided by that of every job on \texttt{gpt-6-luna} (\$0.0079 a
+project). The last column replays the same strategies under the first hub's rule, which charges a call in full even
+past the budget. \sys{} v2's two versions run live, as it was and with long sections hidden (both during the task).}
+\label{tab:main}
+\footnotesize
+\setlength{\tabcolsep}{3.6pt}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+\tablehead Strategy & Score & Sixteen & Spent (\$) & Of budget & Vs.\ Luna & Own calls (\$) & First rule \\
+\midrule
+Oracle-full (knows outcomes) & 0.826 & 0.838 & 0.028 & 0.48 & 3.50$\times$ & 0 & 0.830 (0.49) \\
+Knapsack (solver, up front) & 0.788 & 0.817 & 0.035 & 0.60 & 4.42$\times$ & 0 & 0.794 (0.68) \\
+Every job on \texttt{gpt-6-luna} & 0.736 & 0.740 & 0.008 & 0.14 & 1.00$\times$ & 0 & 0.723 (0.15) \\
+Equal split & 0.713 & 0.761 & 0.011 & 0.18 & 1.35$\times$ & 0 & 0.713 (0.18) \\
+LLM split (LLM, up front) & 0.695 & 0.709 & 0.033 & 0.57 & 4.15$\times$ & 0.006 & 0.699 (0.69) \\
+Cascade (solver, during) & 0.682 & 0.712 & 0.050 & 0.86 & 6.29$\times$ & 0 & 0.762 (1.58) \\
+Every job on \texttt{gpt-5-nano} & 0.628 & 0.700 & 0.023 & 0.39 & 2.87$\times$ & 0 & 0.630 (0.41) \\
+Random & 0.612 & 0.670 & 0.029 & 0.50 & 3.69$\times$ & 0 & 0.614 (1.05) \\
+\textbf{\sys{} v2, long sections hidden} & \textbf{0.599} & \textbf{0.737} & \textbf{0.031} & \textbf{0.52} & \textbf{3.84$\times$} & 0.006 & live \\
+Hybrid by level & 0.493 & 0.494 & 0.052 & 0.90 & 6.60$\times$ & 0 & 0.531 (2.14) \\
+\sys{} v2 as it was & 0.463 & 0.579 & 0.036 & 0.61 & 4.47$\times$ & 0.025 & live \\
+Every job on \texttt{muse-spark-1.3} & 0.342 & 0.427 & 0.054 & 0.93 & 6.82$\times$ & 0 & 0.447 (2.04) \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize\raggedright First rule: score, with spent / budget in parentheses. ``Sixteen'': score on the
+sixteen projects whose budget is \$0.006 or more.\par}
+\end{table}
+
+\textbf{The agents respond to prices.} A hire's call that its budget cannot pay for is refused before it reaches the
+provider, and the refusal quotes the price. In the second round, 203 calls were refused this way in the version that
+hides long sections (253 in the other). In 112 of them, a later hire in the same run was given more than the refused one
+(156 in the other). Table~\ref{tab:refusal} follows one such exchange from a first-round log. The CEO called a level-4
+logic grid easy and gave it to \texttt{gpt-6-luna} with \$0.001. The hire's first call reasoned up to the cap its budget
+allowed and returned nothing. Its next call was refused, and so was the same call on the expensive model after the hub
+moved it up. The CEO then gave five times as much to a new hire, and twelve times as much to a third, whose answer was
+right and worth 4 of the project's 22 points.
+
+\begin{table}[!htb]
+\centering
+\caption{A refusal with a price quote, and what followed, from the log of one first-round live run (project p2, second
+run; job j4, a level-4 logic grid worth 4 of the project's 22 points).}
+\label{tab:refusal}
+\footnotesize
+\begin{tabular}{@{}r p{1.7cm} p{11.6cm}@{}}
+\toprule
+\tablehead & Given & What happened \\
+\midrule
+1 & \$0.001 & The CEO declares the job easy, and the hub hires \texttt{grid4} on \texttt{gpt-6-luna}. \\
+2 & & \texttt{grid4}'s first call reasons up to the cap its budget allows, spends \$0.0010 and returns nothing. \\
+3 & & Its next call is refused before it reaches the provider. \\
+4 & & The hub moves \texttt{grid4} up to \texttt{muse-spark-1.3}, and the refusal quotes the price: ``grid4's pool has
+\$0.0000, and a call on meta/muse-spark-1.3 costs about \$0.0005 to read its messages and \$0.0011 for a short answer:
+reserve more.'' \\
+5 & \$0.005 & The CEO checks its own budget and hires \texttt{grid4b}, which answers that the clues are inconsistent
+(wrong). \\
+6 & \$0.012 & The CEO hires \texttt{solve4}, whose solution is right. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The agents choose the expensive model for the right jobs, but give it too little money.} On the sixteen
+projects, 65\% of the agents' tries on \texttt{muse-spark-1.3} (68 of 104) were on hard jobs, and half came after a
+cheaper model had tried the same job. Its 79 hires took 55\% of what the agents spent (\$0.99 of \$1.81) and returned 12
+right answers, while its measured success rate on hard jobs is 87 to 100\%. The median hire was given \$0.005, but an
+attempt on the expensive model costs a median of \$0.006 to \$0.025 depending on the job type (a mean of \$0.010 to
+\$0.061). So 78 of the 79 hires had a call refused because their budget could not pay for it, after spending nearly all
+of it first (a median of \$0.0046). The price quote comes after the money is gone. And at $\tau = 0.5$, the budget pays
+for a full attempt on the expensive model on only a few jobs, so these hires buy calls that cannot finish.
+
+\textbf{Splitting the money pays off once the budget has room, and the cheap model alone cannot use it.} The live runs
+use $\tau = 0.5$. Replaying the results table at $\tau$ of 0.25, 1 and 2 (no new model calls; Figure~\ref{fig:sweep}
+and Table~\ref{tab:sweep}) shows where a strategy can win. On the sixteen projects, \texttt{gpt-6-luna} alone scores
+0.740 to 0.749 at every budget. It spends 31\% of the budget at $\tau = 0.25$ and 7\% at $\tau = 2$, and has nothing to
+buy with the rest. The cascade adapts during the task, as the agents do. It tries the cheapest option expected to be
+good enough, moves up when a grid's check fails, and asks a third option when the two cheapest disagree. It trails the
+cheap model by 0.051 at $\tau = 0.25$ and leads it by 0.133 at $\tau = 2$ ($[+0.078, +0.192]$, ahead on 12 of 16
+projects). The knapsack's lead grows from 0.029 to 0.162. The best single model also changes, since the expensive model
+alone passes the cheap one at $\tau = 2$ (0.815 against 0.749). The knapsack, which plans up front, leads by more than
+the cascade at every budget, so the sweep does not show that adapting beats planning (V5 fails, as above). What it
+shows is that a budget with room rewards a strategy that uses it. The agents ran only at $\tau = 0.5$, where the
+cascade still trails the cheap model and the agents' tries on the expensive model are underfunded. We did not run them
+at a larger budget, so whether they follow the cascade there is not measured, but the sweep says that a larger budget is
+where they should win.
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.78\linewidth, height=6.4cm,
+  xmode=log, log basis x=2, xmin=0.2, xmax=2.5,
+  xtick={0.25,0.5,1,2}, xticklabels={0.25,0.5,1,2},
+  ymin=0.3, ymax=0.95, ytick={0.3,0.4,0.5,0.6,0.7,0.8,0.9}, yticklabels={0.3,0.4,0.5,0.6,0.7,0.8,0.9},
+  xlabel={Budget $\tau$ (times what the best answers cost)},
+  ylabel={Score (share of points)},
+  label style={font=\small\color{ink}},
+  tick label style={font=\footnotesize\color{muted}},
+  axis line style={draw=rulecolor,line width=0.6pt}, tick style={draw=none},
+  xmajorgrids, ymajorgrids, major grid style={draw=rulecolor!70,line width=0.4pt},
+  every axis plot/.append style={line width=1.5pt,line join=round,line cap=round,mark size=3pt},
+  legend style={font=\footnotesize,draw=none,fill=none,at={(0.5,-0.24)},anchor=north,column sep=10pt,
+    cells={anchor=west}},
+  legend columns=3,
+]
+\addplot[color=vizblue,mark=*,mark options={draw=white,line width=0.8pt,fill=vizblue}]
+  coordinates {(0.25,0.696) (0.5,0.712) (1,0.783) (2,0.882)};
+\addlegendentry{Cascade (adapts during the task)}
+\addplot[color=vizorange,mark=square*,mark options={draw=white,line width=0.8pt,fill=vizorange}]
+  coordinates {(0.25,0.747) (0.5,0.740) (1,0.748) (2,0.749)};
+\addlegendentry{Every job on \texttt{gpt-6-luna}}
+\addplot[color=vizaqua,mark=triangle*,mark options={draw=white,line width=0.8pt,fill=vizaqua}]
+  coordinates {(0.25,0.776) (0.5,0.817) (1,0.826) (2,0.910)};
+\addlegendentry{Knapsack (plans up front)}
+\addplot[color=vizyellow,mark=diamond*,mark options={draw=white,line width=0.8pt,fill=vizyellow}]
+  coordinates {(0.25,0.350) (0.5,0.427) (1,0.562) (2,0.815)};
+\addlegendentry{Every job on \texttt{muse-spark-1.3}}
+\addplot[only marks,mark=o,mark size=5pt,draw=ink,line width=1.1pt] coordinates {(0.5,0.737)};
+\addlegendentry{\sys{} v2 agents (live)}
+\draw[ink,line width=0.5pt] (axis cs:0.5,0.737) ++(-0.06cm,-0.19cm) -- (axis cs:0.44,0.645)
+  node[anchor=north,inner sep=1pt,font=\footnotesize,text=ink,align=center,fill=white]
+  {\sys{} v2 agents, live: 0.737\\(matches \texttt{gpt-6-luna})};
+\end{axis}
+\end{tikzpicture}
+\caption{Where splitting the money pays off. Scores on the sixteen projects as the budget grows eightfold, replayed
+from the results table (three runs per project). The cheap model alone stays flat, while the cascade and the knapsack
+turn the extra budget into points. The agents ran live at $\tau = 0.5$ only (ringed). Table~\ref{tab:sweep} gives the
+numbers and intervals.}
+\label{fig:sweep}
+\end{figure}
+
+\begin{table}[!htb]
+\centering
+\caption{Replayed strategies on the sixteen projects at four budgets ($B = \tau\,C_\mathrm{full}$, a mean of \$0.036,
+\$0.072, \$0.144 and \$0.288 a project), three runs each under v2's budget rule. The agents ran live at $\tau = 0.5$
+only. The last row is the cascade's lead over the cheap model alone, with its 95\% interval over projects.}
+\label{tab:sweep}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\tablehead Strategy & $\tau = 0.25$ & $\tau = 0.5$ & $\tau = 1$ & $\tau = 2$ \\
+\midrule
+Every job on \texttt{gpt-6-luna} & 0.747 & 0.740 & 0.748 & 0.749 \\
+Every job on \texttt{gpt-5-nano} & 0.635 & 0.700 & 0.721 & 0.723 \\
+Every job on \texttt{muse-spark-1.3} & 0.350 & 0.427 & 0.562 & 0.815 \\
+Equal split & 0.748 & 0.761 & 0.791 & 0.808 \\
+Cascade (solver, during) & 0.696 & 0.712 & 0.783 & \textbf{0.882} \\
+Knapsack (solver, up front) & 0.776 & 0.817 & 0.826 & 0.910 \\
+Oracle-full (knows outcomes) & 0.825 & 0.838 & 0.844 & 0.947 \\
+\sys{} v2 agents (live) & & 0.737 & & \\
+\midrule
+Cascade minus \texttt{gpt-6-luna} & $-0.051$ & $-0.028$ & $+0.035$ & $\mathbf{+0.133}$ \\
+ & $[-0.108, +0.004]$ & $[-0.088, +0.031]$ & $[-0.036, +0.100]$ & $[+0.078, +0.192]$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{What the agents still get wrong.} Besides the expensive model, two things separate them from the knapsack.
+First, the CEO keeps some jobs for itself and answers them worse than a fresh call would. In the version that hides long
+sections, it answered 169 jobs itself and got 85\% right, while \texttt{gpt-6-luna} given each job on its own gets 91\%.
+The 223 jobs it handed to hires were right 67\% of the time, against 68\%. Second, the difficulty the CEO declares
+barely matches the jobs' hidden difficulty (rank correlation 0.10 over 128 hires), and its own calls still take 32\% of
+the budget. It rarely buys from the cheap, unreliable \texttt{gridfast} (seven messages, five of them right).
+
+Holding the other strategies to v2's rule lowers the ones that overspent under the first rule. The cascade, the hybrid
+by level and the expensive model alone, which spent 1.58 to 2.14 times their budget under the first rule, fell by
+0.080, 0.038 and 0.105. Random choice and the knapsack fell by only 0.002 and 0.006. It raised the cheap model alone by
+0.013, because refusing a call the budget cannot pay for saves the money for later jobs (on one small project, the first
+rule let the cheap model's calls spend up to 2.9 times the budget, and it scored 0.4 to 0.6 less).

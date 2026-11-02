@@ -1,20 +1,29 @@
 \section{Limitations and Scope}
 \label{sec:limitations}
 
-\textbf{Scale of the runs.} These are first, small runs, with one calibration attempt per job and option, ten projects for
-the replayed allocators and six for the live ones (twice each for \sys{} v2). Replay draws on single attempts, so it
-carries none of the models' own variance; the intervals we give are over projects, and with six projects they are wide.
+\textbf{Scale of the runs.} The second round has twenty projects, three runs of each strategy on each, and three
+calibration attempts per job and option, so replay carries some of the models' own randomness. Our intervals are over
+projects, and with twenty (or sixteen) projects they are still wide. Both results tables fail three of their seven
+validity checks (\S\ref{sec:checks}), V5 among them, so neither round can show what adapting during the task is worth.
 
-\textbf{The calibration.} Three of the seven validity checks fail on this first table. Knowing each job's hidden
-difficulty is worth under one point, so these runs cannot show what adapting during the task is worth, for any
-allocator; and the dear model leaves headroom only on long aggregation jobs. A harder calibration is the first item on
-the roadmap.
+\textbf{Live against replay.} The other strategies are replayed with each job's standard prompt, while \sys{} v2 ran
+live and wrote its own messages to its hires. Replay counts a call cut off at its budget as no answer, and the first
+round's live runs agree (all ten such calls by hires returned nothing). In the first round, the outside agents charged
+\sys{} \$0.001 a message live, about four times the $c_\mathrm{ref}$ the replayed strategies paid. In the second, live
+and replay paid the same price. The budget sweep (Table~\ref{tab:sweep}) is replay only, since the agents ran live at
+one budget, so it shows where a strategy can win, not that the agents do.
 
-\textbf{Live against replay.} The baselines are replayed with each job's canonical prompt, and under the older rule that
-charges a call in full even past the pool. \sys{} v2 ran live, wrote its own messages to its hires, and was held to its
-pool at every call. The comparison therefore favors the replayed baselines on both counts.
+\textbf{What was changed.} The second round changed two things at once (hiding long sections, and choosing hires by
+measured success rates) and did not test them separately. The logs tie each measured effect to hiding sections, but
+what success-rate routing adds on its own is not measured. Its rates are the same statistics the CEO is shown, so it
+cannot know more than the CEO is told.
 
-\textbf{The market and the system.} Prices are list prices on the run date, and the runs have two model tiers, so local
-models (and memory as a second currency) are tested in \sys{} but not measured here. Declared difficulty is the agent's
-own judgment. One API key is one trust domain, and the hub's token estimate can let a run end a few percent over its
-budget (2\% in one of twelve runs).
+\textbf{Small budgets.} Budgets follow $B = \tau\,C_\mathrm{full}$, so a project of cheap jobs gets a small budget, and
+four of the second round's twenty have less than \$0.006. A strategy that pays for its own turns cannot work below that,
+and we report those projects separately rather than drop them.
+
+\textbf{The market and the system.} Prices are list prices on the run dates. The runs use three cloud models and no
+local model, so memory as a second currency is built into \sys{} but not measured here. The declared difficulty is the
+agent's own guess. A call is capped using the hub's token count, which ran low by up to 11\% of a budget on long
+aggregation inputs (13 of 551 hires). All agents in a hub share one API key, so the hub, not the provider, is what keeps
+them apart.
