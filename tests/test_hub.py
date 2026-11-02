@@ -120,3 +120,11 @@ def test_no_cap_keeps_measured_memory(tmp_path, monkeypatch):
     assert hub.free_memory() == 777
     capped = Hub(make_settings(tmp_path, memory_mb=500), ollama=SizedOllama())  # type: ignore[arg-type]
     assert capped.free_memory() == 500
+
+
+def test_hubs_can_share_one_wallet(tmp_path):
+    from hashiru.llm import Wallet
+    wallet = Wallet(1.0)
+    one = Hub(make_settings(tmp_path / "a"), ollama=FakeOllama(), wallet=wallet)  # type: ignore[arg-type]
+    two = Hub(make_settings(tmp_path / "b"), ollama=FakeOllama(), wallet=wallet)  # type: ignore[arg-type]
+    assert one.wallet is two.wallet is wallet and one.llm.wallet is wallet and two.llm.wallet is wallet
