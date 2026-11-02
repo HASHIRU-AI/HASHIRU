@@ -8,6 +8,7 @@ import json
 import time
 from collections.abc import Collection, Mapping
 from contextvars import ContextVar
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -21,6 +22,7 @@ from mcp.shared.exceptions import MCPError
 
 from hashiru import approvals, plangraph
 from hashiru.ledger import AgentRecord
+from hashiru.llm import OUTPUT_CAP, affordable, litellm_output_price
 from hashiru.peers import DEADLINE_KEY, send, serve_request
 from hashiru.plangraph import Outcome
 from hashiru.planning import PLAN_RULES, PROPOSE_TOOL, Plan, propose, readable, refusal
@@ -47,6 +49,8 @@ RULES = "\n".join([
     "4. Hire by difficulty (easy, medium or hard): the hub picks a model, local ones first where they can do the "
     "job. Name a model only when the job needs that one.",
     "5. Fire agents once you no longer need them. Firing a local agent frees its memory.",
+    "6. To give an agent a long input from the user's request, name its section in ask_agent's attach (for example "
+    "'### Data') instead of retyping it: the agent gets the section word for word.",
 ])
 
 CEO_PROMPT = ("You are the CEO of HASHIRU. Break the user's request into subtasks, hire agents with hire_agent "
@@ -59,12 +63,44 @@ EMPTY_REPLY = ("Your last reply was empty. Reply now with your answer to the mes
                "and agents told you.")
 NUDGE = [{"role": "assistant", "content": ""}, {"role": "user", "content": EMPTY_REPLY}]
 
+# Sent when an agent has one step left (its last allowed turn, or a pool that pays for an answer but not for another
+# working turn and the answer after it): it answers with what it has instead of ending with nothing.
+CLOSING = ("You have one step left: answer now, without tools, with what you have so far, and say what you could "
+           "not finish.")
+
 ASK_TOOL = {"type": "function", "function": {
     "name": "ask_agent",
     "description": "Send a message to an agent you hired and wait for its reply.",
     "parameters": {"type": "object",
-                   "properties": {"name": {"type": "string"}, "text": {"type": "string"}},
+                   "properties": {"name": {"type": "string"}, "text": {"type": "string"},
+                                  "attach": {"type": "array", "items": {"type": "string"},
+                                             "description": "Headings of sections of the user's request to add to "
+                                                            "the message verbatim (e.g. '### Data'): hands over long "
+                                                            "inputs whole, without retyping them."}},
                    "required": ["name", "text"]}}}
+MIN_ANSWER_TOKENS = 256  # a call that cannot pay for this much output is refused before it reaches the provider
+
+
+def attachments(request: str, headings: Collection[str]) -> str:
+    """The sections of `request` under `headings`, verbatim: each from its heading line up to the next heading of the
+    same or a higher level (Markdown #s), or the end."""
+    lines, out = request.splitlines(), []
+    for heading in headings:
+        h = heading.strip()
+        level = len(h) - len(h.lstrip("#"))
+        start = next((i for i, line in enumerate(lines) if line.strip() == h or (line.startswith(h) and
+                      not line[len(h):len(h) + 1].isalnum())), None)
+        if start is None:
+            out.append(f"(no section titled {h!r} in the user's request)")
+            continue
+        end = start + 1
+        while end < len(lines):
+            mark = len(lines[end]) - len(lines[end].lstrip("#"))
+            if 0 < mark <= max(level, 1) and lines[end][mark:mark + 1] == " ":
+                break
+            end += 1
+        out.append("\n".join(lines[start:end]).strip())
+    return "".join(f"\n\n{section}" for section in out)
 
 
 def empty(rec: AgentRecord) -> str:
@@ -134,6 +170,7 @@ async def ask_agent(hub: "Hub", session: Session, me: str, name: str, text: str,
     if not text.strip():
         return "error: the message is empty"
     if me == USER:  # a new turn: its spending (approve_turn_usd) and its questions' deadline start here
+        session.request = text
         session.approvals.new_turn(sum(a.spent for a in session.ledger.agents.values()), deadline_for(hub))
     trace, task, asked = session.trace, session.id, text
     me_rec = session.ledger.get(me)
@@ -250,7 +287,8 @@ async def perform(hub: "Hub", session: Session, mcp: Any, me: str, name: str, ar
     elif name == "propose_plan":
         return {"error": "propose_plan is only for plan mode"}
     if name == "ask_agent":
-        return {"reply": await ask_agent(hub, session, me, str(args.get("name", "")), str(args.get("text", "")))}
+        text = str(args.get("text", "")) + attachments(session.request, [str(h) for h in args.get("attach") or []])
+        return {"reply": await ask_agent(hub, session, me, str(args.get("name", "")), text)}
     egress = set() if hub.settings.private_egress == "allow" else hub.egress()  # an unknown value blocks
     return await call_tool(session, mcp, me, name, args, turn, hub.sources(), hub.external(), egress,
                            hub.obfuscating())
@@ -258,8 +296,26 @@ async def perform(hub: "Hub", session: Session, mcp: Any, me: str, name: str, ar
 
 async def think(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]],
                 tools: list[dict[str, Any]] | None) -> tuple[Any, list[Any], int]:
-    """One LLM call: charge its cost to the agent and trace the thought. Returns (msg, calls, seq)."""
-    call = asyncio.ensure_future(hub.llm.chat(rec.model, messages, tools))
+    """One LLM call: charge its cost to the agent and trace the thought. Returns (msg, calls, seq).
+
+    Under enforce_budget a cloud call's output is capped so the call cannot cost more than the agent has left, and a
+    call that cannot pay for MIN_ANSWER_TOKENS of output is refused before it reaches the provider: its "reply" says
+    what the call would cost, so the hirer can reserve more."""
+    cap = None
+    if hub.settings.enforce_budget and rec.tier != "local":
+        left = session.ledger.left()[rec.name]
+        cap, cost_in = affordable(rec.model, messages, tools, left)
+        if cap is not None and cap < MIN_ANSWER_TOKENS:
+            per_answer = (litellm_output_price(rec.model)) * MIN_ANSWER_TOKENS
+            why = (f"failed: {rec.name}'s pool has ${max(left, 0):.4f}, and a call on {rec.model} costs about "
+                   f"${cost_in:.4f} to read its messages and ${per_answer:.4f} for a short answer: reserve more")
+            event = session.trace.emit("error", task=session.id, agent=rec.name, error=why)
+            return SimpleNamespace(content=why, tool_calls=None), [], int(event["seq"])
+    token = OUTPUT_CAP.set(cap)
+    try:
+        call = asyncio.ensure_future(hub.llm.chat(rec.model, messages, tools))
+    finally:
+        OUTPUT_CAP.reset(token)
     try:
         msg, cost = await asyncio.shield(call)
     except asyncio.CancelledError:
@@ -290,6 +346,19 @@ def allowed(rec: AgentRecord, tool: str) -> bool:
 def still_on(hub: "Hub", session: Session, rec: AgentRecord) -> bool:
     """False once the agent is fired or its session closed: its run stops before spending more."""
     return rec.live and hub.sessions.get(session.id) is session
+
+
+def closing(hub: "Hub", session: Session, rec: AgentRecord, messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]] | None, last: bool) -> bool:
+    """Whether this turn must be the agent's answer: its last allowed turn, or (under enforce_budget, for a cloud
+    agent) a pool too small for another working turn plus the answer after it, each of which rereads the messages."""
+    if last:
+        return True
+    if not hub.settings.enforce_budget or rec.tier == "local":
+        return False
+    left = session.ledger.left()[rec.name]
+    _, cost_in = affordable(rec.model, messages, tools, left)
+    return left < 2 * cost_in + 2 * MIN_ANSWER_TOKENS * litellm_output_price(rec.model)
 
 
 def spent_out(hub: "Hub", session: Session, rec: AgentRecord) -> str | None:
@@ -327,7 +396,7 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
             session.approved = None  # the user approved it this turn (planning.begin): it runs once, as a graph
             return await plangraph.run(plan.program, PlanRunner(hub, session, mcp, plan, text))
         nudged = False
-        for _ in range(hub.settings.max_turns):
+        for n in range(hub.settings.max_turns):
             if not still_on(hub, session, rec):
                 return "failed"
             if refused := spent_out(hub, session, rec) or await approvals.turn(hub, session, rec):
@@ -336,6 +405,9 @@ async def run_agent(hub: "Hub", session: Session, name: str, text: str) -> str:
             tools = [to_openai(t) for t in (await mcp.list_tools()).tools
                      if allowed(rec, t.name) and (readable(t) or not planning)]
             tools += [PROPOSE_TOOL] if planning else [ASK_TOOL] if allowed(rec, "ask_agent") else []
+            if closing(hub, session, rec, messages, tools, last=n == hub.settings.max_turns - 1):
+                msg, _, _ = await think(hub, session, rec, [*messages, {"role": "user", "content": CLOSING}], None)
+                return msg.content or empty(rec)
             msg, calls, turn = await think(hub, session, rec, messages, tools)
             if not calls:
                 if (msg.content or "").strip():

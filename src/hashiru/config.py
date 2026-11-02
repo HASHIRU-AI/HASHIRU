@@ -73,6 +73,7 @@ class Settings:
     trace_dir: str = "traces"
     prices_file: str = ""
     tool_creation: bool = False
+    web_tools: bool = True  # get_website and arxiv_search; a benchmark turns them off so no answer is looked up
     tools_dir: str = "user_tools"
     tool_start_timeout: float = 180.0
     tool_call_timeout: float = 60.0
@@ -82,6 +83,7 @@ class Settings:
     memory_autoinject: bool = False
     a2a_peers: tuple[A2APeer, ...] = ()
     enforce_budget: bool = True
+    memory_mb: int = 0  # the most memory local hires may hold together (MB); 0: measured free memory only
     turn_reserve_usd: float = 0.01  # a cloud manager keeps this much for its own turns when hiring
     allow_hiring: bool = True
     allow_local_agents: bool = True

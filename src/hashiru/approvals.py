@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from hashiru.ledger import free_mb
 from hashiru.llm import is_local
 from hashiru.ollama import tag
 
@@ -200,7 +199,7 @@ async def load(hub: "Hub", session: "Session", agent: str, model: str, what: str
     limit = hub.settings.approve_hire_mb
     if not limit or (mb := await need_mb(hub, model)) < limit:
         return None
-    if hub.settings.enforce_budget and mb > free_mb():
+    if hub.settings.enforce_budget and mb > hub.free_memory():
         return None  # it cannot load anyway: the memory check says so, without a question first
     return await session.approvals.ask(session, "gpu", agent, f"{what}, loading {mb} MB of memory")
 

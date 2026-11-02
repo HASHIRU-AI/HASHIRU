@@ -49,7 +49,9 @@ LABEL = re.compile(r"[a-z0-9_]{1,32}")
 
 
 class Hub:
-    def __init__(self, settings: Settings, llm: LLM | None = None, ollama: Ollama | None = None) -> None:
+    def __init__(self, settings: Settings, llm: LLM | None = None, ollama: Ollama | None = None,
+                 wallet: Wallet | None = None) -> None:
+        """`wallet` lets several hubs share one cap on real spend (a benchmark's batch); by default each has its own."""
         if settings.models == AUTO:
             raise ValueError("models=auto must be settled first (hashiru.recon.settle)")
         use_cached_map(settings.model_catalog, [*settings.models, settings.ceo_model])  # a refresh's newer prices
@@ -57,7 +59,7 @@ class Hub:
             register_prices(Path(settings.prices_file))
         check_priced([*settings.models, settings.ceo_model])
         self.settings = settings
-        self.wallet = Wallet(settings.max_usd)
+        self.wallet = wallet or Wallet(settings.max_usd)
         self.llm = llm or LLM(settings.ollama_url, self.wallet, settings.ollama_num_ctx)
         known = (*settings.models, settings.ceo_model, settings.private_ceo_model)  # Ollama sizes its local ones
         self.ollama = ollama or Ollama(settings.ollama_url, known, settings.ollama_num_ctx)
@@ -268,8 +270,21 @@ class Hub:
         agent already uses is loaded, so it fits."""
         if not self.settings.enforce_budget or self.in_use(model):
             return None
-        need, free = (await self.ollama.sizes()).get(tag(model), 0), free_mb()
+        need, free = (await self.ollama.sizes()).get(tag(model), 0), self.free_memory()
         return f"{model} needs {need} MB of memory and only {free} MB is free" if need > free else None
+
+    def free_memory(self) -> int:
+        """Memory local models may still take (MB): what is free now and, with memory_mb set, no more than the cap
+        minus what the local models of live agents already hold (each model counted once)."""
+        free = free_mb()
+        if not self.settings.memory_mb:
+            return free
+        held: dict[str, int] = {}
+        for s in self.sessions.values():
+            for a in s.ledger.agents.values():
+                if a.live and is_local(a.model):
+                    held[a.model] = max(held.get(a.model, 0), a.gpu_mb)
+        return min(free, self.settings.memory_mb - sum(held.values()))
 
     def _make_obfuscator(self) -> Obfuscator | None:
         s = self.settings

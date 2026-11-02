@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from hashiru.approvals import approves, dollars, need_mb
 from hashiru.config import DIFFICULTIES
-from hashiru.ledger import AgentRecord, free_mb
+from hashiru.ledger import AgentRecord
 from hashiru.llm import is_local
 from hashiru.plangraph import mermaid
 from hashiru.privacy import may_hold
@@ -271,7 +271,7 @@ async def propose(hub: "Hub", session: "Session", me: str, args: dict[str, Any])
         steps, wrong = default_steps((h.name, h.task) for h in hires), []
     program, wrong_too = compile_steps(steps, hired, [a.name for a in session.live_hires(me)])
     problems += wrong + wrong_too
-    plan = Plan(str(args.get("summary", "")), tuple(hires), (), session.ledger.left()[me], free_mb(),
+    plan = Plan(str(args.get("summary", "")), tuple(hires), (), session.ledger.left()[me], hub.free_memory(),
                 steps=tuple(steps), program=program if hub.settings.plan_execution == "graph" else None)
     if raw and not hub.settings.allow_hiring:
         problems.append("hiring is off on this hub (allow_hiring=false): plan to answer without agents")

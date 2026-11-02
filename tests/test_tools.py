@@ -236,3 +236,15 @@ def test_get_website_checks_every_redirect_and_caps_the_body(hub, session):
     assert "error" in hop and "public" in hop["error"]
     big = asyncio.run(hub.tools.get_website(c, "http://93.184.215.14/big"))  # type: ignore[arg-type]
     assert big["status"] == 200 and len(big["text"]) == 20000
+
+
+def test_web_tools_can_be_switched_off(tmp_path):
+    from conftest import make_settings
+
+    def names(**overrides: object) -> set[str]:
+        hub = Hub(make_settings(tmp_path, **overrides), ollama=FakeOllama())  # type: ignore[arg-type]
+        return {t.name for t in asyncio.run(hub.mcp.list_tools())}
+    on, off = names(), names(web_tools=False)
+    assert {"get_website", "arxiv_search", "check_usage"} <= on
+    assert "get_website" not in off and "arxiv_search" not in off
+    assert {"check_usage", "read_file", "memory", "hire_agent"} <= off
