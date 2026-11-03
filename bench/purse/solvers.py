@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from purse.jobs import Job, extract_answer, family
-from purse.market import Market, Option, Outcome, lookup, serves
+from purse.market import API_TIERS, Market, Option, Outcome, Tiers, lookup, serves
 from purse.projects import Project, score
 from purse.table import Stats
 
@@ -24,8 +24,6 @@ MIN_ANSWER_TOKENS = 256  # v2's rule, as the hub's: a call that cannot pay for t
 INPUT_MARGIN = 1.1  # and the input is priced a little high (both are hashiru's values; a test keeps them equal)
 CHARS_PER_TOKEN = 4  # replay has the job's prompt but not its token count
 CUT = "cut off at the pool"
-HYBRID = {1: "gpt-6-luna", 2: "gpt-6-luna", 3: "gpt-6-luna", 4: "meta/muse-spark-1.3",
-          5: "meta/muse-spark-1.3"}  # AgentCARD-style: the tier follows the visible level
 
 
 def short_answer_usd(o: Option, j: Job) -> float:
@@ -110,8 +108,9 @@ def fixed(p: Project, option: str, market: Sequence[Option] = ()) -> Allocation:
     return {j.id: option if o is None or serves(o, j) else SKIP for j in p.jobs}
 
 
-def hybrid(p: Project) -> Allocation:
-    return {j.id: HYBRID[j.level] for j in p.jobs}
+def hybrid(p: Project, tiers: Tiers = API_TIERS) -> Allocation:
+    """AgentCARD-style: the tier follows the visible level (the middle tier up to level 3, the top one above)."""
+    return {j.id: tiers.mid if j.level <= 3 else tiers.top for j in p.jobs}
 
 
 def uniform(p: Project, stats: Stats, market: Sequence[Option]) -> Allocation:

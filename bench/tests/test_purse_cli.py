@@ -1,5 +1,6 @@
 """The purse command: pool, calibrate, check and run, with fake markets and synthetic tables (no model is called)."""
 import asyncio
+import contextlib
 import json
 from dataclasses import asdict
 
@@ -179,3 +180,43 @@ def test_run_can_start_at_a_later_seed(tmp_path):
     assert cli.main([*base, "--seeds", "3", "--out", str(tmp_path / "all")]) == 0
     every = [json.loads(x) for x in (tmp_path / "all" / "results.jsonl").read_text().splitlines()]
     assert [x["score"] for x in every if x["seed"] == 2] == [x["score"] for x in later]  # the same seed, the same run
+
+
+def test_shards_split_the_work_into_disjoint_stable_parts(tmp_path, capsys):
+    jobs = [job(f"j{i}") for i in range(30)]
+    todo = cli.planned(jobs, ["gpt-6-luna"], 3, OutcomeTable(tmp_path / "t.jsonl"), MARKET)
+    parts = [cli.shard(todo, i, 4) for i in range(4)]
+    def keys(xs):
+        return sorted((j.uid, o, r) for j, o, r in xs)
+    assert keys(x for p in parts for x in p) == keys(todo)  # every attempt in exactly one shard
+    assert all(parts) and cli.shard(todo, 2, 4) == parts[2]  # none empty here, and the same on a rerun
+    assert cli.shard(todo[5:], 2, 4) == [x for x in parts[2] if x in todo[5:]]  # what is recorded drops out
+    pool_file, _ = write(tmp_path)
+    base = ["calibrate", "--pool", str(pool_file), "--table", str(tmp_path / "new.jsonl"), "--levels", "1",
+            "--per-cell", "1", "--max-usd", "1", "--options", "gpt-6-luna"]
+    counts = []
+    for i in range(3):
+        assert cli.main([*base, "--shard", f"{i}/3"]) == 2
+        counts.append(int(capsys.readouterr().out.split("make ")[1].split()[0]))
+    assert sum(counts) == 12  # 4 families x 3 bins, split three ways
+    with pytest.raises(SystemExit):
+        cli.main([*base, "--shard", "3/3"])
+
+
+def test_calibration_s_deadline_is_a_flag(tmp_path, monkeypatch):
+    """A thinking model on a shared GPU can need more than the default 10 minutes an attempt."""
+    seen = {}
+
+    @contextlib.asynccontextmanager
+    async def hub_market(p, *args, **kw):
+        seen["deadline"] = p.deadline_s
+        raise RuntimeError("stop here")
+        yield
+    monkeypatch.setattr(cli, "_hub_market", hub_market)
+    pool_file, _ = write(tmp_path)
+    base = ["calibrate", "--pool", str(pool_file), "--table", str(tmp_path / "new.jsonl"), "--levels", "1",
+            "--per-cell", "1", "--max-usd", "1", "--options", "gpt-6-luna", "--spend"]
+    for extra, want in (([], 600), (["--deadline", "3600"], 3600)):
+        with pytest.raises(RuntimeError, match="stop here"):
+            cli.main([*base, *extra])
+        assert seen["deadline"] == want

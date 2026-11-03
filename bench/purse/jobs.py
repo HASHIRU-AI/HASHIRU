@@ -96,4 +96,11 @@ def same_integer(answer: str, response: str) -> bool:
     """The response's answer is the integer `answer`, ignoring spaces, thousands separators and a final period. In
     "expression = value" (how the calc agent replies) the value is what counts."""
     text = NOISE.sub("", extract_answer(response).rsplit("=", 1)[-1]).removesuffix(".")
-    return re.fullmatch(r"-?\d+", text) is not None and int(text) == int(answer)
+    return re.fullmatch(r"-?\d+", text) is not None and _integer(text) == _integer(answer)
+
+
+def _integer(text: str) -> str:
+    """An integer's canonical digits, compared as text: int() refuses more than 4300 digits, and a model that loops
+    can write far more."""
+    digits = text.strip().lstrip("-").lstrip("0") or "0"
+    return digits if digits == "0" or not text.strip().startswith("-") else "-" + digits

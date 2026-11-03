@@ -79,3 +79,28 @@ def test_each_check_fails_on_a_table_built_to_fail_it(broken):
     pool, table = build(broken)
     failed = {c.name.split()[0] for c in run_checks(pool, table, MARKET) if not c.passed}
     assert broken in failed
+
+
+def test_the_checks_judge_any_market_by_its_tiers():
+    """The open-weight pilot names its own small, middle and top tiers: renaming every model (and telling the checks
+    which is which) leaves every check's value as it was."""
+    from dataclasses import replace
+
+    from purse.market import Tiers
+    from purse.table import OutcomeTable, Record
+    names = {QWEN: "hosted_vllm/s", LUNA: "hosted_vllm/m", SPARK: "hosted_vllm/t"}
+    market = tuple(replace(o, name=names.get(o.name, o.name)) for o in MARKET)
+    tiers = Tiers(*(names[n] for n in (QWEN, LUNA, SPARK)))
+    for broken in (None, "V2", "V3", "V4"):  # the tier-specific checks, each passing and failing
+        pool, table = build(broken)
+        renamed = OutcomeTable(None)
+        for j in pool:
+            for o in MARKET:
+                for r in table.records(j.uid, o.name):
+                    renamed.add(Record(**(vars(r) | {"option": names.get(o.name, o.name)})))
+        before = [(c.name.split()[0], c.value) for c in run_checks(pool, table, MARKET)]
+        after = [(c.name.split()[0], c.value) for c in run_checks(pool, renamed, market, tiers=tiers)]
+        assert after == before, broken
+    assert sweep_prices(renamed, pool, market, ref=tiers.mid) == sweep_prices(table, pool, MARKET)
+    p = make_project(pool, 0, 0.5, 0, set())
+    assert hybrid(p, tiers) == {k: names[v] for k, v in hybrid(p).items()}

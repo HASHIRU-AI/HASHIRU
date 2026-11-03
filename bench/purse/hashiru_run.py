@@ -42,13 +42,15 @@ VARIANTS = {"": "", "names-models": "Name a model for every hire; do not give a 
 def bench_settings(p: Project, market: Sequence[Option], *, out_dir: Path, max_usd: float, port: int = PORT,
                    max_escalations: int = 2, peer_urls: Mapping[str, str] | None = None,
                    ceo_model: str = CEO_MODEL, turn_reserve_usd: float = 0.01, max_turns: int = 40,
-                   success_rates: Rates = (), by_reference: bool = False) -> Settings:
+                   success_rates: Rates = (), by_reference: bool = False,
+                   endpoints: Mapping[str, str] | None = None) -> Settings:
     """The hub for one project: its budget, memory cap and deadline; the market's models and outside agents; the
     grid_check tool; no web tools and no approvals (nobody is there to answer). Where the CEO never thinks
     (calibration, live replays of the solvers), turn_reserve_usd=0 lets a hire take the whole pool. A project needs a
     hire, an ask and a fire for up to eight jobs, so max_turns is 40 (chat's 12 ran out in the first live runs).
     `success_rates` lets hires route on measured success by kind of job; `by_reference` holds long sections of the
-    project back from the CEO and attaches what a message names (the roadmap's two ablations)."""
+    project back from the CEO and attaches what a message names (the roadmap's two ablations). `endpoints` sends each
+    open-weight model to the vLLM server it runs on."""
     urls = peer_urls or {}
     peers = tuple(A2APeer(o.name.removeprefix("a2a/"), urls[o.name], price_usd_per_message=o.per_message_usd)
                   for o in market if o.kind == "agent" and o.name in urls)
@@ -60,7 +62,8 @@ def bench_settings(p: Project, market: Sequence[Option], *, out_dir: Path, max_u
                     approve_turn_usd=0, max_escalations=max_escalations, turn_reserve_usd=turn_reserve_usd,
                     max_turns=max_turns, success_rates=success_rates, request_by_reference=by_reference,
                     trace_dir=str(out_dir / "traces"),
-                    data_dir=str(out_dir / "data"), port=port, obfuscate_with="patterns", prices_file=str(PRICES))
+                    data_dir=str(out_dir / "data"), port=port, obfuscate_with="patterns", prices_file=str(PRICES),
+                    endpoints=tuple((endpoints or {}).items()))
 
 
 def success_rates(stats: Stats) -> Rates:

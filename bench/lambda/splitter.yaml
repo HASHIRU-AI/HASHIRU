@@ -1,0 +1,22 @@
+# The trained splitter (plan/2026-11-02-finetuning-scope.md, §10): LoRA SFT of Qwen3.5 9B on the knapsack's splits.
+# Override any key on the command line, e.g. `python train_splitter.py train.max_steps=5` for a smoke run.
+model: Qwen/Qwen3.5-9B
+data_dir: ~/splitter/data      # train.jsonl and val.jsonl from bench/lambda/splitter_data.py
+out_dir: ~/splitter/run        # adapter/, merged/ (what vLLM serves), config.yaml, env.json, log.json
+seed: 2026
+max_len: 4096                  # tokens; a prompt is about 3,100 with Qwen's tokenizer, a split about 120
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  # the language model's attention and MLP projections only (the checkpoint also holds a vision tower)
+  targets: '.*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'
+train:
+  epochs: 1
+  max_steps: -1                # > 0 stops early (a smoke run)
+  lr: 1.0e-4
+  batch: 4
+  grad_accum: 4                # 16 examples a step
+  warmup_ratio: 0.03
+  log_steps: 10
+  eval_steps: 50

@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from purse.jobs import Job
-from purse.market import SMALL, Option, priced
+from purse.market import API_TIERS, Option, Tiers, priced
 from purse.oracles import BUYABLE, c_full, expected_cost, expected_score, oracle_buys, oracle_full, sweep_prices, voi
 from purse.projects import Project, fold_of, make_project, score, with_budget
 from purse.solvers import SKIP, Allocation, fixed, hybrid
@@ -15,7 +15,6 @@ __all__ = ["Check", "run_checks"]
 
 PER_RHO = 30
 TAU = 0.5
-SPARK, LUNA = "meta/muse-spark-1.3", "gpt-6-luna"
 
 
 @dataclass(frozen=True)
@@ -50,9 +49,12 @@ def _mean(xs: Sequence[float]) -> float:
     return sum(xs) / len(xs) if xs else 0.0
 
 
-def run_checks(pool: Sequence[Job], table: OutcomeTable, market: Sequence[Option], seed: int = 0) -> list[Check]:
-    """V1 to V7 on projects drawn from `pool`; deterministic in `seed`."""
-    prices = sweep_prices(table, pool, market)
+def run_checks(pool: Sequence[Job], table: OutcomeTable, market: Sequence[Option], seed: int = 0,
+               tiers: Tiers = API_TIERS) -> list[Check]:
+    """V1 to V7 on projects drawn from `pool`; deterministic in `seed`. `tiers` names the market's small, middle and
+    top models (V2 to V4, the outside agents' reference price and the hybrid policy)."""
+    small_tier, mid_tier, top_tier = tiers.small, tiers.mid, tiers.top
+    prices = sweep_prices(table, pool, market, ref=mid_tier)
     market = priced(market, prices[1])
     by_rho = {rho: _projects(pool, table, market, rho, seed + k) for k, rho in enumerate((1.0, 0.5, 0.0))}
     mid = by_rho[0.5]
@@ -60,15 +62,16 @@ def run_checks(pool: Sequence[Job], table: OutcomeTable, market: Sequence[Option
 
     oracle = _mean([expected_score(p, oracle_full(p, table, market, p.budget_usd), table, market) for p in mid])
     policies = {o.name: [fixed(p, o.name, market) for p in mid] for o in market if o.kind != "agent"}
-    policies["hybrid"] = [hybrid(p) for p in mid]
+    policies["hybrid"] = [hybrid(p, tiers) for p in mid]
     best = max(_mean([expected_score(p, _within(p, a, table, market), table, market)
                       for p, a in zip(mid, allocs, strict=True)]) for allocs in policies.values())
     checks.append(Check("V1 allocation matters", oracle - best, ">= 0.10 over the best fixed policy",
                         oracle - best >= 0.10))
 
-    covered = _mean([sum(j.value for j in p.jobs if _within(p, fixed(p, SPARK), table, market)[j.id] != SKIP)
+    covered = _mean([sum(j.value for j in p.jobs if _within(p, fixed(p, top_tier), table, market)[j.id] != SKIP)
                      / sum(j.value for j in p.jobs) for p in mid])
-    checks.append(Check("V2 the budget binds", covered, f"< 0.60 of the value affordable on {SPARK}", covered < 0.60))
+    checks.append(Check("V2 the budget binds", covered, f"< 0.60 of the value affordable on {top_tier}",
+                        covered < 0.60))
 
     seen = cell_stats(table, pool, hidden=False, market=market)
     levels = sorted({j.level for j in pool})
@@ -77,13 +80,13 @@ def run_checks(pool: Sequence[Job], table: OutcomeTable, market: Sequence[Option
         s = seen.get((fam, level, None, option))
         return s.rate if s else 0.0
     families = sorted({j.family for j in pool})
-    small = any(o.name == SMALL for o in market)  # with two tiers, the first half asks only that Luna can succeed
-    separated = sum(any(rate(f, lv, LUNA) >= 0.8 and (not small or rate(f, lv, SMALL) <= 0.4) for lv in levels)
-                    and any(rate(f, lv, SPARK) - rate(f, lv, LUNA) >= 0.2 for lv in levels) for f in families)
+    small = any(o.name == small_tier for o in market)  # with two tiers, the first half asks only that mid can succeed
+    separated = sum(any(rate(f, lv, mid_tier) >= 0.8 and (not small or rate(f, lv, small_tier) <= 0.4) for lv in levels)
+                    and any(rate(f, lv, top_tier) - rate(f, lv, mid_tier) >= 0.2 for lv in levels) for f in families)
     checks.append(Check("V3 tiers separate", separated, f"all {len(families)} families", separated == len(families)))
 
-    hard = sum(rate(f, max(levels), SPARK) <= 0.6 for f in families)
-    checks.append(Check("V4 headroom", hard, f"{SPARK} <= 60% at the top level in >= 2 families", hard >= 2))
+    hard = sum(rate(f, max(levels), top_tier) <= 0.6 for f in families)
+    checks.append(Check("V4 headroom", hard, f"{top_tier} <= 60% at the top level in >= 2 families", hard >= 2))
 
     hidden = cell_stats(table, pool, hidden=True, market=market)
     at_one = _mean([voi(p, table, hidden, market, p.budget_usd) for p in by_rho[1.0]])

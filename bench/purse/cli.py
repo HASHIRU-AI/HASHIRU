@@ -18,7 +18,8 @@ import logging
 import platform
 import subprocess
 import sys
-from collections.abc import AsyncIterator, Callable, Sequence
+import zlib
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,7 +32,18 @@ from hashiru.hub import Hub
 from hashiru.llm import LLM, Wallet, WalletExceeded
 from purse.checks import run_checks
 from purse.jobs import LEVELS, Job
-from purse.market import ALL_OPTIONS, CEO_MODEL, PROVIDER_ERROR, Market, Option, calibrated, lookup, priced, serves
+from purse.market import (
+    ALL_OPTIONS,
+    CEO_MODEL,
+    OPEN,
+    PROVIDER_ERROR,
+    Market,
+    Option,
+    calibrated,
+    lookup,
+    priced,
+    serves,
+)
 from purse.oracles import sweep_prices
 from purse.projects import Project, build_pool, with_budget
 from purse.replay import ReplayMarket
@@ -59,6 +71,23 @@ def planned(jobs: Sequence[Job], options: Sequence[str], repeats: int, table: Ou
     """Every (job, option, repeat) the table does not have yet, for options that serve the job."""
     return [(j, o, r) for j in jobs for o in options if serves(lookup(market, o), j) for r in range(repeats)
             if not table.has(j.uid, o, r)]
+
+
+def shard(todo: Sequence[tuple[Job, str, int]], index: int, count: int) -> list[tuple[Job, str, int]]:
+    """The attempts that belong to shard `index` of `count`, by a hash of (job, option, repeat) that does not change
+    between runs, so shards are disjoint, share one table, and each resumes on its own."""
+    return [t for t in todo if zlib.crc32(f"{t[0].uid}|{t[1]}|{t[2]}".encode()) % count == index]
+
+
+def _shard_arg(value: str) -> tuple[int, int]:
+    index, _, count = value.partition("/")
+    try:
+        i, n = int(index), int(count)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"--shard takes I/N, got {value!r}") from None
+    if not 0 <= i < n:
+        raise argparse.ArgumentTypeError(f"--shard I/N needs 0 <= I < N, got {value!r}")
+    return i, n
 
 
 async def calibrate(todo: Sequence[tuple[Job, str, int]], table: OutcomeTable, market: Market) -> int:
@@ -97,7 +126,8 @@ def environment(argv: Sequence[str]) -> dict[str, str]:
 
 
 def _real_hub(settings: Settings, wallet: Wallet) -> Hub:
-    return Hub(settings, llm=LLM(settings.ollama_url, wallet, settings.ollama_num_ctx), wallet=wallet)
+    return Hub(settings, llm=LLM(settings.ollama_url, wallet, settings.ollama_num_ctx, dict(settings.endpoints)),
+               wallet=wallet)
 
 
 class HubFactory:
@@ -129,12 +159,30 @@ def _peers(values: Sequence[str]) -> dict[str, str]:
     return {f"a2a/{k.removeprefix('a2a/')}": v for k, _, v in (x.partition("=") for x in values)}
 
 
+def _endpoints(values: Sequence[str]) -> dict[str, str]:
+    """--endpoint MODEL=URL, each an open-weight model and the vLLM server it runs on."""
+    out = {}
+    for value in values:
+        model, eq, url = value.partition("=")
+        if not (eq and model and url):
+            raise SystemExit(f"--endpoint takes MODEL=URL, got {value!r}")
+        out[model] = url
+    return out
+
+
+def _unserved(options: Sequence[str], endpoints: Mapping[str, str]) -> str:
+    """What to pass for open-weight options without an endpoint ('' if none): every attempt on one would fail."""
+    open_names = {o.name for o in OPEN}
+    return " ".join(f"--endpoint {o}=URL" for o in options if o in open_names and o not in endpoints)
+
+
 @contextlib.asynccontextmanager
 async def _hub_market(p: Project, options: Sequence[Option], out: Path, peers: dict[str, str],
-                      reserve: float | None, factory: HubFactory, port: int = 9250) -> AsyncIterator[Market]:
+                      reserve: float | None, factory: HubFactory, port: int = 9250,
+                      endpoints: Mapping[str, str] | None = None) -> AsyncIterator[Market]:
     from purse.hashiru_run import HubMarket, bench_settings
     hub = factory(bench_settings(p, options, out_dir=out, max_usd=factory.wallet.max_usd, max_escalations=0,
-                                 peer_urls=peers, turn_reserve_usd=0.0, port=port))
+                                 peer_urls=peers, turn_reserve_usd=0.0, port=port, endpoints=endpoints))
     async with hub.serving(), HubMarket(hub, hub.new_session("purse"), reserve) as market:
         yield market
 
@@ -149,7 +197,7 @@ async def _live(cfg: RunConfig, p: Project, text: str, options: Sequence[Option]
     rates = success_rates(stats) if cfg.route_on_rates and stats else ()
     hub = factory(bench_settings(p, options, out_dir=cfg.out, max_usd=factory.wallet.max_usd,
                                  peer_urls=dict(cfg.peers), ceo_model=cfg.ceo, port=cfg.port,
-                                 success_rates=rates, by_reference=cfg.by_reference))
+                                 success_rates=rates, by_reference=cfg.by_reference, endpoints=cfg.endpoints))
     async with hub.serving():
         if cfg.allocator == "llm-split":
             alloc, ceo = await propose_split(hub, p, variant_text(text, "split"))
@@ -182,12 +230,17 @@ def _parser() -> argparse.ArgumentParser:
         p.add_argument("--peer", action="append", default=[], help="NAME=URL of a running outside agent")
         p.add_argument("--spend", action="store_true", help="allow calls to real models")
         p.add_argument("--port", type=int, default=9250, help="the hub's port (one per concurrent command)")
+        p.add_argument("--endpoint", action="append", default=[],
+                       help="MODEL=URL of the vLLM server an open-weight model runs on")
     cal.add_argument("--options", required=True, help="comma-separated market options")
     cal.add_argument("--repeats", type=int, default=1)
     cal.add_argument("--levels", default=",".join(map(str, LEVELS)))
     cal.add_argument("--families", default="", help="comma-separated families (default: all)")
     cal.add_argument("--per-cell", type=int, default=8, help="jobs per cell (the pilot uses 5)")
     cal.add_argument("--memory-mb", type=int, default=24576)
+    cal.add_argument("--deadline", type=float, default=600.0, help="seconds an attempt may take before it fails")
+    cal.add_argument("--shard", type=_shard_arg, default=(0, 1),
+                     help="I/N: only the attempts of shard I of N (shards may share --table)")
     cal.add_argument("--out", type=Path, default=Path("bench/out/calibration"))
     check.add_argument("--seed", type=int, default=0)
     runp.add_argument("--allocator", required=True)
@@ -226,7 +279,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for c in checks:
             print(f"{'PASS' if c.passed else 'FAIL'} {c.name}: {c.value:.3f} ({c.threshold})")
         return 0 if all(c.passed for c in checks) else 1
-    peers = _peers(args.peer)
+    peers, endpoints = _peers(args.peer), _endpoints(args.endpoint)
     if args.command == "calibrate":
         levels = {int(x) for x in args.levels.split(",")}
         families = {f for f in args.families.split(",") if f} or {j.family for j in pool}
@@ -240,17 +293,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("outside agents need a running peer: " + " ".join(f"--peer {o.removeprefix('a2a/')}=URL"
                                                                      for o in missing))
             return 2
-        todo = planned(jobs, args.options.split(","), args.repeats, table, ALL_OPTIONS)
+        if unserved := _unserved(args.options.split(","), endpoints):
+            print(f"open-weight models need the server they run on: {unserved}")
+            return 2
+        todo = shard(planned(jobs, args.options.split(","), args.repeats, table, ALL_OPTIONS), *args.shard)
         if not args.spend:
             print(f"calibrate would make {len(todo)} calls to {args.options} (pass --spend to make them)")
             return 2
         calib = Project("calibration", (), 1.0, budget_usd=args.max_usd + 1, memory_mb=args.memory_mb,
-                        deadline_s=600)
+                        deadline_s=args.deadline)
 
         factory = HubFactory(args.max_usd)
 
         async def go() -> int:
-            async with _hub_market(calib, ALL_OPTIONS, args.out, peers, RESERVE_USD, factory, args.port) as market:
+            async with _hub_market(calib, ALL_OPTIONS, args.out, peers, RESERVE_USD, factory, args.port,
+                                   endpoints=endpoints) as market:
                 return await calibrate(todo, table, market)
         try:
             print(f"recorded {asyncio.run(go())} attempts in {args.table}")
@@ -262,9 +319,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     options = priced(market, price)
     cfg = RunConfig(args.allocator, args.rho, args.tau, args.projects, args.seeds, args.memory_mb, args.ceo,
                     not args.uninformed, args.live, args.max_usd, args.out, peers, args.port, args.bounded,
-                    args.by_reference, args.route_on_rates, args.first_seed)
+                    args.by_reference, args.route_on_rates, args.first_seed, endpoints)
     if is_live(cfg):
         options = tuple(o for o in options if o.kind != "agent" or o.name in peers)
+        if unserved := _unserved([o.name for o in options], endpoints):
+            print(f"open-weight models need the server they run on: {unserved}")
+            return 2
         if not args.spend:
             print(f"{args.allocator} runs live ({cfg.projects} projects x {cfg.seeds} seeds; pass --spend)")
             return 2
@@ -274,7 +334,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     factory = HubFactory(cfg.max_usd)  # one cap for the whole batch
 
     def live_market(p: Project) -> Any:
-        return _hub_market(p, options, cfg.out, peers, None, factory, cfg.port)
+        return _hub_market(p, options, cfg.out, peers, None, factory, cfg.port, endpoints=endpoints)
 
     async def live(c: RunConfig, p: Project, text: str, opts: Sequence[Option], seed: int,
                    stats: Stats | None = None) -> Any:

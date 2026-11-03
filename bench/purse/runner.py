@@ -50,6 +50,7 @@ class RunConfig:
     by_reference: bool = False  # live: the CEO reads long sections as an outline; messages naming one carry it
     route_on_rates: bool = False  # live: hires may route on the measured success rates an informed allocator is told
     first_seed: int = 0  # seeds run are first_seed .. first_seed + seeds - 1 (one process per seed, in parallel)
+    endpoints: Mapping[str, str] = field(default_factory=dict)  # open-weight model -> the vLLM server it runs on
 
 
 def is_live(cfg: RunConfig) -> bool:

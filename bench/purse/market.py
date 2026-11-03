@@ -5,9 +5,8 @@ from typing import Literal, Protocol
 
 from purse.jobs import Job
 
-__all__ = ["ALL_OPTIONS", "CEO_MODEL", "MARKET", "PROVIDER_ERROR", "SMALL", "SMALL_OPTION", "UNRELIABLE", "Market",
-           "Option", "Outcome",
-           "calibrated", "lookup", "priced", "serves"]
+__all__ = ["ALL_OPTIONS", "API_TIERS", "CEO_MODEL", "MARKET", "OPEN", "PROVIDER_ERROR", "SMALL", "SMALL_OPTION",
+           "UNRELIABLE", "Market", "Option", "Outcome", "Tiers", "calibrated", "lookup", "priced", "serves"]
 
 CEO_MODEL = "gpt-6-luna"
 PROVIDER_ERROR = "provider error: "  # an attempt the provider or the hub failed, not the model: calibration retries it
@@ -45,7 +44,30 @@ MARKET: tuple[Option, ...] = (
 # `purse.peers.csp_agent --name gridfast --wrong 0.4`). Out of MARKET: a table holds it only once it is calibrated.
 UNRELIABLE = Option("a2a/gridfast", "agent", 0.001, ("grids",), price_factor=0.25)
 
-ALL_OPTIONS = (SMALL_OPTION, *MARKET, UNRELIABLE)
+# The open-weight market (the pilot of plan/2026-11-02-finetuning-scope.md): Apache-2.0 models served by vLLM on rented
+# GPUs and reached with --endpoint, priced at OpenRouter's list prices (read 2026-11-02; bench/prices.json), so a pool
+# pays for them as it would through a provider. Smaller than the API market, so that hard jobs can fail.
+OPEN: tuple[Option, ...] = (
+    Option("hosted_vllm/mistralai/Ministral-3-3B-Instruct-2512", "cloud", input_usd_per_m=0.10, output_usd_per_m=0.10),
+    Option("hosted_vllm/Qwen/Qwen3.5-9B", "cloud", input_usd_per_m=0.17, output_usd_per_m=0.25),
+    Option("hosted_vllm/google/gemma-4-31B-it", "cloud", input_usd_per_m=0.20, output_usd_per_m=0.40),
+    Option("hosted_vllm/Qwen/Qwen3.5-27B", "cloud", input_usd_per_m=0.26, output_usd_per_m=2.60),
+)
+
+ALL_OPTIONS = (SMALL_OPTION, *MARKET, UNRELIABLE, *OPEN)
+
+
+@dataclass(frozen=True)
+class Tiers:
+    """Which models are a market's small, middle and top tiers: the validity checks, the outside agents' reference
+    price (the middle tier's median cost) and the hybrid policy are defined by tier, not by model."""
+
+    small: str
+    mid: str
+    top: str
+
+
+API_TIERS = Tiers(SMALL, "gpt-6-luna", "meta/muse-spark-1.3")
 
 
 def calibrated(names: set[str]) -> tuple[Option, ...]:

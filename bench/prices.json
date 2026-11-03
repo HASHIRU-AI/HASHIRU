@@ -28,5 +28,41 @@
     "supports_function_calling": true,
     "supports_reasoning": true,
     "comment": "NIM's hosted API runs on trial credits; priced at Fireworks' list price for muse-glimmer-30b in LiteLLM's map (2026-11-01), the lower of its two listings (Kyma: $0.455 / $1.821)"
+  },
+  "hosted_vllm/mistralai/Ministral-3-3B-Instruct-2512": {
+    "litellm_provider": "hosted_vllm",
+    "mode": "chat",
+    "input_cost_per_token": 1e-07,
+    "output_cost_per_token": 1e-07,
+    "max_input_tokens": 131072,
+    "comment": "OpenRouter's list price (its /api/v1/models, read 2026-11-02); served by vLLM on rented GPUs for the open-weight pilot (bench/lambda/serve.sh, 131072-token context). Output capped at 8192 tokens: Qwen3.5 thinks at temperature 0 until it is cut off, so the cap, not the clock, ends an attempt",
+    "max_output_tokens": 8192
+  },
+  "hosted_vllm/Qwen/Qwen3.5-9B": {
+    "litellm_provider": "hosted_vllm",
+    "mode": "chat",
+    "input_cost_per_token": 1.7e-07,
+    "output_cost_per_token": 2.5e-07,
+    "max_input_tokens": 262144,
+    "comment": "OpenRouter's list price (its /api/v1/models, read 2026-11-02); served by vLLM on rented GPUs for the open-weight pilot (bench/lambda/serve.sh, 131072-token context). Output capped at 8192 tokens: Qwen3.5 thinks at temperature 0 until it is cut off, so the cap, not the clock, ends an attempt",
+    "max_output_tokens": 8192
+  },
+  "hosted_vllm/google/gemma-4-31B-it": {
+    "litellm_provider": "hosted_vllm",
+    "mode": "chat",
+    "input_cost_per_token": 2e-07,
+    "output_cost_per_token": 4e-07,
+    "max_input_tokens": 262144,
+    "comment": "OpenRouter's list price (its /api/v1/models, read 2026-11-02); served by vLLM on rented GPUs for the open-weight pilot (bench/lambda/serve.sh, 131072-token context). Output capped at 8192 tokens: Qwen3.5 thinks at temperature 0 until it is cut off, so the cap, not the clock, ends an attempt",
+    "max_output_tokens": 8192
+  },
+  "hosted_vllm/Qwen/Qwen3.5-27B": {
+    "litellm_provider": "hosted_vllm",
+    "mode": "chat",
+    "input_cost_per_token": 2.6e-07,
+    "output_cost_per_token": 2.6e-06,
+    "max_input_tokens": 262144,
+    "comment": "OpenRouter's list price (its /api/v1/models, read 2026-11-02); served by vLLM on rented GPUs for the open-weight pilot (bench/lambda/serve.sh, 131072-token context). Output capped at 8192 tokens: Qwen3.5 thinks at temperature 0 until it is cut off, so the cap, not the clock, ends an attempt",
+    "max_output_tokens": 8192
   }
 }

@@ -5,7 +5,7 @@ import statistics
 from collections.abc import Mapping, Sequence
 
 from purse.jobs import Job
-from purse.market import Option, lookup, serves
+from purse.market import API_TIERS, Option, lookup, serves
 from purse.projects import Project
 from purse.solvers import SKIP, Allocation, knapsack
 from purse.table import OutcomeTable, Stats, visible_stats
@@ -81,11 +81,13 @@ def voi(p: Project, table: OutcomeTable, hidden: Stats, market: Sequence[Option]
             - expected_score(p, oracle_cells(p, seen, market, budget_usd, False), table, market))
 
 
-def sweep_prices(table: OutcomeTable, pool: Sequence[Job], market: Sequence[Option]) -> tuple[float, ...]:
-    """c_ref x MULTIPLIERS, where c_ref is the median cost of gpt-6-luna on the jobs an outside agent can do."""
-    costs = [c for j in pool if j.family in BUYABLE if (c := table.cost(j.uid, "gpt-6-luna")) is not None]
+def sweep_prices(table: OutcomeTable, pool: Sequence[Job], market: Sequence[Option],
+                 ref: str = API_TIERS.mid) -> tuple[float, ...]:
+    """c_ref x MULTIPLIERS, where c_ref is the median cost of the middle tier (`ref`) on the jobs an outside agent
+    can do."""
+    costs = [c for j in pool if j.family in BUYABLE if (c := table.cost(j.uid, ref)) is not None]
     if not costs:
-        raise ValueError("no gpt-6-luna records for arithmetic or grid jobs: calibrate it first")
+        raise ValueError(f"no {ref} records for arithmetic or grid jobs: calibrate it first")
     c_ref = statistics.median(costs)
     return tuple(c_ref * m for m in MULTIPLIERS)
 
