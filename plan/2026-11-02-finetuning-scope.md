@@ -300,7 +300,9 @@ Qwen3.5 9B's list price):
 - Published (public, the user's choice) at https://huggingface.co/guineapig/purse-splitter-qwen3.5-9b: merged model
   at the root, adapter in `adapter/`, card from `bench/lambda/MODEL_CARD.md`. The adapter loaded from the Hub onto
   the base gave the same replies as the evaluation on 3 of 3 prompts. The card links to `bench/purse/splitter.py` and
-  `bench/lambda/` on GitHub's main branch, so those links work only once this code is merged.
+  `bench/lambda/` on the public `feature/whitepaper` branch, since PURSE stays off main.
+- Whitepaper: §5.3 "A third round on open models" (pilot and Table 11), plus the quote at hire time and `endpoints` in
+  §3, a limitations paragraph, the roadmap, the executive summary and the availability line.
 
 **What it means.** A 9B model trained on the solver's splits nearly matches the solver and beats the same model
 untrained by a wide margin, which answers ZEBRA's LLM-direct finding in the trained direction. It is not a reason to

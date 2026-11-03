@@ -97,7 +97,7 @@ model = PeftModel.from_pretrained(base, "guineapig/purse-splitter-qwen3.5-9b", s
 ```
 
 The prompt must follow PURSE's format. `split_text` in
-[`bench/purse/splitter.py`](https://github.com/HASHIRU-AI/HASHIRU/blob/main/bench/purse/splitter.py) builds it.
+[`bench/purse/splitter.py`](https://github.com/HASHIRU-AI/HASHIRU/blob/feature/whitepaper/bench/purse/splitter.py) builds it.
 
 ## Limits
 
@@ -112,7 +112,7 @@ The prompt must follow PURSE's format. `split_text` in
 - **Data:** 3,000 training and 200 validation prompts from PURSE's second round, from projects that share no job with
   the 20 test projects. Budgets are 0.25, 0.5, 1 and 2 times the full cost. The target is the knapsack's split on the
   budget minus the reply's cost. The scripts that build it are in
-  [`bench/lambda/`](https://github.com/HASHIRU-AI/HASHIRU/tree/main/bench/lambda).
+  [`bench/lambda/`](https://github.com/HASHIRU-AI/HASHIRU/tree/feature/whitepaper/bench/lambda).
 - **Method:** LoRA with rank 16, alpha 32 and dropout 0.05, on the language model's attention and MLP projections.
   The loss counts only the reply tokens. The chat template is used with thinking off.
 - **Settings:** one epoch (188 steps), 16 examples per step, learning rate 1e-4 with 6 warmup steps, longest example
