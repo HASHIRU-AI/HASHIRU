@@ -6,8 +6,9 @@ is capped at what its agent has left, firing returns what was not spent, and an 
 Over 551 hires in 120 live runs, no hire spent more than 1.11 times its budget, where \sys{} as first built let one
 spend 372 times. Keeping long inputs away from the CEO raised the agents' score by 0.136. On projects with enough budget
 to run the CEO, the agents beat the cheap model alone on hard jobs that a specialist can do (79\% against 69\% right)
-and match it overall (0.737 against 0.740), at 3.9 times its spend. Because every reservation, call and refund is in
-the log, the spending can be checked, measured and improved. That is how we built the guards and both changes, and how
+and match it overall (0.737 against 0.740), at 3.9 times its spend. A 9B open model trained on the knapsack's splits
+comes within 0.04 of the knapsack (0.750 against 0.788 at the live runs' budget), but a model that copies a free solver
+cannot beat it. Because every reservation, call and refund is in the log, the spending can be checked, measured and improved. That is how we built the guards and both changes, and how
 we found what is left to fix.
 
 \begin{keybox}{When to use \sys{} v2 today}
@@ -37,8 +38,9 @@ where each dollar went.
 \textbf{Roadmap.} Each remaining gap has a concrete next step, listed by payoff per dollar. The agents pick the
 expensive model for hard jobs but give it too little money, so more than half of what they spent went to its hires, and
 only 12 of 79 answered right. The hub already knows what an attempt on each model costs, from the same statistics it
-routes on, so it can quote that price when the hire is made, instead of after the money is spent. The CEO can then fund
-the hire in full or buy something cheaper. With that in place, the agents should be run at larger budgets, where the
+routes on, and it now quotes that price when the hire is made, instead of after the money is spent. The CEO can then
+fund the hire in full or buy something cheaper. This quote is built and tested but has not been run live, so it comes
+first. With that in place, the agents should be run at larger budgets, where the
 replays show a strategy pulling ahead of the cheap model (0.133 ahead at twice the cost of the best answers). The agents
 cannot work below a minimum budget, since a CEO that hires, asks and fires pays for a turn at each step. Below it, the
 hub can plan up front in one call, as the LLM split does, or answer cheap projects with one model. The CEO answers the
@@ -46,9 +48,14 @@ jobs it keeps worse than a fresh call (85\% against 91\%), which argues for hand
 only as tight as the hub's token count, which can be checked against billed usage in the log, and its margin learned
 from it. The two changes of the second round should be tested separately. And a results table that passes V5 needs
 more than four jobs per group, since a difficulty's rate from twelve attempts is as noisy as the differences it is
-meant to show. Without it, the value of adapting during the task cannot be measured. Finally, the market can grow to
-include local models, with memory as a second currency, which \sys{} already supports.
+meant to show. Without it, the value of adapting during the task cannot be measured. Weaker open models make the
+hidden difficulty visible (\S\ref{sec:open}), but their market failed because its strongest model was also cheap per
+attempt, so the next table needs a market whose prices rise with quality. Only on such a table could a trained splitter
+add something a solver lacks. Finally, the market can grow to include local models, with memory as a second currency,
+which \sys{} already supports.
 
 \textbf{Availability.} \sys{} v2 is source-available under the PolyForm Noncommercial License 1.0.0 at
 \url{https://github.com/HASHIRU-AI/HASHIRU}. The benchmark and the run data are available from the authors on request.
+The trained splitter (merged weights and its LoRA adapter) is at
+\url{https://huggingface.co/guineapig/purse-splitter-qwen3.5-9b}.
 \sys{} v1's code is preserved at tag \texttt{v1.0-paper}.

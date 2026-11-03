@@ -22,7 +22,14 @@ cannot know more than the CEO is told.
 four of the second round's twenty have less than \$0.006. A strategy that pays for its own turns cannot work below that,
 and we report those projects separately rather than drop them.
 
-\textbf{The market and the system.} Prices are list prices on the run dates. The runs use three cloud models and no
+\textbf{The open-model round.} The third round ran no agents live, so it says nothing about how the agents spend on open
+models. Its jobs come four per group (two in each half), so the value of the hidden difficulty measured across halves
+is noisy, and seven of Gemma 4 31B's 432 attempts timed out and are missing. The 8,192-token cap shapes Qwen3.5 9B's
+cost, since most of its attempts run to it. The open models are charged list prices, not what the GPU cost. The trained
+splitter was trained and tested on the same job generators and the same market, so other options or prices would likely
+need new training.
+
+\textbf{The market and the system.} Prices are list prices on the run dates. The live runs use three cloud models and no
 local model, so memory as a second currency is built into \sys{} but not measured here. The declared difficulty is the
 agent's own guess. A call is capped using the hub's token count, which ran low by up to 11\% of a budget on long
 aggregation inputs (13 of 551 hires). All agents in a hub share one API key, so the hub, not the provider, is what keeps

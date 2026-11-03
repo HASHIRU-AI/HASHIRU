@@ -53,3 +53,7 @@ what the best answers cost to twice that), the cheap model alone stays near 0.75
 the task, as the agents do, rises from 0.70 to 0.88. The remaining problems are just as specific. The expensive model
 is underfunded, a CEO that pays for every turn cannot work below a minimum budget, and the CEO answers some jobs itself
 instead of handing them off. Section~\ref{sec:conclusion} takes each one in turn.
+
+A third round, on open models served on a rented GPU, asks whether a small model can learn to split the money. Trained
+on a solver's splits, a 9B model comes within 0.04 of the solver and scores 0.15 to 0.22 above the same model untrained
+(\S\ref{sec:open}). It cannot beat the solver, which costs nothing to run.

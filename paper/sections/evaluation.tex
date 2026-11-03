@@ -7,7 +7,7 @@ And how well do they split the money?
 \subsection{Setup}
 We ran two rounds. The first (2026-11-01) built the guards and measured them. The second (2026-11-02) added a third
 model and an unreliable seller, measured the models again on a wider set of jobs, and tested the agents on more
-projects.
+projects. A third round (2026-11-03, \S\ref{sec:open}) used open models on a rented GPU, with no live agent runs.
 
 \paragraph{Models and prices} The CEO is \texttt{gpt-6-luna} (\$0.10 / \$0.50 per million input / output tokens). The
 first round's market has \texttt{gpt-6-luna} (the cheap model), \texttt{muse-spark-1.3} from Meta's Model API (\$1.25 /
@@ -316,3 +316,72 @@ by level and the expensive model alone, which spent 1.58 to 2.14 times their bud
 0.080, 0.038 and 0.105. Random choice and the knapsack fell by only 0.002 and 0.006. It raised the cheap model alone by
 0.013, because refusing a call the budget cannot pay for saves the money for later jobs (on one small project, the first
 rule let the cheap model's calls spend up to 2.9 times the budget, and it scored 0.4 to 0.6 less).
+
+\subsection{A third round on open models}
+\label{sec:open}
+Both results tables fail V5. Our cloud models are strong enough that a job's hidden difficulty rarely changes their
+answer, so knowing it is worth almost nothing. The third round asked two questions with open models. Do weaker models
+make the hidden difficulty worth knowing? And can a small model be trained to split the money the way the knapsack
+does? We served the models ourselves with vLLM~\cite{kwon2023vllm} on one rented H100 GPU, for about 5.5 hours and
+about \$24 of Lambda credits. No agent ran live in this round, and it made no paid API calls. Each open model is charged
+OpenRouter's list price (read on 2026-11-02), as if it were bought from a hosted provider. Each attempt's output is
+capped at 8,192 tokens.
+
+\textbf{Weaker models make the hidden difficulty visible, but not worth knowing.} We measured three open models on 144
+jobs (levels 1, 3 and 5, four per group), three attempts each. They are Ministral 3 3B (\$0.10 / \$0.10 per million
+input / output tokens), Qwen3.5 9B (\$0.17 / \$0.25) and Gemma 4 31B (\$0.20 / \$0.40). The hidden difficulty now
+moves success a lot. Qwen3.5 9B answers every level-3 arithmetic job of low hidden difficulty and none of the mid or
+high ones. But knowing it is still worth almost nothing. It is worth 0.006 of the points at $\rho = 0$, and $-0.020$
+when the success rates are measured on half the jobs and used on the other half. The prices explain why. Gemma 4 31B
+is the strongest model (65\% of its attempts right), and cheap per attempt (a mean of \$0.0028). Qwen3.5 9B thinks
+until the cap on 294 of its 432 attempts, so an attempt on it costs twice as much (\$0.0060) and is right 52\% of the
+time. Ministral 3 3B is right 9\% of the time. The best plan sends nearly every job to Gemma 4 31B, whatever its hidden
+difficulty. Five of the seven checks fail (V1, V2, V3, V5 and V6), so we did not build a results table on these models.
+
+\textbf{A small model trained on the knapsack's splits nearly matches it, but does not beat it.} ZEBRA's language-model
+baseline loses to a knapsack solver~\cite{hamri2026zebra}, and so does our LLM split (Table~\ref{tab:main}). We asked
+how much of that gap training closes. Our splitter reads a project's outline in one prompt and replies with one option,
+or ``skip'', for each job. The outline holds the budget, the market, the measured success rates and costs, and each
+job's heading with the first 160 characters of its text. The reply is paid from the budget first, at Qwen3.5 9B's list
+price. We trained Qwen3.5 9B with LoRA~\cite{hu2022lora} (rank 16, one epoch, 33 minutes) on 3,000 projects drawn from
+the second round's jobs, none of them in the twenty test projects. The target is the knapsack's split of what the
+budget has left after the reply. Table~\ref{tab:splitter} scores the splitter on the second round's twenty projects at
+four budgets.
+
+\begin{table}[!htb]
+\centering
+\caption{Splitting the money in one reply, on the second round's twenty projects at four budgets (three replays each,
+under v2's budget rule). Every model pays for its reply out of the budget. The perfect copy writes the knapsack's split
+exactly. It pays for its reply from an estimate of the prompt's length that is about half the real length, so its row
+is slightly high. The last rows give differences, with 95\% intervals over projects.}
+\label{tab:splitter}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\tablehead Splitter & $\tau = 0.25$ & $\tau = 0.5$ & $\tau = 1$ & $\tau = 2$ \\
+\midrule
+Knapsack (solver, free) & 0.715 & 0.788 & 0.842 & 0.902 \\
+A perfect copy of the knapsack & 0.687 & 0.766 & 0.833 & 0.900 \\
+\textbf{Qwen3.5 9B, trained} & \textbf{0.663} & \textbf{0.750} & \textbf{0.820} & \textbf{0.879} \\
+Qwen3.5 9B, untrained, thinking off & 0.513 & 0.578 & 0.660 & 0.661 \\
+Qwen3.5 9B, untrained, thinking on & 0.000 & 0.000 & 0.000 & 0.000 \\
+LLM split (\texttt{gpt-6-luna}, Table~\ref{tab:main}) & & 0.695 & & \\
+\midrule
+Trained minus untrained (thinking off) & $+0.150$ & $+0.172$ & $+0.159$ & $+0.218$ \\
+ & $[+0.077, +0.225]$ & $[+0.096, +0.245]$ & $[+0.085, +0.238]$ & $[+0.132, +0.306]$ \\
+Trained minus knapsack & $-0.052$ & $-0.038$ & $-0.023$ & $-0.023$ \\
+ & $[-0.108, -0.008]$ & $[-0.085, -0.001]$ & $[-0.046, -0.003]$ & $[-0.050, -0.004]$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Training adds 0.15 to 0.22 at every budget, and the trained model picks the knapsack's option for 92\% of jobs (the
+untrained one for 26\%). It comes within 0.013 to 0.024 of a perfect copy. It still trails the knapsack by 0.023 to
+0.052, because its reply costs about 8\% of the budget and it can at best copy the solver. At $\tau = 0.5$ it scores
+0.056 above the LLM split, but the interval includes zero ($[-0.031, +0.131]$). With thinking on, the untrained model
+never finished thinking within 8,192 tokens on any of the 80 prompts, so it answered nothing and still spent 38.5\% of
+the budget. So training closes most of the gap between an LLM's split and a solver's, but a model that copies a free
+solver cannot beat it. The knapsack reads no job's text. A trained splitter could add something only where the text
+tells it what the statistics do not, such as a job's hidden difficulty, and V5 says that is worth almost nothing on
+these tables. The trained model is public (\S\ref{sec:conclusion}).

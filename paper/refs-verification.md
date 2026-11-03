@@ -27,3 +27,10 @@ Title and every author's surname compared with the source, or the URL or reposit
 | wu2024autogen | same | Microsoft Research lists COLM 2024; arXiv 2308.08155 has the same 14 authors |
 
 Script: arXiv API with a 3 s pause between calls, Crossref works API, `gh api repos/...`, and plain GET for URLs.
+
+## Added 2026-11-03 (third round)
+
+| Key | Checked against | Result |
+|---|---|---|
+| kwon2023vllm | Crossref DOI 10.1145/3600006.3613165 | title, 9 authors in order, SOSP 2023 proceedings, pages 611-626 match |
+| hu2022lora | arXiv API 2106.09685 | title and 8 authors in order match; venue ICLR 2022 (OpenReview forum nZeVKeeFYf9) by hand, since OpenReview, DBLP and Semantic Scholar refused the script's requests |

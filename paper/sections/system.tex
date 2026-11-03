@@ -139,7 +139,13 @@ An agent can instead name the kind of job (\texttt{kind}) and let the hub choose
 each model's success rate and mean cost for each kind of job (\texttt{success\_rates}, which can come from the hub's
 own logs), the hub hires the cheapest model that succeeds at least 70\% of the time on that kind
 (\texttt{route\_min\_rate}), then the others, most reliable first. The hiring tool lists the kinds the table knows, so
-the agent can name one.
+the agent can name one. If the hire's budget cannot pay for one average attempt on the model the hub picks, the hub does
+not make the hire. It quotes what an attempt costs and lists the models the budget can pay for, so the agent can fund
+the hire in full or buy something cheaper before any money is spent. Hires in a proposed plan get the same check. We
+added this quote after the second round, and it has not yet been run live.
+
+A model served outside the cloud providers, such as one on vLLM~\cite{kwon2023vllm} on a rented GPU, gets its own
+server address (\texttt{endpoints}). It is priced per token from a prices file, like any cloud model.
 
 \subsection{Make or buy over open protocols}
 Besides models, a manager may hire a remote A2A agent as a worker (\texttt{a2a/<name>}). The hub reads the agent's
@@ -193,8 +199,8 @@ request. Every key is described in this section.}
 \end{figure}
 
 \subsection{Implementation}
-\sys{} v2 is 6,578 lines of Python 3.13, with exact versions pinned for its protocol and model libraries. Its 468
-tests (and 157 more for the benchmark) run without API keys or Ollama. The guards in \S\ref{sec:pools} came out of measurement. Each was written
+\sys{} v2 is 6,659 lines of Python 3.13, with exact versions pinned for its protocol and model libraries. Its 475
+tests (and 178 more for the benchmark) run without API keys or Ollama. The guards in \S\ref{sec:pools} came out of measurement. Each was written
 test-first after a benchmark run showed what happens without it (\S\ref{sec:evaluation}). So were routing by measured
 success, hiding long sections from the CEO, and four smaller features. \texttt{attach} lets an agent pass sections of
 the user's request to a hire word for word. A switch turns off the web tools, so no answer can be looked up during an

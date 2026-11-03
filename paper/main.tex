@@ -169,9 +169,11 @@ answer.
 \end{keybox}
 
 \begin{keybox}{Where it stands}
-These are small experiments (\$33.21 in total), and our results tables fail three of seven validity checks
-(\S\ref{sec:checks}). Re-scored at larger budgets, a strategy that adapts during the task climbs to 0.88 while the
-cheap model alone stays near 0.75, but we have run the agents live only at the smaller budget.
+These are small experiments (\$33.21 of API calls in total, plus about \$24 of GPU time), and our results tables fail
+three of seven validity checks (\S\ref{sec:checks}). Re-scored at larger budgets, a strategy that adapts during the task
+climbs to 0.88 while the cheap model alone stays near 0.75, but we have run the agents live only at the smaller budget.
+A 9B open model trained on a solver's splits comes within 0.04 of the solver (0.750 against 0.788), but does not beat
+it (\S\ref{sec:open}).
 \end{keybox}
 
 {\renewcommand{\sectionbreak}{}\renewcommand{\contentsname}{Contents}\tableofcontents}
