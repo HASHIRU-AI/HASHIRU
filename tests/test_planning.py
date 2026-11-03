@@ -30,6 +30,7 @@ from hashiru.obfuscation.vault import Span
 from hashiru.peers import fetch_card
 
 ECHO = str(Path(__file__).parent / "servers" / "echo_server.py")
+PROPOSE_HIRE = planning.PROPOSE_TOOL["function"]["parameters"]["properties"]["hires"]["items"]
 READ_ONLY = {"check_usage", "get_website", "arxiv_search", "read_file", "memory"}
 PLAN = {"summary": "w1 greets; I pass its greeting on.",
         "hires": [{"name": "w1", "role": "worker", "model": "gpt-4.1-mini", "budget_usd": 0.3,
@@ -146,6 +147,36 @@ def test_propose_plan_lists_the_problems_a_hire_would_hit(hub, session):
     for expected in ("'ceo'", "role must be", "gpt-5", "difficulty", "w5 twice", "$0.6"):
         assert expected in problems
     assert len(out["problems"]) == 6 and [h["name"] for h in out["hires"]] == ["w5"]
+
+
+RATED = (("arithmetic level 4", (("ollama_chat/tiny", 0.2, 0.0), ("gpt-4.1-mini", 0.9, 0.002))),)
+
+
+def test_propose_plan_routes_a_hire_by_kind_and_quotes_one_attempt(tmp_path, ollama):
+    hub = Hub(make_settings(tmp_path, success_rates=RATED), ollama=ollama)  # type: ignore[arg-type]
+    session = hub.new_session("t", trace=False)
+    session.planning = True
+    assert "kind" in PROPOSE_HIRE["properties"]
+    out = asyncio.run(planning.propose(hub, session, "ceo", {"summary": "s", "hires": [
+        {"name": "w1", "role": "worker", "kind": "Arithmetic, level 4", "budget_usd": 0.002, "task": "a"},
+        {"name": "w2", "role": "worker", "kind": "arithmetic level 4", "budget_usd": 0.001, "task": "b"}]}))
+    assert [(h["name"], h["model"], h["kind"]) for h in out["hires"]] == [("w1", "gpt-4.1-mini", "Arithmetic, level 4")]
+    problems = "\n".join(out["problems"])
+    assert "w2" in problems and "$0.0020" in problems and "ollama_chat/tiny" in problems
+    assert "gpt-4.1-mini (Arithmetic, level 4)" in session.plan.table()  # type: ignore[union-attr]
+    assert "kind=Arithmetic, level 4 (planned on gpt-4.1-mini)" in planning.carry_out(session.plan)  # type: ignore[arg-type]
+
+
+def test_the_graph_hires_a_planned_hire_by_its_kind(hub, session, monkeypatch):
+    sent = []
+
+    async def perform(hub, session, mcp, me, name, args):
+        sent.append(args)
+        return {"hired": args["name"]}
+    monkeypatch.setattr(runtime, "perform", perform)
+    hire = planning.Hire("w1", "worker", "gpt-4.1-mini", "cloud", 0.002, 0, "a", kind="arithmetic level 4")
+    assert asyncio.run(runtime.PlanRunner(hub, session, None, planning.Plan(hires=(hire,)), "t").hire("w1")) is None
+    assert sent[0]["kind"] == "arithmetic level 4" and "model" not in sent[0] and "difficulty" not in sent[0]
 
 
 def test_a_plan_with_hires_is_flagged_where_hiring_is_off(tmp_path, ollama):

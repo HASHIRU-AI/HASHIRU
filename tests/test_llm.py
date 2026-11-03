@@ -69,6 +69,16 @@ def test_local_calls_cost_nothing_and_use_ollama(monkeypatch):
     assert seen[0]["api_base"] == "http://ollama" and seen[0]["temperature"] == 0 and seen[0]["num_retries"] == 2
 
 
+def test_a_model_with_an_endpoint_is_sent_there_and_priced_as_cloud(monkeypatch):
+    seen = fake_litellm(monkeypatch, cost=0.003)
+    url = "http://127.0.0.1:8001/v1"
+    model = llm.LLM("http://ollama", llm.Wallet(2.0), endpoints={"hosted_vllm/org/small": url})
+    _, cost = asyncio.run(model.chat("hosted_vllm/org/small", []))
+    asyncio.run(model.chat("gpt-4.1-mini", []))
+    assert cost == 0.003 and seen[0]["api_base"] == url and "num_ctx" not in seen[0]
+    assert "api_base" not in seen[1]  # other cloud models go to their provider
+
+
 def rate_limited(monkeypatch, failures: int, cost: float = 0.01) -> tuple[list[dict], list[float]]:
     """acompletion refuses the first `failures` calls with a 429; asyncio.sleep records its waits."""
     seen: list[dict] = []

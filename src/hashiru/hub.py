@@ -60,7 +60,7 @@ class Hub:
         check_priced([*settings.models, settings.ceo_model])
         self.settings = settings
         self.wallet = wallet or Wallet(settings.max_usd)
-        self.llm = llm or LLM(settings.ollama_url, self.wallet, settings.ollama_num_ctx)
+        self.llm = llm or LLM(settings.ollama_url, self.wallet, settings.ollama_num_ctx, dict(settings.endpoints))
         known = (*settings.models, settings.ceo_model, settings.private_ceo_model)  # Ollama sizes its local ones
         self.ollama = ollama or Ollama(settings.ollama_url, known, settings.ollama_num_ctx)
         if (urlsplit(settings.ollama_url).hostname or "") not in LOOPBACK:

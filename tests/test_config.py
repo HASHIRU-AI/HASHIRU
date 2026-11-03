@@ -35,6 +35,29 @@ def test_command_line_overrides_win(monkeypatch):
     assert (s.budget_usd, s.max_depth, s.models) == (0.25, 3, ("ollama_chat/a", "gpt-4.1-mini"))
 
 
+def test_endpoints_send_a_model_to_its_own_server(tmp_path):
+    config = tmp_path / "endpoints.yaml"  # model names have slashes: a YAML file
+    config.write_text("models: [hosted_vllm/org/small]\n"
+                      "endpoints: {hosted_vllm/org/small: 'http://127.0.0.1:8001/v1'}\n")
+    s = load_settings([], str(config))
+    assert s.endpoints == (("hosted_vllm/org/small", "http://127.0.0.1:8001/v1"),)
+    assert load_settings().endpoints == ()
+    for bad in ("{hosted_vllm/org/small: 'ftp://x'}", "{hosted_vllm/org/small: 'http://u:p@host/v1'}",
+                "{ollama_chat/qwen3.5:4b: 'http://127.0.0.1:8001/v1'}", "[http://127.0.0.1:8001/v1]"):
+        config.write_text(f"endpoints: {bad}\n")
+        with pytest.raises(ValueError, match="endpoints"):
+            load_settings([], str(config))
+
+
+def test_the_hub_gives_its_llm_the_endpoints(tmp_path):
+    from conftest import FakeOllama, make_settings
+
+    from hashiru.hub import Hub
+    ends = (("gpt-4.1-mini", "http://127.0.0.1:8001/v1"),)
+    hub = Hub(make_settings(tmp_path, endpoints=ends), ollama=FakeOllama())  # type: ignore[arg-type]
+    assert hub.llm.endpoints == dict(ends)
+
+
 def test_unknown_settings_are_rejected():
     with pytest.raises(ValueError, match="unknown settings"):
         load_settings(["+colour=blue"])

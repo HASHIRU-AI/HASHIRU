@@ -82,7 +82,9 @@ class Tools:
         if not (kinds := [k for k, _ in self.hub.settings.success_rates]):  # read before the router exists
             return ""
         return (f" Or give its kind, one of: {', '.join(kinds)}. The hub then hires the cheapest model measured to "
-                f"succeed on that kind at least {self.hub.settings.route_min_rate:.0%} of the time.")
+                f"succeed on that kind at least {self.hub.settings.route_min_rate:.0%} of the time. A hire whose "
+                "budget_usd cannot pay for one average attempt on its model is not made: the error quotes that "
+                "cost and what your budget can buy.")
 
     async def hire_agent(self, ctx: Context, name: str, role: str, model: str = "", prompt: str = "",
                          budget_usd: float = 0.0, tools: list[str] | None = None,
@@ -130,6 +132,8 @@ class Tools:
         scope = tuple(sorted(set(tools))) if tools is not None else None
         failures = []
         for candidate in candidates:  # a model that does not fit or load gives way to the next one
+            if measured and (quote := self.hub.router.underfunded(session, boss, kind, candidate, budget_usd)):
+                return quote  # before anything is reserved: fund it in full or buy something cheaper
             out = await self._hire_one(session, boss, name, role, candidate, prompt, budget_usd, scope)
             if out.get("denied"):  # the user said no: that ends the hire, whatever else could be tried
                 return out

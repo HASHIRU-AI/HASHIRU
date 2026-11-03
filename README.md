@@ -137,6 +137,18 @@ success_rates:              # kind of job -> model -> [success rate, mean cost i
 route_min_rate: 0.7
 ```
 
+A hire by kind whose `budget_usd` cannot pay for one average attempt on its model is not made, in `hire_agent` and in
+`propose_plan` alike: the hub quotes that cost and lists the measured models the budget can pay for, so the hirer can
+fund the hire in full or buy something cheaper before any money is spent.
+
+A model you serve yourself, such as one on vLLM, goes to its own server with `endpoints`, and is priced per token like
+any cloud model from a prices file (`prices_file`):
+
+```yaml
+endpoints:                  # model -> its OpenAI-compatible server
+  hosted_vllm/Qwen/Qwen3.5-9B: http://127.0.0.1:18000/v1
+```
+
 With `request_by_reference: true`, the CEO reads each section of the request that is `reference_min_chars` long or
 longer (2000 by default) as its heading, its first lines and a note, and any message to a hire that names a section
 (by the first word of its heading, such as `j5`, in the message or the hire's job) carries that section word for word.

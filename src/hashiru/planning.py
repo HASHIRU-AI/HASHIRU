@@ -42,7 +42,8 @@ APPROVE = "Reply **approve** to carry out this plan, or say what to change."
 PLAN_RULES = (
     "You are in plan mode: research the request and propose a plan, but do not act yet. You can use only tools that "
     "read (such as check_usage and memory search); hiring, messaging agents and everything else are refused until "
-    "the user approves your plan. Call propose_plan with each agent you would hire (name, role, difficulty or model, "
+    "the user approves your plan. Call propose_plan with each agent you would hire (name, role, difficulty, kind or "
+    "model, "
     "budget_usd and its task), the steps (each step sends one agent a task; after names the steps whose results it "
     "needs, and they are added to its message) and how you will combine their work; if it reports problems, fix "
     "them and call it again. When the user approves, the steps run in that order, at the same time where they can, "
@@ -61,6 +62,8 @@ PROPOSE_TOOL = {"type": "function", "function": {
         "hires": {"type": "array", "items": {"type": "object", "properties": {
             "name": {"type": "string"}, "role": {"type": "string", "enum": list(ROLES)},
             "difficulty": {"type": "string", "enum": list(DIFFICULTIES)},
+            "kind": {"type": "string", "description": "Instead of difficulty: a kind of job the hub has success "
+                                                      "rates for (see hire_agent)."},
             "model": {"type": "string", "description": "Only when the job needs this model."},
             "budget_usd": {"type": "number"}, "task": {"type": "string", "description": "What it will do."},
             "prompt": {"type": "string", "description": "Its instructions when hired; default: its task."},
@@ -91,12 +94,18 @@ class Hire:
     difficulty: str = ""  # set when the router picked the model
     tools: tuple[str, ...] | None = None
     prompt: str = ""  # its instructions when hired; empty: its task
+    kind: str = ""  # set when the router picked the model by measured success rates
+
+    @property
+    def routed(self) -> str:
+        """What the router picked the model for (a difficulty or a kind), or '' for a named model."""
+        return self.difficulty or self.kind
 
     def public(self) -> dict[str, Any]:
         return {"name": self.name, "role": self.role, "model": self.model, "tier": self.tier,
                 "difficulty": self.difficulty, "budget_usd": self.budget_usd, "gpu_mb": self.gpu_mb,
                 "task": self.task} | ({"tools": list(self.tools)} if self.tools is not None else {}) | (
-            {"prompt": self.prompt} if self.prompt else {})
+            {"prompt": self.prompt} if self.prompt else {}) | ({"kind": self.kind} if self.kind else {})
 
 
 @dataclass(frozen=True)
@@ -138,7 +147,7 @@ class Plan:
             lines = ["No new hires." if self.steps else "No hires: the CEO answers by itself."]
         else:
             lines = ["| Hire | Role | Model | Reserves | Memory | Task |", "|---|---|---|---|---|---|"]
-            lines += [f"| {h.name} | {h.role} | {h.model}{f' ({h.difficulty})' if h.difficulty else ''} | "
+            lines += [f"| {h.name} | {h.role} | {h.model}{f' ({h.routed})' if h.routed else ''} | "
                       f"{dollars(h.budget_usd)} | {f'{h.gpu_mb} MB' if h.gpu_mb else 'none'} | {cell(h.task)} |"
                       for h in self.hires]
             memory = f" and {self.total_mb} MB of memory ({self.free_mb} MB free)" if self.total_mb else ""
@@ -214,7 +223,8 @@ def carry_out(plan: Plan) -> str:
     if not plan.proposed:
         return "The user approved the plan you proposed above. Carry it out now, then answer their request."
     hires = [f"- {h.name}: a {h.role}, "
-             + (f"difficulty={h.difficulty} (planned on {h.model})" if h.difficulty else f"model={h.model}")
+             + (f"difficulty={h.difficulty} (planned on {h.model})" if h.difficulty else
+                f"kind={h.kind} (planned on {h.model})" if h.kind else f"model={h.model}")
              + f", budget_usd={h.budget_usd:g}" + (f", tools={list(h.tools)}" if h.tools is not None else "")
              + f". Its task: {h.task}" for h in plan.hires]
     steps = "\n".join(f"- {s.id}: send {s.agent}: {s.task}" + (f" (after {', '.join(s.after)}, with their results)"
@@ -309,17 +319,28 @@ async def preview(hub: "Hub", session: "Session", boss: AgentRecord, item: dict[
     if not (math.isfinite(budget) and budget >= 0):
         return f"{name}: budget_usd must be a finite number >= 0"
     model, difficulty = str(item.get("model") or ""), str(item.get("difficulty") or "")
+    kind = str(item.get("kind") or "")
+    measured = bool(kind and hub.router.rates(kind))
     if model:
         if model not in hub.hireable():
             return f"{name}: unknown or disabled model {model!r}; choose from {hub.hireable()}"
         difficulty = ""
+    elif measured:
+        model, difficulty = await first_fit(hub, hub.router.by_rates(session, boss, kind, budget)), ""
+        if not model:
+            return (f"{name}: no model you may use has been measured on {kind!r} (check the modes, and give cloud "
+                    "models a budget_usd above 0)")
     elif difficulty in DIFFICULTIES:
         model = await route(hub, session, boss, difficulty, budget)
         if not model:
             return (f"{name}: no model you may use fits a {difficulty} job (check the modes, and give cloud models a "
                     "budget_usd above 0)")
     else:
-        return f"{name}: say how hard its job is with difficulty (easy, medium or hard), or name a model"
+        kinds = f"; or give its kind, one of {hub.router.kinds()}" if hub.router.kinds() else ""
+        return f"{name}: say how hard its job is with difficulty (easy, medium or hard), or name a model{kinds}"
+    if measured and (quote := hub.router.underfunded(session, boss, kind, model, budget)):
+        return f"{name}: {quote['error']}"
+    kind = kind if measured and not item.get("model") else ""  # a named model is hired by name
     peer = hub.peer(model)
     if peer is not None and role != "worker":
         return f"{name}: a remote agent can only be hired as a worker"
@@ -327,12 +348,17 @@ async def preview(hub: "Hub", session: "Session", boss: AgentRecord, item: dict[
     tools = item.get("tools")
     scope = tuple(sorted(map(str, tools))) if isinstance(tools, list) and role == "manager" else None
     return Hire(name, role, model, tier, budget, await need_mb(hub, model) if tier == "local" else 0,
-                str(item.get("task", "")), difficulty, scope, str(item.get("prompt") or ""))
+                str(item.get("task", "")), difficulty, scope, str(item.get("prompt") or ""), kind)
 
 
 async def route(hub: "Hub", session: "Session", boss: AgentRecord, difficulty: str, budget: float) -> str:
-    """The model the router would hire on now: its first candidate that fits in free memory, or ''."""
-    for model in await hub.router.candidates(session, boss, difficulty, budget):
+    """The model the router would hire on now for a `difficulty` job, or ''."""
+    return await first_fit(hub, await hub.router.candidates(session, boss, difficulty, budget))
+
+
+async def first_fit(hub: "Hub", candidates: list[str]) -> str:
+    """The first of `candidates` that a hire could run on now (a local model must fit in free memory), or ''."""
+    for model in candidates:
         if is_local(model) and await hub.fits(model):
             continue
         return model

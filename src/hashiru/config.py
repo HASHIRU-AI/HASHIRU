@@ -72,6 +72,8 @@ class Settings:
     data_dir: str = "data"
     trace_dir: str = "traces"
     prices_file: str = ""
+    # model -> the OpenAI-style server it runs on (e.g. vLLM over an SSH tunnel); priced per token like a cloud model
+    endpoints: tuple[tuple[str, str], ...] = ()
     tool_creation: bool = False
     web_tools: bool = True  # get_website and arxiv_search; a benchmark turns them off so no answer is looked up
     tools_dir: str = "user_tools"
@@ -228,6 +230,25 @@ def _success_rates(value: Any) -> tuple[tuple[str, tuple[tuple[str, float, float
     return tuple(out)
 
 
+def _endpoints(value: Any) -> tuple[tuple[str, str], ...]:
+    """{model: base URL} -> the setting. Local models already go to ollama_url."""
+    if not value:
+        return ()
+    if not isinstance(value, dict):
+        raise ValueError("endpoints must map model names to the base URLs of their servers")
+    out = []
+    for raw_model, raw_url in value.items():
+        model, url = str(raw_model), str(raw_url)
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password \
+                or parts.query or parts.fragment:
+            raise ValueError(f"endpoints.{model} must be a plain http(s) URL, got {url!r}")
+        if is_local(model):
+            raise ValueError(f"endpoints: {model} is a local model; it runs on ollama_url")
+        out.append((model, url))
+    return tuple(out)
+
+
 def _routing(value: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
     if not value:
         return ()
@@ -290,6 +311,8 @@ def load_settings(overrides: list[str] | None = None, config_file: str | None = 
             values[key] = _routing(value)
         elif key == "success_rates":
             values[key] = _success_rates(value)
+        elif key == "endpoints":
+            values[key] = _endpoints(value)
         else:
             try:
                 values[key] = kind(value) if kind in (int, float, str) else value

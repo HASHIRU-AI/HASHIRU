@@ -11,7 +11,7 @@ obfuscating, and a pool of $0 cannot pay a cloud model. A worker that fails move
 """
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -46,10 +46,34 @@ class Router:
         """The kinds of job with measured success rates, as configured."""
         return [kind for kind, _ in self.hub.settings.success_rates]
 
+    def rates(self, kind: str) -> tuple[tuple[str, float, float], ...]:
+        """(model, success rate, mean cost in $ of one attempt) as measured on `kind`; empty if it was not."""
+        return {kind_key(k): rows for k, rows in self.hub.settings.success_rates}.get(kind_key(kind), ())
+
+    def underfunded(self, session: Session, boss: AgentRecord, kind: str, model: str,
+                    budget_usd: float) -> dict[str, Any] | None:
+        """The quote a hire gets when `budget_usd` cannot pay for one average attempt of a cloud `model` on `kind`:
+        the attempt's measured cost, and the measured options the budget can pay for, most reliable first. None when
+        it can pay, when `model` was not measured on `kind`, or when budgets are not enforced."""
+        rows = {m: (rate, cost) for m, rate, cost in self.rates(kind)}
+        if (not self.hub.settings.enforce_budget or is_local(model) or model.startswith(PEER_PREFIX)
+                or model not in rows or rows[model][1] <= budget_usd + 1e-12):
+            return None  # an outside agent's price per message is checked when it is hired
+        rate, cost = rows[model]
+        ranked = sorted(rows, key=lambda m: (-rows[m][0], rows[m][1]))
+        fits = [m for m in self.allowed(session, boss, ranked, budget_usd) if rows[m][1] <= budget_usd + 1e-12]
+        cheaper = ", ".join(f"{m} ({rows[m][0]:.0%}, ${rows[m][1]:.4f})" for m in fits)
+        return {"error": f"{model} costs about ${cost:.4f} an attempt on {kind!r} (it succeeded {rate:.0%} of the "
+                         f"time), more than budget_usd ${budget_usd:.4f}. Reserve at least ${cost:.4f}, or hire "
+                         + (f"something your budget pays for: {cheaper}" if fits else
+                            "with a larger budget: nothing measured on this kind costs that little"),
+                "quote": {"model": model, "success_rate": rate, "cost_usd": cost},
+                "fits": [{"model": m, "success_rate": rows[m][0], "cost_usd": rows[m][1]} for m in fits]}
+
     def by_rates(self, session: Session, boss: AgentRecord, kind: str, budget_usd: float) -> list[str]:
         """The models for a `kind` of job by measured success: the cheapest of those at or above route_min_rate
         first, then the rest, most reliable first. Empty for a kind without measurements."""
-        rates = {kind_key(k): rows for k, rows in self.hub.settings.success_rates}.get(kind_key(kind), ())
+        rates = self.rates(kind)
         floor = self.hub.settings.route_min_rate
         good = sorted((r for r in rates if r[1] >= floor), key=lambda r: (r[2], -r[1]))
         rest = sorted((r for r in rates if r[1] < floor), key=lambda r: -r[1])

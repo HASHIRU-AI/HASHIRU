@@ -3,6 +3,7 @@ import asyncio
 import json
 import math
 import os
+from collections.abc import Mapping
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
@@ -102,10 +103,12 @@ def check_priced(models: list[str]) -> None:
 class LLM:
     """Chat completions at temperature 0, with cost from LiteLLM's price map (local calls cost $0)."""
 
-    def __init__(self, ollama_url: str, wallet: Wallet, num_ctx: int = 16384) -> None:
+    def __init__(self, ollama_url: str, wallet: Wallet, num_ctx: int = 16384,
+                 endpoints: Mapping[str, str] | None = None) -> None:
         self.ollama_url = ollama_url
         self.wallet = wallet
         self.num_ctx = num_ctx  # Ollama's own default (4096) leaves a thinking model no room to answer
+        self.endpoints = dict(endpoints or {})  # model -> its own server (the endpoints setting)
 
     async def chat(self, model: str, messages: list[dict[str, Any]],
                    tools: list[dict[str, Any]] | None = None) -> tuple[Any, float]:
@@ -115,7 +118,8 @@ class LLM:
         traced, and every later call by any agent in any session is refused.
         """
         self.wallet.check()
-        extra: dict[str, Any] = {"api_base": self.ollama_url, "num_ctx": self.num_ctx} if is_local(model) else {}
+        extra: dict[str, Any] = {"api_base": self.ollama_url, "num_ctx": self.num_ctx} if is_local(model) else (
+            {"api_base": self.endpoints[model]} if model in self.endpoints else {})
         if (cap := OUTPUT_CAP.get()) is not None:
             extra["max_tokens"] = cap  # LiteLLM sends max_completion_tokens to reasoning models
         # drop_params: a reasoning model that rejects temperature=0 (gpt-6-luna) runs at its default instead

@@ -173,6 +173,29 @@ def test_a_hire_by_kind_uses_the_measured_route(tmp_path):
     assert "arithmetic level 4" in error  # an unmeasured kind without a difficulty: the error lists the kinds
 
 
+def test_a_hire_by_kind_that_cannot_pay_for_one_attempt_gets_a_quote(tmp_path):
+    hub = make_hub(tmp_path, success_rates=RATES)
+    session = hub.new_session("t", trace=False)
+    out = hire(hub, session, kind="arithmetic level 4", budget_usd=0.001)
+    assert out["quote"] == {"model": "gpt-4.1-mini", "success_rate": 0.9, "cost_usd": 0.002}
+    assert out["fits"] == [{"model": "ollama_chat/tiny", "success_rate": 0.2, "cost_usd": 0.0}]
+    assert "$0.0020" in out["error"] and "budget_usd" in out["error"] and "ollama_chat/tiny" in out["error"]
+    assert session.ledger.get("w1") is None and session.ledger.left()["ceo"] == hub.settings.budget_usd
+    assert hire(hub, session, kind="arithmetic level 4", budget_usd=0.002)["model"] == "gpt-4.1-mini"
+
+
+def test_a_named_model_is_quoted_on_the_kind_it_is_hired_for(tmp_path):
+    hub = make_hub(tmp_path, success_rates=RATES)
+    session = hub.new_session("t", trace=False)
+    out = hire(hub, session, model="gpt-4.1", kind="arithmetic level 4", budget_usd=0.005)
+    assert out["quote"]["model"] == "gpt-4.1"
+    assert [f["model"] for f in out["fits"]] == ["gpt-4.1-mini", "ollama_chat/tiny"]  # most reliable first
+    assert "hired" in hire(hub, session, name="w2", model="gpt-4.1", budget_usd=0.005)  # no kind: nothing to quote
+    free = make_hub(tmp_path, success_rates=RATES, enforce_budget=False)
+    assert hire(free, free.new_session("t", trace=False), kind="arithmetic level 4",
+                budget_usd=0.001)["model"] == "gpt-4.1-mini"
+
+
 def test_the_hire_tool_lists_the_measured_kinds(tmp_path):
     def description(hub):
         return next(t.description for t in asyncio.run(hub.mcp.list_tools()) if t.name == "hire_agent")

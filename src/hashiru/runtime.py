@@ -505,7 +505,7 @@ class PlanRunner:
     async def hire(self, agent: str) -> str | None:
         h = self.hires[agent]
         args = {"name": h.name, "role": h.role, "prompt": h.prompt or h.task, "budget_usd": h.budget_usd} | (
-            {"difficulty": h.difficulty} if h.difficulty else {"model": h.model}) | (
+            {"difficulty": h.difficulty} if h.difficulty else {"kind": h.kind} if h.kind else {"model": h.model}) | (
             {"tools": list(h.tools)} if h.tools is not None else {})
         out = await perform(self.hub, self.session, self.mcp, "ceo", "hire_agent", args)
         return None if "hired" in out else str(out.get("error") or "not hired")
