@@ -12,6 +12,9 @@ pinned: false
 
 # HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization
 
+<p align="center"><a href="docs/hashiru-promo.mp4"><img src="docs/screenshots/promo-poster.png" width="820" alt="Play the 55-second HASHIRU tour: a local run that cost $0.00, the hiring tree, approvals, plan mode, private chat and the three ways to connect."></a></p>
+<p align="center"><sub>Watch the 55-second tour (<a href="docs/hashiru-promo.mp4">docs/hashiru-promo.mp4</a>).</sub></p>
+
 <p align="center"><img src="docs/hiring-tree.svg" width="820" alt="You talk to the CEO, which holds a $0.50 pool. It hires a manager ($0.20), a worker on a local model ($0.10 and 3.5 GB of memory) and a remote A2A agent ($0.001 a message); the manager hires a worker on a cloud model ($0.05). Hires and messages go over A2A; the CEO and managers call tools over MCP."></p>
 
 HASHIRU is a budget-aware multi-agent system. A CEO agent splits your request into subtasks and hires
