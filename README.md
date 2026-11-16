@@ -1,4 +1,4 @@
-# <img src="docs/logo.png" alt="" width="40" align="center"> HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization
+# <img src="docs/logo.png" alt="" width="40" align="top"> HASHIRU: Hierarchical Agent System for Hybrid Intelligent Resource Utilization
 
 https://github.com/user-attachments/assets/ab79c053-9809-4060-85b8-4653fdb934f6
 
